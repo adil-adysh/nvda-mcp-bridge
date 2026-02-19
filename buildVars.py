@@ -23,23 +23,18 @@ addon_info = AddonInfo(
 	# Translators: Long description to be shown for this add-on on add-on information from add-on store
 	addon_description=_("""Thread-safe HTTP API for external access to NVDA screen reader functionality.
 Provides a localhost-only HTTP bridge (127.0.0.1:8765) designed for use with MCP servers.
-Features production-grade architecture: tool registry pattern, frozen registry for safety, pure tool handlers with exception-based error flow, and execution timing for observability.
+Uses a tool registry, frozen registration after startup, and structured error handling.
 All NVDA API calls are automatically queued to the main thread to prevent crashes.
-Supports 8 core actions: focus navigation, text reading, speech output, window information, navigator objects, and UI messages."""),
+Provides actions for focus/navigation, text/speech, window details, diagnostics, and basic system operations."""),
 	# version
-	addon_version="1.0.0",
+	addon_version="0.2.0",
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version to be shown in the add-on store
-	addon_changelog=_("""Version 1.0.0:
-- Production-grade HTTP bridge on localhost:8765 with token authentication
-- Tool registry pattern for clean extensibility
-- Thread-safe NVDA API access via main-thread queue execution
-- Pure tool handlers with exception-based error flow (no HTTP awareness)
-- Frozen registry after initialization for runtime safety
-- Execution timing with performance monitoring (500ms slow-action warnings)
-- 8 core actions: get_current_focus, read_current_line, speak_text, get_window_title, move_focus, get_navigator_object, get_desktop_object, show_message
-- Comprehensive input validation and error handling
-- Type hints throughout and ruff linting"""),
+	addon_changelog=_("""Version 0.2.0:
+- Improved request validation and error handling for bridge endpoints
+- Added safer token comparison and clarified API response behavior
+- Updated tool/action wiring and documentation for current project structure
+- General cleanup for maintainability"""),
 	# Author(s)
 	addon_author="Adil Hoxur <adilhoxur@gmail.com>",
 	# URL for the add-on documentation support
