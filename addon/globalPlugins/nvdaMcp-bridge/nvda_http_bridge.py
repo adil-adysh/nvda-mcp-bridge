@@ -21,12 +21,14 @@ Thread Safety:
 
 import json
 import threading
+import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Dict, Any, Optional, Callable
 import logHandler
 import queueHandler
 
-from . import nvda_bridge
+from .tool_registry import ToolRegistry
+from .default_tools import create_default_registry
 
 
 # Security configuration
@@ -73,16 +75,16 @@ def _execute_on_main_thread(func: Callable, *args, timeout: float = 5.0, **kwarg
 		queueHandler.queueFunction(queueHandler.eventQueue, _wrapper)
 	except Exception as e:
 		logHandler.log.error(f"Failed to queue function to main thread: {e}", exc_info=True)
-		return {"error": f"Failed to queue to main thread: {str(e)}"}
+		raise RuntimeError(f"Failed to queue to main thread: {str(e)}")
 
 	# Wait for completion with timeout
 	if not completed_event.wait(timeout=timeout):
 		logHandler.log.error(f"Timeout waiting for {func.__name__} on main thread")
-		return {"error": f"Operation timed out after {timeout} seconds"}
+		raise TimeoutError(f"Operation timed out after {timeout} seconds")
 
 	# Return result or raise error
 	if result_container["error"]:
-		return {"error": str(result_container["error"])}
+		raise result_container["error"]
 
 	return result_container["result"]
 
@@ -197,23 +199,31 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			"params": {}
 		}
 		"""
-		try:
-			action = request_data.get("action")
-			params = request_data.get("params", {})
+		action = request_data.get("action")
+		params = request_data.get("params", {})
 
-			if not action:
-				self._send_json_response({"error": "Missing 'action' field"}, 400)
-				return
+		if not action:
+			self._send_json_response({"success": False, "error": "Missing 'action' field"}, 400)
+			return
 
-			# Route to action handler
-			result = self.server.execute_action(action, params)
-			self._send_json_response({"success": True, "result": result})
+		# Execute action and get HTTP envelope
+		# The bridge layer handles all error wrapping and threading
+		envelope = self.server.execute_action(action, params)
 
-		except ValueError as e:
-			self._send_json_response({"error": str(e)}, 400)
-		except Exception as e:
-			logHandler.log.error(f"Error executing action: {e}", exc_info=True)
-			self._send_json_response({"error": str(e), "type": type(e).__name__}, 500)
+		# Determine HTTP status code from envelope
+		if envelope.get("success"):
+			status = 200
+		else:
+			# Failed - check error type to determine status code
+			error_msg = envelope.get("error", "")
+			if "unknown action" in error_msg.lower() or "validation" in error_msg.lower():
+				status = 400  # Bad request
+			elif "timeout" in error_msg.lower():
+				status = 504  # Gateway timeout
+			else:
+				status = 500  # Internal server error
+
+		self._send_json_response(envelope, status)
 
 
 class NVDAHTTPBridge:
@@ -225,6 +235,7 @@ class NVDAHTTPBridge:
 		port: int = 8765,
 		shutdown_event: Optional[threading.Event] = None,
 		bridge_token: Optional[str] = None,
+		tool_registry: Optional[ToolRegistry] = None,
 	):
 		"""
 		Initialize HTTP bridge.
@@ -234,6 +245,7 @@ class NVDAHTTPBridge:
 			port: Port to bind to (should be 8765)
 			shutdown_event: Event to signal shutdown
 			bridge_token: Authentication token for requests
+			tool_registry: Custom tool registry (uses default if None)
 		"""
 		self.host = host
 		self.port = port
@@ -241,61 +253,83 @@ class NVDAHTTPBridge:
 		self.bridge_token = bridge_token or DEFAULT_BRIDGE_TOKEN
 		self.server: Optional[HTTPServer] = None
 
-		# Map actions to nvda_bridge functions
-		self.actions: Dict[str, callable] = {
-			"get_current_focus": nvda_bridge.get_current_focus,
-			"read_current_line": nvda_bridge.read_current_line,
-			"speak_text": nvda_bridge.speak_text,
-			"get_window_title": nvda_bridge.get_window_title,
-			"move_focus": nvda_bridge.move_focus,
-			"get_navigator_object": nvda_bridge.get_navigator_object,
-			"get_desktop_object": nvda_bridge.get_desktop_object,
-			"show_message": nvda_bridge.show_message,
-		}
+		# Initialize tool registry
+		self.registry = tool_registry or create_default_registry()
+		logHandler.log.info(f"Loaded {len(self.registry)} bridge tools")
 
-	def execute_action(self, action_name: str, params: Dict[str, Any]) -> Any:
+		# Freeze registry to prevent runtime modifications (improves safety)
+		self.registry.freeze()
+		logHandler.log.debug("Tool registry frozen")
+
+	def execute_action(self, action_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
 		"""
-		Execute a bridge action with parameter validation.
-		All NVDA API calls are safely queued to the main thread.
+		Execute a bridge action with full error handling and threading.
+
+		This is the orchestration layer that:
+		1. Validates input
+		2. Gets tool from registry
+		3. Executes on main thread via _execute_on_main_thread
+		4. Wraps result in HTTP-compatible envelope
+		5. Logs execution time for observability
 
 		Args:
 			action_name: Name of the action to execute
 			params: Parameters to pass to the action
 
 		Returns:
-			Result from the action handler
-
-		Raises:
-			ValueError: If action is unknown or parameters are invalid
+			HTTP envelope: {"success": True, "result": ...} or {"success": False, "error": "..."}
 		"""
+		start_time = time.perf_counter()
+
 		try:
+			# Validate action name type
 			if not isinstance(action_name, str):
-				raise ValueError("Action name must be a string")
-
-			if action_name not in self.actions:
-				raise ValueError(f"Unknown action: {action_name}")
-
-			handler = self.actions[action_name]
+				return {"success": False, "error": "Action name must be a string"}
 
 			# Validate params is dict
 			if params is not None and not isinstance(params, dict):
-				raise ValueError("Parameters must be a dictionary")
+				return {"success": False, "error": "Parameters must be a dictionary"}
 
-			# Execute handler on NVDA's main thread for thread safety
+			# Get tool from registry
+			tool = self.registry.get(action_name)
+			if not tool:
+				logHandler.log.warning(f"Unknown action requested: {action_name}")
+				return {"success": False, "error": f"Unknown action: {action_name}"}
+
+			# Execute tool on NVDA's main thread for thread safety
 			# This prevents freezing or crashes from background thread API calls
-			try:
-				if params:
-					result = _execute_on_main_thread(handler, timeout=10.0, **params)
-				else:
-					result = _execute_on_main_thread(handler, timeout=10.0)
-				return result
-			except TypeError as e:
-				# Handle invalid parameter errors
-				logHandler.log.error(f"Invalid parameters for action {action_name}: {e}", exc_info=True)
-				return {"error": f"Invalid parameters: {str(e)}"}
+			result = _execute_on_main_thread(tool.execute, params or {}, timeout=10.0)
+
+			# Log execution time for performance monitoring
+			duration_ms = (time.perf_counter() - start_time) * 1000
+
+			# Warn about slow actions (> 500ms)
+			if duration_ms > 500:
+				logHandler.log.warning(f"Tool '{action_name}' is slow ({duration_ms:.1f} ms)")
+			else:
+				logHandler.log.debug(f"Tool '{action_name}' executed in {duration_ms:.1f} ms")
+
+			# Success - wrap in envelope
+			return {"success": True, "result": result}
+
+		except TimeoutError as e:
+			duration_ms = (time.perf_counter() - start_time) * 1000
+			logHandler.log.error(
+				f"Tool '{action_name}' timed out after {duration_ms:.1f} ms: {e}", exc_info=True
+			)
+			return {"success": False, "error": f"Operation timed out: {str(e)}"}
+		except ValueError as e:
+			# Parameter validation errors
+			duration_ms = (time.perf_counter() - start_time) * 1000
+			logHandler.log.warning(f"Validation error in '{action_name}' ({duration_ms:.1f} ms): {e}")
+			return {"success": False, "error": str(e)}
 		except Exception as e:
-			logHandler.log.error(f"Error executing action {action_name}: {e}", exc_info=True)
-			raise
+			# Unexpected errors
+			duration_ms = (time.perf_counter() - start_time) * 1000
+			logHandler.log.error(
+				f"Tool '{action_name}' failed after {duration_ms:.1f} ms: {e}", exc_info=True
+			)
+			return {"success": False, "error": f"Execution failed: {str(e)}"}
 
 	def start(self):
 		"""Start the HTTP bridge server (blocking) with robust error handling"""

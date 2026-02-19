@@ -14,35 +14,38 @@ from site_scons.site_tools.NVDATool.utils import _
 # Add-on information variables
 addon_info = AddonInfo(
 	# add-on Name/identifier, internal for NVDA
-	addon_name="nvdaMcp",
+	addon_name="nvdaMcpBridge",
 	# Add-on summary/title, usually the user visible name of the add-on
 	# Translators: Summary/title for this add-on
 	# to be shown on installation and add-on information found in add-on store
-	addon_summary=_("NVDA HTTP Bridge"),
+	addon_summary=_("NVDA MCP Bridge"),
 	# Add-on description
 	# Translators: Long description to be shown for this add-on on add-on information from add-on store
-	addon_description=_("""Provides a secure HTTP bridge for external access to NVDA functionality.
-Enables AI assistants and automation tools to interact with NVDA via a simple JSON API.
-All NVDA API calls are thread-safe and run on the main thread to prevent crashes.
-Supports focus navigation, text reading, speech output, and window information retrieval."""),
+	addon_description=_("""Thread-safe HTTP API for external access to NVDA screen reader functionality.
+Provides a localhost-only HTTP bridge (127.0.0.1:8765) designed for use with MCP servers.
+Features production-grade architecture: tool registry pattern, frozen registry for safety, pure tool handlers with exception-based error flow, and execution timing for observability.
+All NVDA API calls are automatically queued to the main thread to prevent crashes.
+Supports 8 core actions: focus navigation, text reading, speech output, window information, navigator objects, and UI messages."""),
 	# version
 	addon_version="1.0.0",
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version to be shown in the add-on store
 	addon_changelog=_("""Version 1.0.0:
-- HTTP bridge server running on localhost:8765
-- Thread-safe NVDA API access using queueHandler
-- Token-based authentication for security
-- Comprehensive error handling to prevent NVDA crashes
-- Actions: get_current_focus, read_current_line, speak_text, get_window_title, move_focus, show_message
-- Full input validation and length limits
-- Pre-commit hooks with ruff linting"""),
+- Production-grade HTTP bridge on localhost:8765 with token authentication
+- Tool registry pattern for clean extensibility
+- Thread-safe NVDA API access via main-thread queue execution
+- Pure tool handlers with exception-based error flow (no HTTP awareness)
+- Frozen registry after initialization for runtime safety
+- Execution timing with performance monitoring (500ms slow-action warnings)
+- 8 core actions: get_current_focus, read_current_line, speak_text, get_window_title, move_focus, get_navigator_object, get_desktop_object, show_message
+- Comprehensive input validation and error handling
+- Type hints throughout and ruff linting"""),
 	# Author(s)
-	addon_author="NVDA HTTP Bridge Contributors",
+	addon_author="Adil Hoxur <adilhoxur@gmail.com>",
 	# URL for the add-on documentation support
-	addon_url="https://github.com/nvda-addons/nvda-mcp-bridge",
+	addon_url="https://github.com/adil-adysh/nvda-mcp-bridge",
 	# URL for the add-on repository where the source code can be found
-	addon_sourceURL="https://github.com/nvda-addons/nvda-mcp-bridge",
+	addon_sourceURL="https://github.com/adil-adysh/nvda-mcp-bridge",
 	# Documentation file name
 	addon_docFileName="readme.html",
 	# Minimum NVDA version supported (e.g. "2019.3.0", minor version is optional)
@@ -68,7 +71,7 @@ Supports focus navigation, text reading, speech output, and window information r
 # For more information on SCons Glob expressions please take a look at:
 # https://scons.org/doc/production/HTML/scons-user/apd.html
 pythonSources: list[str] = [
-	"addon/globalPlugins/nvdaMcp/*.py",
+	"addon/globalPlugins/nvdaMcp-bridge/*.py",
 ]
 
 # Files that contain strings for translation. Usually your python sources
