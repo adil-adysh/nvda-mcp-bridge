@@ -18,26 +18,31 @@ addon_info = AddonInfo(
 	# Add-on summary/title, usually the user visible name of the add-on
 	# Translators: Summary/title for this add-on
 	# to be shown on installation and add-on information found in add-on store
-	addon_summary=_("NVDA MCP Server"),
+	addon_summary=_("NVDA HTTP Bridge"),
 	# Add-on description
 	# Translators: Long description to be shown for this add-on on add-on information from add-on store
-	addon_description=_("""Embeds a Model Context Protocol (MCP) server inside NVDA for external automation and AI assistance.
-Provides secure localhost access to NVDA functionality via HTTP API with token authentication."""),
+	addon_description=_("""Provides a secure HTTP bridge for external access to NVDA functionality.
+Enables AI assistants and automation tools to interact with NVDA via a simple JSON API.
+All NVDA API calls are thread-safe and run on the main thread to prevent crashes.
+Supports focus navigation, text reading, speech output, and window information retrieval."""),
 	# version
-	addon_version="0.0.1",
+	addon_version="1.0.0",
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version to be shown in the add-on store
-	addon_changelog=_("""Initial release:
-- MCP server running inside NVDA process
-- Secure localhost-only binding with token authentication
-- Tools for focus, navigation, speech, and window information
-- Clean start/stop lifecycle management"""),
+	addon_changelog=_("""Version 1.0.0:
+- HTTP bridge server running on localhost:8765
+- Thread-safe NVDA API access using queueHandler
+- Token-based authentication for security
+- Comprehensive error handling to prevent NVDA crashes
+- Actions: get_current_focus, read_current_line, speak_text, get_window_title, move_focus, show_message
+- Full input validation and length limits
+- Pre-commit hooks with ruff linting"""),
 	# Author(s)
-	addon_author="NVDA MCP Contributors",
+	addon_author="NVDA HTTP Bridge Contributors",
 	# URL for the add-on documentation support
-	addon_url="https://github.com/nvda-addons/nvda-mcp",
+	addon_url="https://github.com/nvda-addons/nvda-mcp-bridge",
 	# URL for the add-on repository where the source code can be found
-	addon_sourceURL="https://github.com/nvda-addons/nvda-mcp",
+	addon_sourceURL="https://github.com/nvda-addons/nvda-mcp-bridge",
 	# Documentation file name
 	addon_docFileName="readme.html",
 	# Minimum NVDA version supported (e.g. "2019.3.0", minor version is optional)
