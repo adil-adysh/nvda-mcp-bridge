@@ -1,395 +1,220 @@
-# Tool Registry Architecture
+# Tool Registry Architecture (Auto-Discovery Edition)
 
 ## Overview
 
-The NVDA HTTP Bridge now uses a **Tool Registry Pattern** for managing bridge actions. This refactoring improves extensibility, maintainability, and separation of concerns without changing the external HTTP interface.
+The NVDA MCP Bridge uses a layered architecture with a discoverable tool system:
 
-## Architecture Layers
+- HTTP receives `{ "action": "tool_name", "params": {...} }`
+- Bridge orchestrates validation, execution, timing, and envelopes
+- Registry auto-discovers `ToolBase` implementations from `tools/`
+- Main-thread executor guarantees NVDA API thread safety
+- Tool handlers remain pure and protocol-agnostic
 
-### 1. HTTP Transport Layer (`NVDABridgeRequestHandler`)
-- Handles HTTP request/response
-- Validates authentication
-- Parses JSON payloads
-- Sends responses
+## Architecture Diagram
 
-### 2. Bridge Orchestration (`NVDAHTTPBridge`)
-- Manages tool registry
-- Coordinates main-thread execution
-- Wraps results in HTTP envelope
-- Logs execution timing (observability)
-- Handles bridge lifecycle
-
-### 3. Tool Registry (`ToolRegistry`)
-- Stores available tools
-- Validates tool parameters
-- Dispatches to tool handlers (pure - no error wrapping)
-
-### 4. Tool Implementations (`nvda_bridge.py`)
-- Pure NVDA API calls
-- Self-contained functions
-- No HTTP/routing/error envelope logic
-- Returns pure results or raises exceptions
-
-### 5. Main Thread Executor (`_execute_on_main_thread`)
-- Queues NVDA calls to main thread
-- Ensures thread safety
-- Prevents crashes
-- Propagates exceptions (no error wrapping)
-
-## Key Components
-
-### Tool Class
-```python
-@dataclass
-class Tool:
-    name: str                      # Unique identifier
-    handler: Callable              # Function to execute
-    description: str               # Human-readable description
-    required_params: List[str]     # Required parameter names
-    optional_params: List[str]     # Optional parameter names
+```mermaid
+flowchart LR
+    A[HTTP API /action\nNVDABridgeRequestHandler] --> B[Bridge Orchestration\nNVDAHTTPBridge]
+    B --> C[Tool Registry\nToolRegistry]
+    C --> D[Main Thread Executor\nMainThreadExecutor]
+    D --> E[Tool Handlers\nToolBase subclasses]
+    E --> F[nvda_bridge.py\nPure NVDA API wrappers]
+    B -. Observability .-> G[Logging\nDEBUG/INFO/WARNING/ERROR\nperf_counter timing]
 ```
-
-### ToolRegistry Class
-```python
-class ToolRegistry:
-    def register(name, handler, description, required_params, optional_params)
-    def get(name) -> Tool
-    def has(name) -> bool
-    def execute(name, params) -> Dict[str, Any]
-    def list_tools() -> List[Dict[str, Any]]
-```
-
-## Execution Pipeline
-
-```
-HTTP Request
-    ↓
-Authentication Check
-    ↓
-JSON Parse
-    ↓
-Tool Lookup (Registry)
-    ↓
-Parameter Validation (Tool)
-    ↓
-Queue to Main Thread (_execute_on_main_thread)
-    ↓
-Execute Tool Handler [PURE RESULT or EXCEPTION]
-    ↓
-Bridge Wraps in HTTP Envelope {"success": bool, ...}
-    ↓
-Bridge Logs Execution Time
-    ↓
-JSON Response
-```
-
-## Adding a New Tool
-
-### Step 1: Create Handler Function
-
-In `nvda_bridge.py` (or a new module):
-
-```python
-def my_new_action(param1: str, param2: int = 42) -> Any:
-    """
-    My new action description.
-    
-    Args:
-        param1: Required parameter
-        param2: Optional parameter with default
-        
-    Returns:
-        Result data (pure - NOT wrapped in HTTP envelope)
-        
-    Raises:
-        ValueError: If validation fails
-        RuntimeError: If execution fails
-    """
-    # Validate inputs
-    if not param1:
-        raise ValueError("param1 is required")
-    
-    if len(param1) > 1000:
-        raise ValueError("param1 too long (max 1000 chars)")
-        
-    # Call NVDA APIs
-    # (This function runs on main thread automatically via bridge)
-    result = do_something_with_nvda(param1, param2)
-    
-    # Return pure result - NO error envelopes
-    return result
-```
-
-**Key principles:**
-- Return pure results (not `{"success": True, "result": ...}`)
-- Raise exceptions for errors (not `{"error": "..."}`)
-- Focus only on NVDA logic
-- No HTTP/protocol awareness
-
-### Step 2: Register the Tool
-
-In `default_tools.py`:
-
-```python
-def create_default_registry() -> ToolRegistry:
-    registry = ToolRegistry()
-    
-    # ... existing tools ...
-    
-    registry.register(
-        name="my_new_action",
-        handler=nvda_bridge.my_new_action,
-        description="Does something useful",
-        required_params=["param1"],
-        optional_params=["param2"],
-    )
-    
-    return registry
-```
-
-### Step 3: Done!
-
-That's it. No changes to:
-- HTTP routing logic
-- Request handlers
-- Thread execution
-- Response formatting
-
-### Testing Your New Tool
-
-```powershell
-$body = @{
-    action = "my_new_action"
-    params = @{
-        param1 = "test"
-        param2 = 100
-    }
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://127.0.0.1:8765/action" `
-    -Method Post `
-    -Headers @{"X-NVDA-Bridge-Token" = "nvda-bridge-secret-change-me"} `
-    -Body $body
-```
-
-## Benefits of This Architecture
-
-### 1. **Extensibility**
-- Add new tools without modifying core logic
-- Each tool is self-contained
-- Clear registration point
-
-### 2. **Maintainability**
-- Single responsibility per component
-- No conditional dispatch chains
-- Easy to understand each layer
-
-### 3. **Type Safety**
-- Parameter validation per tool
-- Clear function signatures
-- Type hints throughout
-
-### 4. **Testability**
-- Tools can be tested independently
-- Mock tool registry for tests
-- Isolated error handling
-
-### 5. **Documentation**
-- Tool metadata includes descriptions
-- Parameter requirements explicit
-- Self-documenting API
-
-## Thread Safety
-
-The architecture preserves thread safety:
-
-1. **HTTP Handler** runs in background thread
-2. **Tool Registry** lookup is thread-safe (frozen after init)
-3. **Tool Execution** is queued to main thread via `_execute_on_main_thread`
-4. **NVDA APIs** only called from main thread
-
-## Observability
-
-The bridge layer provides execution timing for performance monitoring:
-
-- **Timing location**: Bridge layer only (not tools, registry, or executor)
-- **Precision**: `time.perf_counter()` for accurate millisecond timing
-- **Logging levels**:
-  - `debug`: Successful execution < 500ms
-  - `warning`: Slow execution > 500ms
-  - `error`: Execution failures with full traceback
-- **Metrics**: Main-thread execution time (excludes HTTP/JSON overhead)
-
-**Why bridge layer?**
-- Owns request lifecycle
-- Knows tool name and timing
-- Single logging authority
-- Keeps lower layers clean
 
 ## Layer Responsibilities
 
-| Layer | Return Contract | Error Handling | HTTP Awareness | Example |
-|-------|----------------|----------------|----------------|---------|
-| **Tool Handler** | Pure result or raise exception | `raise ValueError("...")` | ❌ None | `return {"text": "..."}` |
-| **Registry** | Pure result or propagate exception | Validates params, propagates errors | ❌ None | `tool.execute(params)` |
-| **Main Thread Executor** | Pure result or propagate exception | Re-raises exceptions | ❌ None | `raise exception` |
-| **Bridge** | HTTP envelope | Catches & wraps in envelope | ✅ Full | `{"success": False, "error": "..."}` |
-| **HTTP Handler** | HTTP response | Returns status codes | ✅ Full | `200`, `400`, `500` |
+| Layer | Responsibility | Returns | Error Contract |
+|---|---|---|---|
+| HTTP Handler | Parse/auth/respond | JSON HTTP response | HTTP status + bridge envelope |
+| Bridge | Route + timing + envelope | `{"success": ...}` envelope | Catches exceptions and classifies |
+| Registry | Validate + dispatch tool | Pure tool result | Raises `ValueError`/tool exceptions |
+| Executor | Run on NVDA main thread | Pure callable result | Propagates raised exceptions |
+| Tool Handlers | NVDA domain logic only | dict/list/primitive | Raise exceptions |
 
-## Design Decisions
+## Core Scaffolding
 
-### Tool Return Contract: Pure Results
+### 1) ToolBase + Metadata
 
-**Decision**: Tools return pure results or raise exceptions.
-
-**Why:**
-- Clean separation of domain logic from protocol
-- Tools focus only on NVDA operations
-- Bridge owns HTTP envelope creation
-- Easier testing (no HTTP mocking needed)
-- Exception-based control flow is Pythonic
-
-**Example:**
 ```python
-# ✅ Clean - Tool returns pure result
-def get_focus():
-    focus = api.getFocusObject()
-    if not focus:
-        raise RuntimeError("No focus available")
-    return {"name": focus.name, "role": focus.role}
+from dataclasses import dataclass, field
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List
 
-# ❌ Old - Tool aware of HTTP
-def get_focus():
+
+@dataclass(frozen=True)
+class ToolMetadata:
+    name: str
+    description: str
+    required_params: List[str] = field(default_factory=list)
+    optional_params: List[str] = field(default_factory=list)
+    version: str = "1.0.0"
+    category: str = "general"
+
+
+class ToolBase(ABC):
+    @abstractmethod
+    def metadata(self) -> ToolMetadata:
+        raise NotImplementedError
+
+    @abstractmethod
+    def execute(self, **params: Any) -> Any:
+        raise NotImplementedError
+
+    def validate_params(self, params: Dict[str, Any]) -> None:
+        metadata = self.metadata()
+        for required in metadata.required_params:
+            if required not in params:
+                raise ValueError(f"Missing required parameter: {required}")
+```
+
+### 2) Auto-Discovery Mechanism
+
+```python
+import importlib
+import inspect
+import pkgutil
+
+
+def auto_discover(self, tools_package):
+    for module_info in pkgutil.iter_modules(tools_package.__path__):
+        if module_info.ispkg:
+            continue
+        module = importlib.import_module(f"{tools_package.__name__}.{module_info.name}")
+        for _, klass in inspect.getmembers(module, inspect.isclass):
+            if klass.__module__ != module.__name__:
+                continue
+            if not issubclass(klass, ToolBase) or inspect.isabstract(klass):
+                continue
+            self.register_tool(klass())
+```
+
+### 3) Tool Registry
+
+```python
+class ToolRegistry:
+    def register_tool(self, tool: ToolBase) -> ToolBase: ...
+    def auto_discover(self, tools_package) -> int: ...
+    def get(self, name: str) -> ToolBase | None: ...
+    def execute(self, name: str, params: dict[str, Any]) -> Any: ...
+    def list_tools(self) -> list[dict[str, Any]]: ...
+    def freeze(self) -> None: ...
+```
+
+### 4) Main Thread Executor
+
+```python
+class MainThreadExecutor:
+    def execute(self, func, *args, timeout=None, **kwargs):
+        # queueHandler.queueFunction(queueHandler.eventQueue, ...)
+        # wait for completion Event
+        # return result or raise exception / TimeoutError
+        ...
+```
+
+### 5) HTTP Endpoint / Bridge Orchestration
+
+```python
+def execute_action(self, action_name: str, params: dict[str, Any]) -> dict[str, Any]:
+    start = time.perf_counter()
     try:
-        focus = api.getFocusObject()
-        if not focus:
-            return {"error": "No focus available"}
-        return {"success": True, "result": {...}}
+        result = self.executor.execute(self.registry.execute, action_name, params)
+        duration_ms = (time.perf_counter() - start) * 1000
+        if duration_ms > 500:
+            log.warning("bridge.action.slow ...")
+        else:
+            log.info("bridge.action.success ...")
+        return {"success": True, "action": action_name, "duration_ms": duration_ms, "result": result}
+    except TimeoutError as e:
+        return {"success": False, "action": action_name, "error_type": "timeout", "error": str(e)}
+    except ValueError as e:
+        return {"success": False, "action": action_name, "error_type": "validation", "error": str(e)}
     except Exception as e:
-        return {"error": str(e)}
+        return {"success": False, "action": action_name, "error_type": "execution", "error": str(e)}
 ```
 
-### Execution Timing: Bridge Layer Only
+## Request / Response Contract
 
-**Decision**: Log execution time only in bridge.
+### Example Request
 
-**Why:**
-- Bridge owns request lifecycle
-- Single logging authority prevents duplication
-- Measures meaningful metric (NVDA action duration)
-- Keeps tools, registry, and executor focused
+```json
+{
+    "action": "speak_text",
+    "params": {
+        "text": "Hello from MCP Bridge"
+    }
+}
+```
 
-### Registry Freezing: Safety First
+### Success Response
 
-**Decision**: Freeze registry after initialization.
+```json
+{
+    "success": true,
+    "action": "speak_text",
+    "duration_ms": 11.64,
+    "result": {
+        "spoken": "Hello from MCP Bridge"
+    }
+}
+```
 
-**Why:**
-- Prevents accidental runtime modifications
-- Thread-safe by design (immutable after freeze)
-- Detects misconfiguration early
-- Clear initialization boundary
+### Error Response
 
-### Why Not Decorators?
+```json
+{
+    "success": false,
+    "action": "move_focus",
+    "duration_ms": 1.03,
+    "error": "Missing required parameter: direction",
+    "error_type": "validation"
+}
+```
 
-We considered `@register_tool` decorators but chose explicit registration because:
-- More explicit and visible
-- Easier to see all tools in one place
-- Avoids import-time side effects
-- Better for testing with custom registries
+## Adding a New Tool (Minimal Code)
 
-### Why ToolRegistry Class?
+Create a new file in `addon/globalPlugins/nvdaMcp-bridge/tools/`, for example `announce_time_tool.py`:
 
-A class-based registry provides:
-- Encapsulation of tool storage
-- Easy testing with custom registries
-- Clear interface for tool management
-- Future extensibility (filtering, permissions, etc.)
-
-### Why Separate default_tools.py?
-
-Separating tool registration from:
-- **nvda_bridge.py**: Keeps it focused on NVDA API calls
-- **nvda_http_bridge.py**: Keeps it focused on HTTP handling
-- **tool_registry.py**: Keeps it generic and reusable
-
-## Future Extensibility
-
-This architecture enables future enhancements:
-
-### Custom Tool Modules
 ```python
-# my_custom_tools.py
-from tool_registry import ToolRegistry
+from typing import Any
+from ..tool_base import ToolBase, ToolMetadata
+from .. import nvda_bridge
 
-def register_custom_tools(registry: ToolRegistry):
-    registry.register("custom_action", my_handler, ...)
+
+class AnnounceTimeTool(ToolBase):
+    def metadata(self) -> ToolMetadata:
+        return ToolMetadata(
+            name="announce_time",
+            description="Announce current time using NVDA speech",
+            optional_params=["prefix"],
+            version="1.0.0",
+            category="speech",
+        )
+
+    def execute(self, **params: Any) -> Any:
+        prefix = params.get("prefix", "Current time")
+        return nvda_bridge.speak_text(f"{prefix}: 10:30")
 ```
 
-### Tool Filtering
-```python
-def list_tools_by_category(category: str):
-    return [t for t in registry.list_tools() if t.category == category]
-```
+No changes are needed in:
 
-### Permission Checks
-```python
-class Tool:
-    permissions: List[str] = []
-    
-    def can_execute(self, user_permissions):
-        return all(p in user_permissions for p in self.permissions)
-```
+- `tool_registry.py`
+- `default_tools.py`
+- `nvda_http_bridge.py`
 
-### Tool Metadata
-```python
-class Tool:
-    examples: List[Dict] = []
-    version: str = "1.0"
-    deprecated: bool = False
-```
+The new class is auto-discovered at startup.
 
-## Module Structure
+## Testing & Debugging Strategy
 
-```
-addon/globalPlugins/nvdaMcp-bridge/
-├── __init__.py              # Plugin initialization
-├── nvda_http_bridge.py      # HTTP server & bridge
-├── nvda_bridge.py           # NVDA API wrappers
-├── tool_registry.py         # Tool registry pattern (NEW)
-└── default_tools.py         # Tool registration (NEW)
-```
+- Tool unit tests: instantiate each `ToolBase` class and test `validate_params()` + `execute()` with NVDA APIs mocked.
+- Registry tests: use synthetic tool classes and verify duplicate detection, discovery, and metadata output.
+- Executor tests: mock `queueHandler.queueFunction` and assert result/timeout/exception propagation.
+- HTTP endpoint tests: mock `ToolRegistry` and `MainThreadExecutor` to isolate transport concerns (status code, envelope, auth, JSON parsing).
 
-## Summary
+## Why This Is Production-Ready
 
-This refactoring achieves production-grade architecture:
-
-### Code Quality
-- ✅ Clean separation of concerns (5 distinct layers)
-- ✅ Pure tool handlers (no HTTP awareness)
-- ✅ Exception-based error flow (Pythonic)
-- ✅ Type hints throughout
-- ✅ Registry frozen after init (safety)
-
-### Observability  
-- ✅ Execution timing logged in bridge (perf_counter precision)
-- ✅ Slow-action warnings (> 500ms threshold)
-- ✅ Structured logging levels (debug/warning/error)
-- ✅ Early detection of performance regressions
-
-### Extensibility
-- ✅ Add tools without modifying core logic
-- ✅ Clear registration point (default_tools.py)
-- ✅ Custom tool modules supported
-- ✅ Future-ready for permissions/metadata
-
-### NVDA Safety
-- ✅ Thread safety preserved (main-thread execution)
-- ✅ Frozen registry prevents runtime mutations
-- ✅ Comprehensive error handling
-- ✅ All 15 tests passing
-
-### Architecture Maturity
-**From**: "It works"  
-**To**: "It's observable, stable, diagnosable, and maintainable"
-
-This is **production infrastructure**, not a script.
+- Strong separation of concerns across transport, orchestration, dispatch, execution, and domain logic.
+- Thread-safe NVDA access by mandatory main-thread execution.
+- Observable actions via `time.perf_counter()` with slow-action warnings (`> 500ms`) and structured log events.
+- Zero-touch extensibility through `ToolBase` auto-discovery.
+- Tool metadata (`description`, `params`, `version`, `category`) supports documentation, introspection, and future permissions/policy layers.

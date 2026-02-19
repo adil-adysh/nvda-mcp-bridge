@@ -7,8 +7,9 @@ Functions are called by nvda_http_bridge.py and return JSON-serializable dicts.
 
 CRITICAL THREAD SAFETY REQUIREMENT:
 All functions in this module MUST be called from NVDA's main thread only.
-They are automatically queued to the main thread via _execute_on_main_thread()
-in nvda_http_bridge.py. Never call these functions directly from background threads.
+They are automatically queued to the main thread via MainThreadExecutor
+in main_thread_executor.py (orchestrated by nvda_http_bridge.py).
+Never call these functions directly from background threads.
 
 Keep this module focused on:
 - NVDA API access
@@ -28,7 +29,25 @@ import winUser
 import textInfos
 import ui
 import logHandler
-from typing import Dict, Any
+from typing import Any, Dict, Optional, Tuple
+
+
+def _nvda_obj_role(obj: Any) -> Tuple[Optional[int], str]:
+	"""Return (role_int, role_text) for any NVDA object.
+
+	All object-info responses share the same two-field role schema:
+	  "role"     – numeric controlTypes.Role value (None if unavailable)
+	  "roleText" – human-readable string (empty string if unavailable)
+
+	Centralising this avoids the previous inconsistency where
+	get_current_focus returned an int while move_focus and
+	get_navigator_object returned a str under the same "role" key.
+	"""
+	raw_role = getattr(obj, "role", None)
+	return (
+		int(raw_role) if raw_role is not None else None,
+		getattr(obj, "roleText", None) or "",
+	)
 
 
 def get_current_focus() -> Dict[str, Any]:
@@ -45,11 +64,11 @@ def get_current_focus() -> Dict[str, Any]:
 	if not focus:
 		raise RuntimeError("No focus object available")
 
-	# Safely get attributes with defaults
+	role_int, role_text = _nvda_obj_role(focus)
 	return {
 		"name": getattr(focus, "name", None) or "",
-		"role": getattr(focus, "role", None),
-		"roleText": getattr(focus, "roleText", None) or "",
+		"role": role_int,
+		"roleText": role_text,
 		"value": getattr(focus, "value", None) or "",
 		"description": getattr(focus, "description", None) or "",
 		"states": str(getattr(focus, "states", "")),
@@ -116,12 +135,13 @@ def speak_text(text: str) -> Dict[str, Any]:
 	Raises:
 		ValueError: If text is invalid or too long
 	"""
-	# Validate input
-	if not text:
-		raise ValueError("No text provided")
-
+	# Type check first: a falsy non-string (e.g. 0, False, []) would
+	# otherwise raise "No text provided" hiding the real type mismatch.
 	if not isinstance(text, str):
 		raise ValueError("Text must be a string")
+
+	if not text:
+		raise ValueError("No text provided")
 
 	# Limit text length to prevent issues
 	if len(text) > 10000:
@@ -160,9 +180,12 @@ def get_window_title() -> Dict[str, Any]:
 		logHandler.log.warning(f"Error getting class name: {e}")
 		className = ""
 
+	# hwnd is a ctypes HANDLE (pointer-sized integer wrapper on 64-bit
+	# Windows). It is NOT a plain Python int, and json.dumps will raise
+	# TypeError unless we convert explicitly.
 	return {
 		"title": title or "",
-		"handle": hwnd,
+		"handle": int(hwnd),
 		"className": className or "",
 	}
 
@@ -197,11 +220,18 @@ def move_focus(direction: str) -> Dict[str, Any]:
 			raise RuntimeError("No next object available")
 
 		next_obj.setFocus()
+		# setFocus() posts an async Windows message; NVDA won't register the
+		# new focus until the WM_SETFOCUS event fires on the message loop.
+		# The data below reflects the *target* object we requested focus on,
+		# not the result of a confirmed post-focus query.
+		role_int, role_text = _nvda_obj_role(next_obj)
 		return {
 			"direction": "next",
+			"pendingFocus": True,
 			"newFocus": {
 				"name": getattr(next_obj, "name", None) or "",
-				"role": getattr(next_obj, "roleText", None) or "",
+				"role": role_int,
+				"roleText": role_text,
 			},
 		}
 
@@ -212,11 +242,15 @@ def move_focus(direction: str) -> Dict[str, Any]:
 			raise RuntimeError("No previous object available")
 
 		prev_obj.setFocus()
+		# See note above: data reflects the target object, not confirmed focus.
+		role_int, role_text = _nvda_obj_role(prev_obj)
 		return {
 			"direction": "previous",
+			"pendingFocus": True,
 			"newFocus": {
 				"name": getattr(prev_obj, "name", None) or "",
-				"role": getattr(prev_obj, "roleText", None) or "",
+				"role": role_int,
+				"roleText": role_text,
 			},
 		}
 	else:
@@ -237,9 +271,11 @@ def get_navigator_object() -> Dict[str, Any]:
 	if not nav:
 		raise RuntimeError("No navigator object available")
 
+	role_int, role_text = _nvda_obj_role(nav)
 	return {
 		"name": getattr(nav, "name", None) or "",
-		"role": getattr(nav, "roleText", None) or "",
+		"role": role_int,
+		"roleText": role_text,
 		"value": getattr(nav, "value", None) or "",
 		"description": getattr(nav, "description", None) or "",
 	}
@@ -259,9 +295,11 @@ def get_desktop_object() -> Dict[str, Any]:
 	if not desktop:
 		raise RuntimeError("No desktop object available")
 
+	role_int, role_text = _nvda_obj_role(desktop)
 	return {
 		"name": getattr(desktop, "name", None) or "",
-		"role": getattr(desktop, "roleText", None) or "",
+		"role": role_int,
+		"roleText": role_text,
 		"childCount": getattr(desktop, "childCount", 0),
 	}
 
@@ -375,7 +413,7 @@ def reload_plugins() -> Dict[str, Any]:
 		raise RuntimeError(f"Plugin reload failed: {str(e)}")
 
 
-def get_logs(max_lines: int = 100, filter_level: str = None, use_tail: bool = True) -> Dict[str, Any]:
+def get_logs(max_lines: int = 100, filter_level: str | None = None, use_tail: bool = True) -> Dict[str, Any]:
 	"""
 	Retrieve recent log entries from the NVDA log file.
 
@@ -444,18 +482,22 @@ def get_logs(max_lines: int = 100, filter_level: str = None, use_tail: bool = Tr
 			f"max_lines={max_lines}, filter_level={filter_level}, use_tail={use_tail}"
 		)
 
-		# Read lines using optimized tail algorithm
-		if use_tail:
+		# When a level filter is active the tail heuristic is unreliable:
+		# filtered lines may be very sparse (e.g. one ERROR per 1 000 lines)
+		# so the estimated-byte window will miss most matching entries.
+		# Use the full sequential scan for every filtered request.
+		if use_tail and not filter_level:
 			lines = _read_log_tail_optimized(log_file, max_lines, filter_level)
 		else:
-			# Fallback: simple read-all approach
 			lines = _read_log_simple(log_file, max_lines, filter_level)
 
 		logHandler.log.debug(f"get_logs: returning {len(lines)} lines from {file_size} byte file")
 
+		# `total_lines` was a misnomer — it counted returned lines, not all
+		# lines in the file. Renamed to `returned_lines` for clarity.
 		return {
 			"log_file": log_file,
-			"total_lines": len(lines),
+			"returned_lines": len(lines),
 			"max_lines": max_lines,
 			"filter_level": filter_level,
 			"lines": lines,
@@ -466,7 +508,7 @@ def get_logs(max_lines: int = 100, filter_level: str = None, use_tail: bool = Tr
 		raise RuntimeError(f"Get logs failed: {str(e)}")
 
 
-def _read_log_tail_optimized(log_file: str, max_lines: int, filter_level: str = None) -> list:
+def _read_log_tail_optimized(log_file: str, max_lines: int, filter_level: str | None = None) -> list:
 	"""
 	Efficiently read the tail of a log file using seek from end.
 
@@ -544,7 +586,7 @@ def _read_log_tail_optimized(log_file: str, max_lines: int, filter_level: str = 
 		return _read_log_simple(log_file, max_lines, filter_level)
 
 
-def _read_log_simple(log_file: str, max_lines: int, filter_level: str = None) -> list:
+def _read_log_simple(log_file: str, max_lines: int, filter_level: str | None = None) -> list:
 	"""
 	Simple log reading approach - reads entire file line by line.
 

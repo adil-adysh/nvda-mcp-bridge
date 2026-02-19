@@ -1,102 +1,14 @@
-"""
-Tool Registry for NVDA Bridge Actions
+"""Tool registry with ToolBase auto-discovery support."""
 
-This module provides a clean, extensible pattern for registering and executing
-bridge actions. Each action is self-contained with its own validation and execution logic.
+import importlib
+import inspect
+import pkgutil
+from types import ModuleType
+from typing import Dict, Any, Optional, List
 
-Architecture:
-- Tool: Self-contained action with name, handler, and optional schema
-- ToolRegistry: Central registry for all available tools
-- Execution: Thread-safe dispatch through main thread queue
-
-Adding a new tool:
-1. Create a tool handler function in nvda_bridge.py (or new module)
-2. Register it using @register_tool decorator or ToolRegistry.register()
-3. That's it - no changes to routing logic needed
-"""
-
-from typing import Dict, Any, Callable, Optional, List
-from dataclasses import dataclass
 import logHandler
 
-
-@dataclass
-class Tool:
-	"""
-	Represents a single bridge action/tool.
-
-	Attributes:
-		name: Unique identifier for the tool
-		handler: Function that implements the tool logic
-		description: Human-readable description
-		required_params: List of required parameter names
-		optional_params: List of optional parameter names
-	"""
-
-	name: str
-	handler: Callable
-	description: str = ""
-	required_params: List[str] = None
-	optional_params: List[str] = None
-
-	def __post_init__(self):
-		"""Initialize default values for lists"""
-		if self.required_params is None:
-			self.required_params = []
-		if self.optional_params is None:
-			self.optional_params = []
-
-	def validate_params(self, params: Dict[str, Any]) -> None:
-		"""
-		Validate parameters for this tool.
-
-		Args:
-			params: Parameters to validate
-
-		Raises:
-			ValueError: If validation fails
-		"""
-		if params is None:
-			params = {}
-
-		# Check required parameters
-		for required in self.required_params:
-			if required not in params:
-				raise ValueError(f"Missing required parameter: {required}")
-
-		# Check for unknown parameters
-		all_params = set(self.required_params + self.optional_params)
-		provided_params = set(params.keys())
-		unknown = provided_params - all_params
-
-		if unknown and all_params:  # Only warn if we have a schema
-			logHandler.log.warning(f"Tool {self.name} received unknown parameters: {unknown}")
-
-	def execute(self, params: Dict[str, Any]) -> Any:
-		"""
-		Execute the tool with given parameters.
-
-		This method validates parameters and calls the handler.
-		Exceptions are propagated to the caller for proper error handling.
-
-		Args:
-			params: Parameters to pass to the handler
-
-		Returns:
-			Pure result from the handler (not wrapped in envelope)
-
-		Raises:
-			ValueError: If parameter validation fails
-			Exception: Any exception raised by the handler
-		"""
-		# Validate parameters
-		self.validate_params(params)
-
-		# Execute handler - let exceptions propagate
-		if params:
-			return self.handler(**params)
-		else:
-			return self.handler()
+from .tool_base import ToolBase
 
 
 class ToolRegistry:
@@ -109,7 +21,7 @@ class ToolRegistry:
 
 	def __init__(self):
 		"""Initialize empty registry"""
-		self._tools: Dict[str, Tool] = {}
+		self._tools: Dict[str, ToolBase] = {}
 		self._frozen: bool = False
 
 	def freeze(self) -> None:
@@ -131,50 +43,108 @@ class ToolRegistry:
 		"""
 		return self._frozen
 
-	def register(
-		self,
-		name: str,
-		handler: Callable,
-		description: str = "",
-		required_params: List[str] = None,
-		optional_params: List[str] = None,
-	) -> Tool:
+	def register_tool(self, tool: ToolBase) -> ToolBase:
 		"""
-		Register a new tool in the registry.
+		Register a new ToolBase implementation in the registry.
 
 		Args:
-			name: Unique tool name
-			handler: Function that implements the tool
-			description: Human-readable description
-			required_params: List of required parameter names
-			optional_params: List of optional parameter names
+			tool: ToolBase instance to register
 
 		Returns:
-			The registered Tool instance
+			The registered ToolBase instance
 
 		Raises:
-			ValueError: If tool name already exists
+			ValueError: If tool name already exists or metadata is invalid
 			RuntimeError: If registry is frozen
 		"""
 		if self._frozen:
 			raise RuntimeError("Cannot register tools in frozen registry")
 
-		if name in self._tools:
-			raise ValueError(f"Tool '{name}' is already registered")
+		if not isinstance(tool, ToolBase):
+			raise ValueError("Only ToolBase instances can be registered")
 
-		tool = Tool(
-			name=name,
-			handler=handler,
-			description=description,
-			required_params=required_params or [],
-			optional_params=optional_params or [],
+		metadata = tool.metadata()
+		if not metadata.name:
+			raise ValueError("Tool name cannot be empty")
+
+		if metadata.name in self._tools:
+			raise ValueError(f"Tool '{metadata.name}' is already registered")
+
+		self._tools[metadata.name] = tool
+		logHandler.log.debug(
+			f"tool.registered name={metadata.name} "
+			f"category={metadata.category} version={metadata.version}"
 		)
-
-		self._tools[name] = tool
-		logHandler.log.debug(f"Registered tool: {name}")
 		return tool
 
-	def get(self, name: str) -> Optional[Tool]:
+	def auto_discover(self, tools_package: ModuleType) -> int:
+		"""
+		Auto-discover ToolBase classes in all modules of a package.
+
+		Any non-abstract subclass of ToolBase found in a `.py` module under
+		`tools_package` is instantiated with no arguments and registered.
+
+		Args:
+			tools_package: Imported package module containing tool modules
+
+		Returns:
+			Number of tools registered
+		"""
+		if self._frozen:
+			raise RuntimeError("Cannot auto-discover tools in frozen registry")
+
+		if not hasattr(tools_package, "__path__"):
+			raise ValueError("tools_package must be a package module")
+
+		registered = 0
+
+		for module_info in pkgutil.iter_modules(tools_package.__path__):
+			if module_info.ispkg:
+				continue
+
+			module_name = f"{tools_package.__name__}.{module_info.name}"
+			module = importlib.import_module(module_name)
+
+			for _, klass in inspect.getmembers(module, inspect.isclass):
+				if klass.__module__ != module.__name__:
+					continue
+				if klass is ToolBase:
+					continue
+				if not issubclass(klass, ToolBase):
+					continue
+				if inspect.isabstract(klass):
+					logHandler.log.debug(f"tool.discovery.skip class={klass.__name__} reason=abstract_class")
+					continue
+				# Template marker is class-local on purpose. This allows concrete
+				# subclasses of template base classes to be discovered by default.
+				if bool(klass.__dict__.get("_is_template", False)):
+					logHandler.log.debug(f"tool.discovery.skip class={klass.__name__} reason=template_class")
+					continue
+
+				try:
+					tool = klass()
+				except Exception as error:
+					raise RuntimeError(
+						f"Failed to instantiate tool class {klass.__name__} in {module_name}: {error}"
+					) from error
+
+				try:
+					metadata = tool.metadata()
+				except Exception as error:
+					raise RuntimeError(
+						f"Failed to load metadata for tool class {klass.__name__} in {module_name}: {error}"
+					) from error
+
+				if not metadata.name:
+					logHandler.log.debug(f"tool.discovery.skip class={klass.__name__} reason=empty_name")
+					continue
+				self.register_tool(tool)
+				registered += 1
+
+		logHandler.log.info(f"tool.discovery.completed package={tools_package.__name__} tools={registered}")
+		return registered
+
+	def get(self, name: str) -> Optional[ToolBase]:
 		"""
 		Get a tool by name.
 
@@ -205,17 +175,24 @@ class ToolRegistry:
 		Returns:
 			List of tool information dictionaries
 		"""
-		return [
-			{
-				"name": tool.name,
-				"description": tool.description,
-				"required_params": tool.required_params,
-				"optional_params": tool.optional_params,
-			}
-			for tool in self._tools.values()
-		]
+		# Call metadata() exactly once per tool: for NVDAFunctionTool each call
+		# allocates a new frozen dataclass and runs __post_init__ validation.
+		result: List[Dict[str, Any]] = []
+		for tool in self._tools.values():
+			m = tool.metadata()
+			result.append(
+				{
+					"name": m.name,
+					"description": m.description,
+					"required_params": m.required_params,
+					"optional_params": m.optional_params,
+					"version": m.version,
+					"category": m.category,
+				}
+			)
+		return result
 
-	def execute(self, name: str, params: Dict[str, Any]) -> Dict[str, Any]:
+	def execute(self, name: str, params: Any) -> Any:
 		"""
 		Execute a tool by name.
 
@@ -224,7 +201,7 @@ class ToolRegistry:
 			params: Parameters to pass to the tool
 
 		Returns:
-			Result dictionary from the tool
+			Pure result from the tool
 
 		Raises:
 			ValueError: If tool is not found
@@ -236,7 +213,12 @@ class ToolRegistry:
 		if not tool:
 			raise ValueError(f"Unknown tool: {name}")
 
-		return tool.execute(params)
+		if params is not None and not isinstance(params, dict):
+			raise ValueError("Parameters must be a dictionary")
+
+		normalized_params = params or {}
+		tool.validate_params(normalized_params)
+		return tool.execute(**normalized_params)
 
 	def __len__(self) -> int:
 		"""Get number of registered tools"""
@@ -245,36 +227,3 @@ class ToolRegistry:
 	def __contains__(self, name: str) -> bool:
 		"""Support 'in' operator"""
 		return self.has(name)
-
-
-def register_tool(
-	name: str,
-	description: str = "",
-	required_params: List[str] = None,
-	optional_params: List[str] = None,
-):
-	"""
-	Decorator for registering a tool with the global registry.
-
-	Example:
-		@register_tool("my_action", description="Does something")
-		def my_action() -> Dict[str, Any]:
-			return {"result": "success"}
-
-	Args:
-		name: Unique tool name
-		description: Human-readable description
-		required_params: List of required parameter names
-		optional_params: List of optional parameter names
-	"""
-
-	def decorator(func: Callable) -> Callable:
-		# Note: Actual registration happens in create_default_registry()
-		# This decorator just marks the function with metadata
-		func._tool_name = name
-		func._tool_description = description
-		func._tool_required_params = required_params or []
-		func._tool_optional_params = optional_params or []
-		return func
-
-	return decorator

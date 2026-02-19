@@ -1,6 +1,9 @@
 # Test NVDA HTTP Bridge
 # This script tests the NVDA HTTP Bridge functionality
 # The bridge must be running (NVDA with addon loaded) before running this test
+# Uses the new bridge envelope contract:
+#   Success: { success: true, action, duration_ms, result }
+#   Error: HTTP 4xx/5xx with { success: false, error, error_type, ... }
 
 param(
     [string]$BaseUrl = "http://127.0.0.1:8765",
@@ -174,7 +177,7 @@ try {
     Write-Host "Response:" -ForegroundColor Gray
     Write-Host ($response | ConvertTo-Json -Depth 3)
     
-    if ($response.success -and $response.result.success) {
+    if ($response.success -and $response.result.spoken) {
         Write-TestPass "Speak text command succeeded"
         Write-Host "  Spoken: $($response.result.spoken)" -ForegroundColor Gray
         Write-Host "  (You should have heard NVDA speak the test message)" -ForegroundColor Yellow
@@ -193,7 +196,7 @@ try {
     Write-Host "Response:" -ForegroundColor Gray
     Write-Host ($response | ConvertTo-Json -Depth 3)
     
-    if ($response.success -and $response.result.success) {
+    if ($response.success -and $response.result.message) {
         Write-TestPass "Show message command succeeded"
         Write-Host "  (You should have heard/seen the test message in NVDA)" -ForegroundColor Yellow
     } else {
@@ -286,30 +289,30 @@ try {
     $response = Invoke-BridgeAction -Action "speak_text" -Params @{ text = $longText }
     Write-Host "Response:" -ForegroundColor Gray
     Write-Host ($response | ConvertTo-Json -Depth 3)
-    
-    if ($response.result.error -match "too long") {
+
+    Write-TestFail "Should have rejected text that exceeds limit"
+} catch {
+    if ($_.Exception.Response.StatusCode -eq 400) {
         Write-TestPass "Correctly validated text length"
     } else {
-        Write-TestFail "Should have rejected text that exceeds limit"
+        Write-TestFail "Expected 400 Bad Request for long text"
     }
-} catch {
-    Write-TestFail "Text validation test failed: $($_.Exception.Message)"
 }
 
-# Test 14: Input Validation - Invalid Parameter Type
-Write-TestStart "Test 14: Input Validation (Invalid Parameter Type)"
+# Test 14: Input Validation - Missing Required Parameter
+Write-TestStart "Test 14: Input Validation (Missing Required Parameter)"
 try {
-    $response = Invoke-BridgeAction -Action "speak_text" -Params @{ text = 12345 }  # Number instead of string
+    $response = Invoke-BridgeAction -Action "speak_text" -Params @{}
     Write-Host "Response:" -ForegroundColor Gray
     Write-Host ($response | ConvertTo-Json -Depth 3)
-    
-    if ($response.result.error) {
-        Write-TestPass "Correctly rejected invalid parameter type"
-    } else {
-        Write-Host "  Note: Type validation may be handled by type coercion" -ForegroundColor Yellow
-    }
+
+    Write-TestFail "Should have rejected missing required parameter"
 } catch {
-    Write-TestFail "Parameter validation test failed: $($_.Exception.Message)"
+    if ($_.Exception.Response.StatusCode -eq 400) {
+        Write-TestPass "Correctly rejected missing required parameter"
+    } else {
+        Write-TestFail "Expected 400 Bad Request for missing required parameter"
+    }
 }
 
 # Test 15: Move Focus (careful - changes focus!)
@@ -322,12 +325,7 @@ try {
     Write-Host ($response | ConvertTo-Json -Depth 5)
     
     if ($response.success -and $response.result) {
-        if ($response.result.success) {
-            Write-TestPass "Successfully moved focus to next object"
-        } elseif ($response.result.error) {
-            Write-Host "  Note: $($response.result.error)" -ForegroundColor Yellow
-            Write-TestPass "Move focus handled gracefully (no crash)"
-        }
+        Write-TestPass "Successfully moved focus to next object"
     }
 } catch {
     Write-TestFail "Move focus failed: $($_.Exception.Message)"
