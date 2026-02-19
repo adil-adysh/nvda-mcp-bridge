@@ -374,15 +374,21 @@ class NVDAHTTPBridge:
 	def stop(self):
 		"""Stop the bridge server gracefully"""
 		try:
+			logHandler.log.info("Stopping NVDA HTTP Bridge...")
+
+			# Signal shutdown (should already be set by terminate(), but ensure it)
+			self.shutdown_event.set()
+
+			# Close the server socket
 			if self.server:
 				try:
-					self.server.shutdown()
-				except Exception:
-					pass  # shutdown may fail if server never started
-				try:
+					# Close server socket to interrupt any blocking operations
 					self.server.server_close()
-				except Exception:
-					pass  # server_close may fail if already closed
-				logHandler.log.info("NVDA HTTP Bridge closed")
+					logHandler.log.debug("Server socket closed")
+				except Exception as e:
+					logHandler.log.warning(f"Error closing server socket: {e}")
+
+			logHandler.log.info("NVDA HTTP Bridge stopped")
+
 		except Exception as e:
 			logHandler.log.error(f"Error stopping NVDA HTTP Bridge: {e}", exc_info=True)

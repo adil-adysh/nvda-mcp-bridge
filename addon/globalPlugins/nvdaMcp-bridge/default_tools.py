@@ -87,4 +87,29 @@ def create_default_registry() -> ToolRegistry:
 		optional_params=[],
 	)
 
+	# System tools
+	registry.register(
+		name="restart_nvda",
+		handler=nvda_bridge.restart_nvda,
+		description="Restart NVDA with optional parameters (disable addons, debug logging)",
+		required_params=[],
+		optional_params=["disable_addons", "debug_logging"],
+	)
+
+	registry.register(
+		name="reload_plugins",
+		handler=nvda_bridge.reload_plugins,
+		description="Reload all global plugins and app modules from scratchpad (useful for development)",
+		required_params=[],
+		optional_params=[],
+	)
+
+	registry.register(
+		name="get_logs",
+		handler=nvda_bridge.get_logs,
+		description="Retrieve recent log entries from NVDA log file with optional filtering",
+		required_params=[],
+		optional_params=["max_lines", "filter_level", "use_tail"],
+	)
+
 	return registry

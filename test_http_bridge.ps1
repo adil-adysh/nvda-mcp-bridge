@@ -333,6 +333,85 @@ try {
     Write-TestFail "Move focus failed: $($_.Exception.Message)"
 }
 
+# Test 16: Reload Plugins (Development Tool)
+Write-TestStart "Test 16: Reload Plugins from Scratchpad"
+Write-Host "  WARNING: This will reload all global plugins and app modules!" -ForegroundColor Yellow
+Start-Sleep -Seconds 1
+try {
+    $response = Invoke-BridgeAction -Action "reload_plugins"
+    Write-Host "Response:" -ForegroundColor Gray
+    Write-Host ($response | ConvertTo-Json -Depth 3)
+    
+    if ($response.success -and $response.result) {
+        if ($response.result.reloaded) {
+            Write-TestPass "Successfully reloaded plugins"
+            Write-Host "  App modules reloaded: $($response.result.app_modules)" -ForegroundColor Gray
+            Write-Host "  Global plugins reloaded: $($response.result.global_plugins)" -ForegroundColor Gray
+            Write-Host "  Cache cleared: $($response.result.cache_cleared)" -ForegroundColor Gray
+        } else {
+            Write-TestFail "Reload plugins returned unexpected response"
+        }
+    } else {
+        Write-TestFail "Reload plugins failed with error"
+    }
+} catch {
+    Write-TestFail "Reload plugins failed: $($_.Exception.Message)"
+}
+
+# Test 17: Get Logs
+Write-TestStart "Test 17: Get Logs (Recent Entries)"
+try {
+    $response = Invoke-BridgeAction -Action "get_logs" -Params @{ max_lines = 50 }
+    Write-Host "Response:" -ForegroundColor Gray
+    Write-Host ($response | ConvertTo-Json -Depth 2)
+    
+    if ($response.success -and $response.result) {
+        if ($response.result.lines) {
+            Write-TestPass "Successfully retrieved log entries"
+            Write-Host "  Total lines: $($response.result.total_lines)" -ForegroundColor Gray
+            Write-Host "  Log file: $($response.result.log_file)" -ForegroundColor Gray
+            if ($response.result.lines.Count -gt 0) {
+                Write-Host "  First line: $($response.result.lines[0].Substring(0, [Math]::Min(80, $response.result.lines[0].Length)))..." -ForegroundColor Gray
+            }
+            if ($response.result.lines.Count -gt 1) {
+                Write-Host "  Last line: $($response.result.lines[-1].Substring(0, [Math]::Min(80, $response.result.lines[-1].Length)))..." -ForegroundColor Gray
+            }
+        } else {
+            Write-TestFail "Get logs returned unexpected response"
+        }
+    } else {
+        Write-TestFail "Get logs failed with error"
+    }
+} catch {
+    Write-TestFail "Get logs failed: $($_.Exception.Message)"
+}
+
+# Test 18: Get Logs with Filter
+Write-TestStart "Test 18: Get Logs (Filtered by ERROR level)"
+try {
+    $response = Invoke-BridgeAction -Action "get_logs" -Params @{ 
+        max_lines = 20
+        filter_level = "ERROR"
+    }
+    Write-Host "Response:" -ForegroundColor Gray
+    Write-Host ($response | ConvertTo-Json -Depth 2)
+    
+    if ($response.success -and $response.result) {
+        Write-TestPass "Successfully retrieved filtered log entries"
+        Write-Host "  Total ERROR lines: $($response.result.total_lines)" -ForegroundColor Gray
+        Write-Host "  Filter level: $($response.result.filter_level)" -ForegroundColor Gray
+        if ($response.result.lines.Count -gt 0) {
+            Write-Host "  Sample: $($response.result.lines[0].Substring(0, [Math]::Min(100, $response.result.lines[0].Length)))..." -ForegroundColor Gray
+        } else {
+            Write-Host "  Note: No ERROR level logs found (which is good!)" -ForegroundColor Yellow
+        }
+    } else {
+        Write-TestFail "Get filtered logs failed with error"
+    }
+} catch {
+    Write-TestFail "Get filtered logs failed: $($_.Exception.Message)"
+}
+
 # Summary
 Write-Host "`n=====================================" -ForegroundColor Cyan
 Write-Host "Test Summary" -ForegroundColor Cyan

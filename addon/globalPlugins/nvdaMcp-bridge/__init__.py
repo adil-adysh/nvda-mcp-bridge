@@ -75,33 +75,47 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def terminate(self):
 		"""Clean shutdown of HTTP bridge with comprehensive error handling"""
 		try:
-			logHandler.log.info("Shutting down NVDA HTTP Bridge...")
+			logHandler.log.info("Terminating NVDA MCP Bridge addon...")
 
-			# Signal shutdown
+			# Step 1: Signal shutdown to stop accepting new requests
 			if self._shutdown_event:
 				self._shutdown_event.set()
+				logHandler.log.debug("Shutdown event set")
 
-			# Stop the bridge
+			# Step 2: Stop the bridge server
 			if self._bridge:
 				try:
 					self._bridge.stop()
+					logHandler.log.debug("Bridge stop() called")
 				except Exception as e:
 					logHandler.log.error(f"Error stopping bridge: {e}", exc_info=True)
 
-			# Wait for thread to finish (with timeout)
-			if self._bridge_thread:
+			# Step 3: Wait for bridge thread to finish (with timeout)
+			if self._bridge_thread and self._bridge_thread.is_alive():
 				try:
+					logHandler.log.debug("Waiting for bridge thread to finish (timeout: 5s)...")
+					self._bridge_thread.join(timeout=5.0)
+
 					if self._bridge_thread.is_alive():
-						self._bridge_thread.join(timeout=5.0)
-						if self._bridge_thread.is_alive():
-							logHandler.log.warning("Bridge thread did not stop within timeout")
+						logHandler.log.warning(
+							"Bridge thread did not stop within 5 seconds timeout. "
+							"Force terminating may leave socket in TIME_WAIT state."
+						)
+					else:
+						logHandler.log.debug("Bridge thread stopped cleanly")
+
 				except Exception as e:
 					logHandler.log.error(f"Error joining bridge thread: {e}", exc_info=True)
 
-			logHandler.log.info("NVDA HTTP Bridge stopped successfully")
+			# Step 4: Clean up references
+			self._bridge = None
+			self._bridge_thread = None
+			self._shutdown_event = None
+
+			logHandler.log.info("NVDA MCP Bridge addon terminated successfully")
 
 		except Exception as e:
-			logHandler.log.error(f"Error during HTTP Bridge shutdown: {e}", exc_info=True)
+			logHandler.log.error(f"Error during NVDA MCP Bridge shutdown: {e}", exc_info=True)
 
 		finally:
 			# Always call parent terminate, even if shutdown failed
