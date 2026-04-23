@@ -1,0 +1,28 @@
+# --- Rust ---
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# If this is a binary/app project, KEEP Cargo.lock
+# If this is a library, ignore Cargo.lock instead:
+# Cargo.lock
+
+# --- Environment / Secrets ---
+.env
+.env.*
+!.env.example
+
+# --- IDE ---
+.vscode/
+.idea/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
+
+# --- Misc ---
+*.tmp
+*.bak

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nvda.local/schemas/tool-discovery.schema.json",
+  "title": "NVDA Bridge Tool Discovery",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "protocol_version",
+    "bridge_version",
+    "api_level",
+    "types",
+    "tools",
+    "count"
+  ],
+  "properties": {
+    "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+    "protocol_version": { "const": "1.0.0" },
+    "bridge_version": { "$ref": "common.schema.json#/$defs/semver" },
+    "api_level": { "const": 1 },
+    "types": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Za-z0-9]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["$schema", "type", "properties"],
+        "properties": {
+          "$schema": { "const": "http://json-schema.org/draft-07/schema#" },
+          "type": { "const": "object" },
+          "properties": { "type": "object" },
+          "required": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "uniqueItems": true
+          },
+          "additionalProperties": { "type": ["boolean", "object"] }
+        },
+        "additionalProperties": true
+      }
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "description",
+          "inputSchema",
+          "outputType",
+          "version",
+          "category"
+        ],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "description": { "type": "string", "minLength": 1, "maxLength": 2048 },
+          "inputSchema": {
+            "type": "object",
+            "required": ["type", "properties"],
+            "properties": {
+              "type": { "const": "object" },
+              "properties": { "type": "object" },
+              "required": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 },
+                "uniqueItems": true
+              },
+              "additionalProperties": { "type": "boolean" }
+            },
+            "additionalProperties": true
+          },
+          "outputType": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Za-z0-9]*$"
+          },
+          "version": { "$ref": "common.schema.json#/$defs/semver" },
+          "category": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "constraints": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "blocked_on_secure_screen": { "type": "boolean" },
+              "blocked_on_modal": { "type": "boolean" },
+              "blocked_on_menu": { "type": "boolean" },
+              "dangerous": { "type": "boolean" },
+              "requires_explicit_opt_in": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "count": { "type": "integer", "minimum": 0 }
+  }
+}

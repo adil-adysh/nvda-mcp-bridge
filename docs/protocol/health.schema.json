@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nvda.local/schemas/health.schema.json",
+  "title": "NVDA Bridge Health Response",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "status",
+    "protocol",
+    "protocol_version",
+    "bridge_version",
+    "api_level",
+    "supported_api_levels",
+    "uptime_seconds",
+    "timestamp_utc",
+    "nvda_status"
+  ],
+  "properties": {
+    "status": { "type": "string", "enum": ["ok", "degraded", "error"] },
+    "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
+    "protocol_version": { "const": "1.0.0" },
+    "bridge_version": { "$ref": "common.schema.json#/$defs/semver" },
+    "api_level": { "const": 1 },
+    "supported_api_levels": {
+      "type": "array",
+      "items": { "const": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "uptime_seconds": { "type": "integer", "minimum": 0 },
+    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "nvda_status": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "running",
+        "secure_screen",
+        "modal_blocking",
+        "menu_open",
+        "speech_available",
+        "braille_available"
+      ],
+      "properties": {
+        "running": { "type": "boolean" },
+        "secure_screen": { "type": "boolean" },
+        "modal_blocking": { "type": "boolean" },
+        "menu_open": { "type": "boolean" },
+        "speech_available": { "type": "boolean" },
+        "braille_available": { "type": "boolean" }
+      }
+    }
+  }
+}

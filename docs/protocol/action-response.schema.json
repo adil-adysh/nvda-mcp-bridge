@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nvda.local/schemas/action-response.schema.json",
+  "title": "NVDA Bridge Action Response",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "request_id",
+    "success",
+    "action",
+    "duration_ms",
+    "bridge",
+    "nvda_status_snapshot"
+  ],
+  "properties": {
+    "request_id": { "$ref": "common.schema.json#/$defs/uuidLike" },
+    "success": { "type": "boolean" },
+    "action": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "duration_ms": { "type": "number", "minimum": 0 },
+    "bridge": { "$ref": "common.schema.json#/$defs/bridgeMeta" },
+    "nvda_status_snapshot": { "$ref": "common.schema.json#/$defs/nvdaStatusSnapshot" },
+    "data": true,
+    "error": { "$ref": "common.schema.json#/$defs/actionError" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "success": { "const": true } },
+        "required": ["success"]
+      },
+      "then": {
+        "required": ["data"],
+        "not": { "required": ["error"] }
+      }
+    },
+    {
+      "if": {
+        "properties": { "success": { "const": false } },
+        "required": ["success"]
+      },
+      "then": {
+        "required": ["error"],
+        "not": { "required": ["data"] }
+      }
+    }
+  ]
+}

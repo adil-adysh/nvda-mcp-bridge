@@ -1,0 +1,109 @@
+# =========================
+
+# Environment
+
+# =========================
+
+.env
+
+# =========================
+
+# NVDA Addon (docs/build)
+
+# =========================
+
+addon/doc/*.css
+addon/doc/*.html
+addon/doc/en/
+*_docHandler.py
+
+manifest.ini
+*.mo
+*.pot
+*.nvda-addon
+.sconsign.dblite
+
+# Versioned JSON artifacts
+
+/[0-9]*.[0-9]*.[0-9]*.json
+
+# =========================
+
+# Python
+
+# =========================
+
+**pycache**/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyi
+*.pyt
+*.env
+.venv/
+venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+htmlcov/
+.coverage
+.coverage.*
+.pytest_cache/
+.mypy_cache/
+
+# =========================
+
+# Rust
+
+# =========================
+
+**/target/
+
+# Keep Cargo.lock (important for your binary project)
+
+# !Cargo.lock
+
+# =========================
+
+# Windows build artifacts
+
+# =========================
+
+*.exe
+*.dll
+*.pdb
+*.lib
+*.exp
+
+# =========================
+
+# Editor / OS junk
+
+# =========================
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# =========================
+
+# Logs / temp
+
+# =========================
+
+*.log
+*.tmp
+*.temp
+
+# =========================
+
+# Safety: never ignore source folders
+
+# =========================
+
+# (Do NOT add: docs/, nvda_ui_host/, src/)

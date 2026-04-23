@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nvda.local/schemas/common.schema.json",
+  "title": "NVDA Bridge Common Types",
+  "type": "object",
+  "$defs": {
+    "protocol": {
+      "type": "string",
+      "const": "nvda-bridge-protocol"
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "uuidLike": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    },
+    "bridgeMeta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bridge_version", "api_level"],
+      "properties": {
+        "bridge_version": { "$ref": "#/$defs/semver" },
+        "api_level": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "nvdaStatusSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["secure_screen", "modal_blocking", "menu_open"],
+      "properties": {
+        "secure_screen": { "type": "boolean" },
+        "modal_blocking": { "type": "boolean" },
+        "menu_open": { "type": "boolean" }
+      }
+    },
+    "errorCategory": {
+      "type": "string",
+      "enum": ["auth", "validation", "nvda_state", "runtime", "internal"]
+    },
+    "retryPolicy": {
+      "type": "string",
+      "enum": ["never", "immediate", "after_delay", "after_state_change"]
+    },
+    "actionError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "name", "message", "category", "retry_policy"],
+      "properties": {
+        "code": { "type": "integer", "minimum": 1000, "maximum": 9999 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "category": { "$ref": "#/$defs/errorCategory" },
+        "retry_policy": { "$ref": "#/$defs/retryPolicy" },
+        "retry_after_ms": { "type": "integer", "minimum": 1, "maximum": 600000 },
+        "details": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "retry_policy": { "const": "after_delay" }
+            }
+          },
+          "then": {
+            "required": ["retry_after_ms"]
+          }
+        }
+      ]
+    }
+  }
+}

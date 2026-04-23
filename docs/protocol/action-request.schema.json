@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nvda.local/schemas/action-request.schema.json",
+  "title": "NVDA Bridge Action Request",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["request_id", "action", "params"],
+  "properties": {
+    "request_id": { "$ref": "common.schema.json#/$defs/uuidLike" },
+    "action": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "params": {
+      "type": "object"
+    },
+    "timeout_ms": { "type": "integer", "minimum": 1, "maximum": 120000 },
+    "client": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "version": { "$ref": "common.schema.json#/$defs/semver" }
+      }
+    }
+  }
+}
