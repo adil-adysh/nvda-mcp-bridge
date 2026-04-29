@@ -811,4 +811,69 @@ mod tests {
 
         assert!(NvdaServer::validate_output(&runtime, &payload).is_ok());
     }
+
+    #[test]
+    fn schema_json_loads_and_builds_catalog() {
+        // Load schema.json from repo root (one level up from this crate)
+        let schema_path = std::path::Path::new("../schema.json");
+        let text = std::fs::read_to_string(schema_path)
+            .expect("Failed to read ../schema.json - ensure tests run from crate root");
+
+        let payload: BridgeToolsResponse = serde_json::from_str(&text)
+            .expect("schema.json did not deserialize into BridgeToolsResponse");
+
+        // Validate payload shape as BridgeClient expects
+        BridgeClient::validate_tools_payload(&payload).expect("validate_tools_payload failed");
+
+        // Ensure build_catalog can consume it and produce a catalog
+        let catalog = BridgeClient::build_catalog(payload).expect("build_catalog failed");
+
+        assert!(catalog.tools_for_mcp.len() > 0, "No tools found in schema.json");
+        assert_eq!(catalog.tools_for_mcp.len(), catalog.runtime_by_name.len(), "Mismatch between tools_for_mcp and runtime_by_name sizes");
+    }
+
+    #[tokio::test]
+    async fn httpmock_fetch_tools_and_execute_action() -> Result<()> {
+        use httpmock::prelude::*;
+
+        // Start mock server
+        let server = MockServer::start();
+
+        // Serve schema.json at /tools
+        let schema_text = std::fs::read_to_string(std::path::Path::new("../schema.json"))
+            .expect("Failed to read ../schema.json");
+
+        let _tools_mock = server.mock(|when, then| {
+            when.method(GET).path("/tools");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(schema_text.clone());
+        });
+
+        // Respond to action POSTs
+        let _action_mock = server.mock(|when, then| {
+            when.method(POST).path("/action");
+            then.status(200)
+                .header("content-type", "application/json")
+                .body(r#"{"success":true,"data":{"title":"MockWindow"}}"#);
+        });
+
+        // Create BridgeClient pointed at mock server
+        let base = server.url("");
+        let base_url = base.trim_end_matches('/').to_string();
+        let bridge_client = BridgeClient::new(base_url, "test-token".to_string())?;
+
+        // Fetch tool catalog
+        let catalog = bridge_client.fetch_tool_catalog().await?;
+        assert!(catalog.tools_for_mcp.len() > 0);
+
+        // Execute an action and validate response
+        let params: serde_json::Map<String, Value> = serde_json::Map::new();
+        let result = bridge_client.execute_action("get_window_title", params).await?;
+        assert!(result.success);
+        let data = result.data.expect("Expected data in action response");
+        assert_eq!(data.get("title").and_then(Value::as_str).unwrap_or(""), "MockWindow");
+
+        Ok(())
+    }
 }
