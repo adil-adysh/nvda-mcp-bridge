@@ -34,12 +34,14 @@ def read_current_line() -> Dict[str, Any]:
 
 		return {
 			"text": text or "",
+			"note": "ok",
 			"status": "ok",
 		}
 	except (NotImplementedError, AttributeError):
 		# Object doesn't support text info - return fallback
 		return {
 			"text": getattr(focus, "name", None) or getattr(focus, "value", None) or "",
+			"note": "fallback",
 			"status": "fallback",
 		}
 

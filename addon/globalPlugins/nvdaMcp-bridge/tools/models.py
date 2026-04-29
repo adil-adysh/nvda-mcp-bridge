@@ -162,6 +162,7 @@ class TextLineInfo:
 	text: str
 	lineNumber: Optional[int] = None
 	note: str = ""
+	status: str = "ok"
 
 
 @dataclass(frozen=True)

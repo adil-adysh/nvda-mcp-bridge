@@ -753,7 +753,7 @@ class NVDAHTTPBridge:
 
 			# Check NVDA state constraints
 			status_snapshot = self.get_nvda_status_snapshot()
-			if status_snapshot["secure_screen"] and tool.metadata.category not in {
+			if status_snapshot["secure_screen"] and tool.get_metadata().category not in {
 				"diagnostics",
 				"developer",
 			}:
@@ -773,7 +773,7 @@ class NVDAHTTPBridge:
 					},
 				}
 
-			if status_snapshot["modal_blocking"] and tool.metadata.category in {
+			if status_snapshot["modal_blocking"] and tool.get_metadata().category in {
 				"focus",
 				"navigation",
 				"ui",
@@ -797,7 +797,7 @@ class NVDAHTTPBridge:
 					},
 				}
 
-			if status_snapshot["menu_open"] and tool.metadata.category in {
+			if status_snapshot["menu_open"] and tool.get_metadata().category in {
 				"focus",
 				"navigation",
 				"ui",

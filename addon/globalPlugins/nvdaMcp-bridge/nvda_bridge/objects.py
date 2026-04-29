@@ -305,13 +305,14 @@ def get_navigator_object() -> Dict[str, Any]:
 	if not nav:
 		raise RuntimeError("No navigator object available")
 
-	role_int, role_text = _nvda_obj_role(nav)
+	data = _serialize_object(nav)
 	return {
-		"name": getattr(nav, "name", None) or "",
-		"role": role_int,
-		"roleText": role_text,
-		"value": getattr(nav, "value", None) or "",
-		"description": getattr(nav, "description", None) or "",
+		"name": data["name"],
+		"role": data["role"],
+		"roleText": data["roleText"],
+		"value": data["value"],
+		"description": data["description"],
+		"states": data["states"],
 	}
 
 
@@ -328,12 +329,14 @@ def get_desktop_object() -> Dict[str, Any]:
 	if not desktop:
 		raise RuntimeError("No desktop object available")
 
-	role_int, role_text = _nvda_obj_role(desktop)
+	data = _serialize_object(desktop)
 	return {
-		"name": getattr(desktop, "name", None) or "",
-		"role": role_int,
-		"roleText": role_text,
-		"childCount": getattr(desktop, "childCount", 0),
+		"name": data["name"],
+		"role": data["role"],
+		"roleText": data["roleText"],
+		"value": data["value"],
+		"description": data["description"],
+		"states": data["states"],
 	}
 
 
