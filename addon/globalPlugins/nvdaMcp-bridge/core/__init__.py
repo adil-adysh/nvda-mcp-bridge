@@ -4,7 +4,7 @@ Provides generic Tool[InputType, OutputType] interface with schema validation,
 execution pipeline, and error handling.
 """
 
-from .base import Tool, ToolMetadata, HandlerProtocol
+from .base import EmptyInput, Tool, ToolMetadata, HandlerProtocol, TypedToolImpl
 from .schema import InputSchema, OutputSchema
 from .error import (
 	ToolExecutionError,
@@ -17,9 +17,11 @@ from .executor import ToolExecutor
 from .registry import ToolRegistry, ToolRegistryBuilder
 
 __all__ = [
+	"EmptyInput",
 	"Tool",
 	"ToolMetadata",
 	"HandlerProtocol",
+	"TypedToolImpl",
 	"InputSchema",
 	"OutputSchema",
 	"ToolExecutionError",

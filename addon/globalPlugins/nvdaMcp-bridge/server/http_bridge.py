@@ -32,54 +32,25 @@ import logHandler
 from ..core import ToolRegistry, ToolExecutor
 from ..tools.registry import NVDA_TOOLS_REGISTRY
 from .main_thread_executor import MainThreadExecutor
+from .protocol import (
+	API_LEVEL,
+	BRIDGE_VERSION,
+	DEFAULT_BRIDGE_TOKEN,
+	ERROR_CODES,
+	MAX_REQUEST_BODY_SIZE,
+	MAX_REQUEST_ID_LENGTH,
+	MENU_OPEN_BLOCKED_CATEGORIES,
+	MODAL_BLOCKING_BLOCKED_CATEGORIES,
+	PROTOCOL,
+	PROTOCOL_VERSION,
+	SECURE_SCREEN_ALLOWED_CATEGORIES,
+	TOKEN_HEADER,
+	http_status_from_error_code,
+	validate_tools_discovery_payload,
+	build_tools_payload,
+)
+from .response import build_action_error, build_error_envelope
 from ..validation.output_type_registry import build_output_type_registry, validate_output_type_registry
-
-
-# Security configuration
-DEFAULT_BRIDGE_TOKEN = "nvda-bridge-secret-change-me"
-TOKEN_HEADER = "X-NVDA-Bridge-Token"
-BRIDGE_VERSION = "1.0.0"
-PROTOCOL = "nvda-bridge-protocol"
-PROTOCOL_VERSION = "1.0.0"
-API_LEVEL = 1
-
-ERROR_CODES: Dict[int, Dict[str, Any]] = {
-	4001: {"name": "AUTH_FAILURE", "category": "auth", "retry_policy": "never"},
-	4101: {"name": "INVALID_JSON", "category": "validation", "retry_policy": "never"},
-	4102: {"name": "INVALID_ACTION_NAME", "category": "validation", "retry_policy": "never"},
-	4103: {"name": "INVALID_PARAMS_SCHEMA", "category": "validation", "retry_policy": "never"},
-	4201: {"name": "SECURE_SCREEN_ACTIVE", "category": "nvda_state", "retry_policy": "after_state_change"},
-	4202: {
-		"name": "MODAL_DIALOG_BLOCKING",
-		"category": "nvda_state",
-		"retry_policy": "after_delay",
-		"retry_after_ms": 500,
-	},
-	4203: {
-		"name": "MENU_OPEN_BLOCKING",
-		"category": "nvda_state",
-		"retry_policy": "after_delay",
-		"retry_after_ms": 500,
-	},
-	5001: {
-		"name": "NVDA_COM_TIMEOUT",
-		"category": "runtime",
-		"retry_policy": "after_delay",
-		"retry_after_ms": 1000,
-	},
-	5003: {
-		"name": "TOOL_EXECUTION_EXCEPTION",
-		"category": "runtime",
-		"retry_policy": "after_delay",
-		"retry_after_ms": 1000,
-	},
-	5303: {
-		"name": "BRIDGE_INTERNAL_ERROR",
-		"category": "internal",
-		"retry_policy": "after_delay",
-		"retry_after_ms": 1000,
-	},
-}
 
 
 def _new_request_id() -> str:
@@ -88,64 +59,6 @@ def _new_request_id() -> str:
 
 class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 	"""HTTP request handler for NVDA bridge"""
-
-	@staticmethod
-	def _validate_tools_discovery_payload(payload: Dict[str, Any]) -> None:
-		"""Strict in-process validation for protocol v1 /tools payload."""
-		required_top = {
-			"protocol",
-			"protocol_version",
-			"bridge_version",
-			"api_level",
-			"types",
-			"tools",
-			"count",
-		}
-		missing_top = required_top - set(payload.keys())
-		if missing_top:
-			raise RuntimeError(f"tools payload missing required fields: {', '.join(sorted(missing_top))}")
-
-		if payload.get("protocol") != PROTOCOL:
-			raise RuntimeError("tools payload has invalid protocol")
-		if payload.get("protocol_version") != PROTOCOL_VERSION:
-			raise RuntimeError("tools payload has invalid protocol_version")
-		if payload.get("api_level") != API_LEVEL:
-			raise RuntimeError("tools payload has invalid api_level")
-
-		types = payload.get("types")
-		tools = payload.get("tools")
-		count = payload.get("count")
-		if not isinstance(types, dict) or not types:
-			raise RuntimeError("tools payload has invalid or empty types registry")
-		if not isinstance(tools, list):
-			raise RuntimeError("tools payload has invalid tools list")
-		if not isinstance(count, int) or count != len(tools):
-			raise RuntimeError("tools payload count mismatch")
-
-		for type_name in types.keys():
-			if not isinstance(type_name, str) or not type_name or not type_name[0].isupper():
-				raise RuntimeError(f"invalid output type name in types registry: {type_name!r}")
-
-		used_types: set[str] = set()
-		for tool in tools:
-			if not isinstance(tool, dict):
-				raise RuntimeError("tool entry must be an object")
-			for key in ("name", "description", "inputSchema", "outputType", "version", "category"):
-				if key not in tool:
-					raise RuntimeError(f"tool entry missing required field: {key}")
-			if "outputSchema" in tool:
-				raise RuntimeError("outputSchema is forbidden in protocol v1")
-
-			output_type = tool.get("outputType")
-			if not isinstance(output_type, str) or not output_type:
-				raise RuntimeError("tool outputType must be a non-empty string")
-			if output_type not in types:
-				raise RuntimeError(f"tool references unknown outputType: {output_type}")
-			used_types.add(output_type)
-
-		unused_types = set(types.keys()) - used_types
-		if unused_types:
-			raise RuntimeError("unused output types are not allowed")
 
 	def log_message(self, format, *args):
 		"""Suppress verbose HTTP server logging to avoid crashes"""
@@ -184,37 +97,12 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			# compare_digest requires bytes or str; fall back safely.
 			return False
 
-	def _http_status_from_error_code(self, code: int) -> int:
-		if code == 4001:
-			return 401
-		if 4100 <= code < 4200:
-			return 400
-		if 4200 <= code < 4300:
-			return 409
-		if 5000 <= code < 6000:
-			return 500
-		return 500
+	@staticmethod
+	def _validate_tools_discovery_payload(payload: Dict[str, Any]) -> None:
+		return validate_tools_discovery_payload(payload)
 
-	def _build_error_object(
-		self,
-		code: int,
-		message: str,
-		details: Optional[Dict[str, Any]] = None,
-	) -> Dict[str, Any]:
-		spec = ERROR_CODES.get(code, ERROR_CODES[5303])
-		error: Dict[str, Any] = {
-			"code": code,
-			"name": spec["name"],
-			"message": message,
-			"category": spec["category"],
-			"retry_policy": spec["retry_policy"],
-		}
-		retry_after_ms = spec.get("retry_after_ms")
-		if retry_after_ms is not None:
-			error["retry_after_ms"] = retry_after_ms
-		if details is not None:
-			error["details"] = details
-		return error
+	def _build_tools_payload(self, tools: list[Dict[str, Any]], types: Dict[str, Any]) -> Dict[str, Any]:
+		return build_tools_payload(tools, types)
 
 	def _build_error_envelope(
 		self,
@@ -225,18 +113,15 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 		duration_ms: float = 0.0,
 		details: Optional[Dict[str, Any]] = None,
 	) -> Dict[str, Any]:
-		return {
-			"request_id": request_id,
-			"success": False,
-			"action": action,
-			"duration_ms": round(duration_ms, 2),
-			"bridge": {
-				"bridge_version": BRIDGE_VERSION,
-				"api_level": API_LEVEL,
-			},
-			"nvda_status_snapshot": self.server.get_nvda_status_snapshot(),
-			"error": self._build_error_object(code=code, message=message, details=details),
-		}
+		return build_error_envelope(
+			request_id=request_id,
+			action=action,
+			code=code,
+			message=message,
+			nvda_status_snapshot=self.server.get_nvda_status_snapshot(),
+			duration_ms=duration_ms,
+			details=details,
+		)
 
 	def do_OPTIONS(self):
 		"""Handle CORS preflight"""
@@ -251,36 +136,13 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 		try:
 			if self.path == "/health":
 				self._send_json_response(self.server.get_health_payload())
-			elif self.path == "/tools":
-				if not self._check_auth():
-					request_id = _new_request_id()
-					envelope = self._build_error_envelope(
-						request_id=request_id,
-						action="tools_discovery",
-						code=4001,
-						message="Unauthorized (invalid token)",
-					)
-					self._send_json_response(envelope, 401)
-					return
-				tools = self.server.list_tools()
-				if not isinstance(tools, list):
-					raise RuntimeError(f"Invalid tools payload type: {type(tools).__name__}")
-				types = self.server.list_output_types()
-				if not isinstance(types, dict) or not types:
-					raise RuntimeError("Invalid or empty output type registry")
-				payload = {
-					"protocol": PROTOCOL,
-					"protocol_version": PROTOCOL_VERSION,
-					"bridge_version": BRIDGE_VERSION,
-					"api_level": API_LEVEL,
-					"types": types,
-					"tools": tools,
-					"count": len(tools),
-				}
-				self._validate_tools_discovery_payload(payload)
-				self._send_json_response(payload)
-			else:
-				self._send_json_response({"error": "Not found"}, 404)
+				return
+
+			if self.path == "/tools":
+				self._handle_tools_discovery()
+				return
+
+			self._send_json_response({"error": "Not found"}, 404)
 		except Exception as e:
 			logHandler.log.error(f"Error in GET handler: {e}", exc_info=True)
 			try:
@@ -295,11 +157,35 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			except Exception:
 				pass  # Don't crash if response fails
 
+	def _handle_tools_discovery(self):
+		if not self._check_auth():
+			request_id = _new_request_id()
+			envelope = self._build_error_envelope(
+				request_id=request_id,
+				action="tools_discovery",
+				code=4001,
+				message="Unauthorized (invalid token)",
+			)
+			self._send_json_response(envelope, 401)
+			return
+
+		tools = self.server.list_tools()
+		if not isinstance(tools, list):
+			raise RuntimeError(f"Invalid tools payload type: {type(tools).__name__}")
+
+		types = self.server.list_output_types()
+		if not isinstance(types, dict) or not types:
+			raise RuntimeError("Invalid or empty output type registry")
+
+		payload = build_tools_payload(tools, types)
+		validate_tools_discovery_payload(payload)
+		self._send_json_response(payload)
+
 	def do_POST(self):
 		"""Handle POST requests for bridge actions with comprehensive error handling"""
 		try:
 			request_id = _new_request_id()
-			# Check authentication
+
 			if not self._check_auth():
 				envelope = self._build_error_envelope(
 					request_id=request_id,
@@ -310,147 +196,24 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				self._send_json_response(envelope, 401)
 				return
 
-			# Parse request body
-			try:
-				content_length = int(self.headers.get("Content-Length", 0))
-				# Reject negative values before the 0-check: rfile.read(-N) reads
-				# until EOF on CPython, bypassing the empty-body guard entirely.
-				if content_length < 0:
-					envelope = self._build_error_envelope(
-						request_id=request_id,
-						action="unknown",
-						code=4101,
-						message="Invalid Content-Length",
-					)
-					self._send_json_response(envelope, 400)
-					return
-				# Limit request size to prevent memory issues
-				if content_length > 1024 * 1024:  # 1MB limit
-					envelope = self._build_error_envelope(
-						request_id=request_id,
-						action="unknown",
-						code=4101,
-						message="Request too large",
-					)
-					self._send_json_response(envelope, 413)
-					return
-
-				if content_length == 0:
-					envelope = self._build_error_envelope(
-						request_id=request_id,
-						action="unknown",
-						code=4101,
-						message="Empty request body",
-					)
-					self._send_json_response(envelope, 400)
-					return
-
-				body = self.rfile.read(content_length)
-				request_data = json.loads(body.decode("utf-8"))
-
-			except json.JSONDecodeError as e:
-				envelope = self._build_error_envelope(
-					request_id=request_id,
-					action="unknown",
-					code=4101,
-					message=f"Invalid JSON: {e}",
-				)
-				self._send_json_response(envelope, 400)
-				return
-			except ValueError as e:
-				envelope = self._build_error_envelope(
-					request_id=request_id,
-					action="unknown",
-					code=4101,
-					message=f"Invalid content length: {e}",
-				)
-				self._send_json_response(envelope, 400)
-				return
-			except Exception as e:
-				logHandler.log.error(f"Error reading request: {e}", exc_info=True)
-				envelope = self._build_error_envelope(
-					request_id=request_id,
-					action="unknown",
-					code=4101,
-					message=f"Error reading request: {e}",
-				)
-				self._send_json_response(envelope, 400)
+			request_data = self._parse_request_body(request_id)
+			if request_data is None:
 				return
 
-			# Validate request data structure
-			if not isinstance(request_data, dict):
-				envelope = self._build_error_envelope(
-					request_id=request_id,
-					action="unknown",
-					code=4101,
-					message="Request must be a JSON object",
-				)
-				self._send_json_response(envelope, 400)
-				return
-
-			# Handle action routing
 			if self.path == "/action":
-				if "request_id" not in request_data:
-					envelope = self._build_error_envelope(
-						request_id=request_id,
-						action="unknown",
-						code=4101,
-						message="Missing 'request_id' field",
-					)
-					self._send_json_response(envelope, 400)
+				action, params, request_id = self._validate_action_request(request_data, request_id)
+				if action is None:
 					return
+				self._handle_action(action, params, request_id)
+				return
 
-				request_id_value = request_data.get("request_id")
-				if not isinstance(request_id_value, str):
-					envelope = self._build_error_envelope(
-						request_id=request_id,
-						action="unknown",
-						code=4101,
-						message="'request_id' must be a string",
-					)
-					self._send_json_response(envelope, 400)
-					return
-
-				request_id = request_id_value.strip()
-				if not request_id:
-					envelope = self._build_error_envelope(
-						request_id=_new_request_id(),
-						action="unknown",
-						code=4101,
-						message="'request_id' cannot be empty",
-					)
-					self._send_json_response(envelope, 400)
-					return
-
-				if len(request_id) > 128:
-					envelope = self._build_error_envelope(
-						request_id=_new_request_id(),
-						action="unknown",
-						code=4101,
-						message="'request_id' is too long (max 128 characters)",
-					)
-					self._send_json_response(envelope, 400)
-					return
-
-				if "params" not in request_data:
-					envelope = self._build_error_envelope(
-						request_id=request_id,
-						action="unknown",
-						code=4103,
-						message="Missing 'params' field",
-					)
-					self._send_json_response(envelope, 400)
-					return
-
-				self._handle_action(request_data, request_id=request_id)
-			else:
-				envelope = self._build_error_envelope(
-					request_id=request_id,
-					action="unknown",
-					code=4102,
-					message="Unknown endpoint",
-				)
-				self._send_json_response(envelope, 404)
+			envelope = self._build_error_envelope(
+				request_id=request_id,
+				action="unknown",
+				code=4102,
+				message="Unknown endpoint",
+			)
+			self._send_json_response(envelope, 404)
 		except Exception as e:
 			logHandler.log.error(f"Unhandled error in POST handler: {e}", exc_info=True)
 			try:
@@ -464,17 +227,81 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			except Exception:
 				pass  # Don't crash if response fails
 
-	def _handle_action(self, request_data: Dict[str, Any], request_id: str):
-		"""
-		Handle a bridge action request.
+	def _parse_request_body(self, request_id: str) -> Optional[Dict[str, Any]]:
+		try:
+			content_length = int(self.headers.get("Content-Length", 0))
+			if content_length < 0:
+				envelope = self._build_error_envelope(
+					request_id=request_id,
+					action="unknown",
+					code=4101,
+					message="Invalid Content-Length",
+				)
+				self._send_json_response(envelope, 400)
+				return None
 
-		Expected format:
-		{
-			"request_id": "uuid",
-			"action": "get_current_focus",
-			"params": {}
-		}
-		"""
+			if content_length > MAX_REQUEST_BODY_SIZE:
+				envelope = self._build_error_envelope(
+					request_id=request_id,
+					action="unknown",
+					code=4101,
+					message="Request too large",
+				)
+				self._send_json_response(envelope, 413)
+				return None
+
+			if content_length == 0:
+				envelope = self._build_error_envelope(
+					request_id=request_id,
+					action="unknown",
+					code=4101,
+					message="Empty request body",
+				)
+				self._send_json_response(envelope, 400)
+				return None
+
+			body = self.rfile.read(content_length)
+			request_data = json.loads(body.decode("utf-8"))
+			if not isinstance(request_data, dict):
+				envelope = self._build_error_envelope(
+					request_id=request_id,
+					action="unknown",
+					code=4101,
+					message="Request must be a JSON object",
+				)
+				self._send_json_response(envelope, 400)
+				return None
+			return request_data
+		except json.JSONDecodeError as e:
+			envelope = self._build_error_envelope(
+				request_id=request_id,
+				action="unknown",
+				code=4101,
+				message=f"Invalid JSON: {e}",
+			)
+			self._send_json_response(envelope, 400)
+			return None
+		except ValueError as e:
+			envelope = self._build_error_envelope(
+				request_id=request_id,
+				action="unknown",
+				code=4101,
+				message=f"Invalid content length: {e}",
+			)
+			self._send_json_response(envelope, 400)
+			return None
+		except Exception as e:
+			logHandler.log.error(f"Error reading request: {e}", exc_info=True)
+			envelope = self._build_error_envelope(
+				request_id=request_id,
+				action="unknown",
+				code=4101,
+				message=f"Error reading request: {e}",
+			)
+			self._send_json_response(envelope, 400)
+			return None
+
+	def _validate_action_request(self, request_data: Dict[str, Any], request_id: str) -> tuple[Optional[str], Optional[Dict[str, Any]], str]:
 		action = request_data.get("action")
 		params = request_data.get("params")
 
@@ -486,7 +313,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="Missing 'action' field",
 			)
 			self._send_json_response(envelope, 400)
-			return
+			return None, None, request_id
 
 		if not isinstance(action, str):
 			envelope = self._build_error_envelope(
@@ -496,7 +323,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="'action' must be a string",
 			)
 			self._send_json_response(envelope, 400)
-			return
+			return None, None, request_id
 
 		action = action.strip()
 		if not action:
@@ -507,9 +334,9 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="'action' cannot be empty",
 			)
 			self._send_json_response(envelope, 400)
-			return
+			return None, None, request_id
 
-		if len(action) > 128:
+		if len(action) > MAX_REQUEST_ID_LENGTH:
 			envelope = self._build_error_envelope(
 				request_id=request_id,
 				action=action,
@@ -517,7 +344,17 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="'action' is too long (max 128 characters)",
 			)
 			self._send_json_response(envelope, 400)
-			return
+			return None, None, request_id
+
+		if "params" not in request_data:
+			envelope = self._build_error_envelope(
+				request_id=request_id,
+				action=action,
+				code=4103,
+				message="Missing 'params' field",
+			)
+			self._send_json_response(envelope, 400)
+			return None, None, request_id
 
 		if not isinstance(params, dict):
 			envelope = self._build_error_envelope(
@@ -527,13 +364,13 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="'params' must be a JSON object",
 			)
 			self._send_json_response(envelope, 400)
-			return
+			return None, None, request_id
 
-		# Execute action and get HTTP envelope
-		# The bridge layer handles all error wrapping and threading
+		return action, params, request_id
+
+	def _handle_action(self, action: str, params: Dict[str, Any], request_id: str):
+		"""Execute a validated bridge action request."""
 		envelope = self.server.execute_action(request_id=request_id, action_name=action, params=params)
-
-		# Determine HTTP status code from envelope
 		if envelope.get("success"):
 			status = 200
 		else:
@@ -542,8 +379,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			)
 			if not isinstance(error_code, int):
 				error_code = 5303
-			status = self._http_status_from_error_code(error_code)
-
+			status = http_status_from_error_code(error_code)
 		self._send_json_response(envelope, status)
 
 
@@ -591,38 +427,71 @@ class NVDAHTTPBridge:
 
 		# Attach list_tools to server so the GET /tools handler can reach it
 		# without holding a reference to the full bridge object.
-		# Build complete tool descriptors with inputSchema and outputType
-		def _build_tools_list():
-			"""Build tools list for /tools endpoint in protocol v1 format."""
-			tools = []
-			for meta in self.registry.list_tools():
-				input_schema_obj = self.registry.get_input_schema(meta.name, meta.version)
-				output_schema_obj = self.registry.get_output_schema(meta.name, meta.version)
+		self._list_tools = self._build_tools_list
+		self._list_output_types = self._build_output_types
 
-				# Get outputType name from the output schema model
-				output_type = (
-					output_schema_obj.model.__name__
-					if hasattr(output_schema_obj, "model")
-					else "ToolResponse"
-				)
+	def _build_tools_list(self) -> list[Dict[str, Any]]:
+		"""Build tools list for /tools endpoint in protocol v1 format."""
+		tools = []
+		for meta in self.registry.list_tools():
+			input_schema_obj = self.registry.get_input_schema(meta.name, meta.version)
+			output_schema_obj = self.registry.get_output_schema(meta.name, meta.version)
 
-				# Generate input JSON schema using the InputSchema.to_json_schema() method
-				input_json_schema = input_schema_obj.to_json_schema()
+			tools.append(
+				{
+					"name": meta.name,
+					"version": meta.version,
+					"description": meta.description,
+					"category": meta.category,
+					"inputSchema": input_schema_obj.to_json_schema(),
+					"outputType": self._get_output_type_name(output_schema_obj),
+				}
+			)
+		return tools
 
-				tools.append(
-					{
-						"name": meta.name,
-						"version": meta.version,
-						"description": meta.description,
-						"category": meta.category,
-						"inputSchema": input_json_schema,
-						"outputType": output_type,
-					}
-				)
-			return tools
+	def _get_output_type_name(self, output_schema_obj: Any) -> str:
+		"""Resolve a schema's output type name for tool discovery."""
+		return output_schema_obj.model.__name__ if hasattr(output_schema_obj, "model") else "ToolResponse"
 
-		self._list_tools = _build_tools_list
-		self._list_output_types = lambda: dict(self.output_types)
+	def _build_output_types(self) -> Dict[str, Any]:
+		"""Return the bridge output type registry."""
+		return dict(self.output_types)
+
+	def _bridge_metadata(self) -> Dict[str, Any]:
+		return {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL}
+
+	def _check_action_allowed(self, request_id: str, action_name: str, tool_category: str, status_snapshot: Dict[str, bool], duration_ms: float) -> Optional[Dict[str, Any]]:
+		if status_snapshot["secure_screen"] and tool_category not in SECURE_SCREEN_ALLOWED_CATEGORIES:
+			return build_action_error(
+				request_id=request_id,
+				action_name=action_name,
+				duration_ms=0.0,
+				code=4201,
+				message="Action blocked while NVDA is on secure desktop",
+				nvda_status_snapshot=self.get_nvda_status_snapshot(),
+			)
+
+		if status_snapshot["modal_blocking"] and tool_category in MODAL_BLOCKING_BLOCKED_CATEGORIES:
+			return build_action_error(
+				request_id=request_id,
+				action_name=action_name,
+				duration_ms=0.0,
+				code=4202,
+				message="Action blocked by modal NVDA dialog",
+				nvda_status_snapshot=self.get_nvda_status_snapshot(),
+			)
+
+		if status_snapshot["menu_open"] and tool_category in MENU_OPEN_BLOCKED_CATEGORIES:
+			return build_action_error(
+				request_id=request_id,
+				action_name=action_name,
+				duration_ms=0.0,
+				code=4203,
+				message="Action blocked while NVDA menu is open",
+				nvda_status_snapshot=self.get_nvda_status_snapshot(),
+			)
+
+		return None
 
 	def get_nvda_status(self) -> Dict[str, bool]:
 		secure_screen = False
@@ -751,74 +620,12 @@ class NVDAHTTPBridge:
 					},
 				}
 
-			# Check NVDA state constraints
+			# Check NVDA state constraints using centralized policy helpers
 			status_snapshot = self.get_nvda_status_snapshot()
-			if status_snapshot["secure_screen"] and tool.get_metadata().category not in {
-				"diagnostics",
-				"developer",
-			}:
-				return {
-					"request_id": request_id,
-					"success": False,
-					"action": action_name,
-					"duration_ms": round((time.perf_counter() - start_time) * 1000, 2),
-					"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
-					"nvda_status_snapshot": status_snapshot,
-					"error": {
-						"code": 4201,
-						"name": ERROR_CODES[4201]["name"],
-						"message": "Action blocked while NVDA is on secure desktop",
-						"category": ERROR_CODES[4201]["category"],
-						"retry_policy": ERROR_CODES[4201]["retry_policy"],
-					},
-				}
-
-			if status_snapshot["modal_blocking"] and tool.get_metadata().category in {
-				"focus",
-				"navigation",
-				"ui",
-				"window",
-				"text",
-			}:
-				return {
-					"request_id": request_id,
-					"success": False,
-					"action": action_name,
-					"duration_ms": round((time.perf_counter() - start_time) * 1000, 2),
-					"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
-					"nvda_status_snapshot": status_snapshot,
-					"error": {
-						"code": 4202,
-						"name": ERROR_CODES[4202]["name"],
-						"message": "Action blocked by modal NVDA dialog",
-						"category": ERROR_CODES[4202]["category"],
-						"retry_policy": ERROR_CODES[4202]["retry_policy"],
-						"retry_after_ms": ERROR_CODES[4202]["retry_after_ms"],
-					},
-				}
-
-			if status_snapshot["menu_open"] and tool.get_metadata().category in {
-				"focus",
-				"navigation",
-				"ui",
-				"window",
-			}:
-				return {
-					"request_id": request_id,
-					"success": False,
-					"action": action_name,
-					"duration_ms": round((time.perf_counter() - start_time) * 1000, 2),
-					"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
-					"nvda_status_snapshot": status_snapshot,
-					"error": {
-						"code": 4203,
-						"name": ERROR_CODES[4203]["name"],
-						"message": "Action blocked while NVDA menu is open",
-						"category": ERROR_CODES[4203]["category"],
-						"retry_policy": ERROR_CODES[4203]["retry_policy"],
-						"retry_after_ms": ERROR_CODES[4203]["retry_after_ms"],
-					},
-				}
+			duration_ms = (time.perf_counter() - start_time) * 1000
+			blocked = self._check_action_allowed(request_id, action_name, tool.get_metadata().category, status_snapshot, duration_ms)
+			if blocked is not None:
+				return blocked
 
 			# Execute tool through ToolExecutor pipeline:
 			# - Validates input against schema

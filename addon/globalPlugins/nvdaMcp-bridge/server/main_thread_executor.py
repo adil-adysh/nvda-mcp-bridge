@@ -7,10 +7,11 @@ All NVDA API calls must run on NVDA's main thread.
 import threading
 from dataclasses import dataclass
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any, Optional
 
 import logHandler  # type: ignore[reportMissingImports]
-import queueHandler  # type: ignore[reportMissingImports]
+
+from .queue_adapter import MainThreadQueue, NVDAQueueAdapter
 
 
 @dataclass
@@ -18,6 +19,7 @@ class MainThreadExecutor:
 	"""Executes callables on NVDA's main thread and propagates exceptions."""
 
 	default_timeout: float = 10.0
+	queue_adapter: MainThreadQueue = NVDAQueueAdapter()
 
 	def execute(
 		self,
@@ -43,13 +45,9 @@ class MainThreadExecutor:
 				done.set()
 
 		try:
-			queue_module = cast(Any, queueHandler)
-			queue_module.queueFunction(queue_module.eventQueue, _run)
+			self.queue_adapter.queue(_run)
 		except Exception as queue_error:
-			# Use a distinct name to avoid shadowing (and then deleting) the
-			# outer `error` closure variable that _run() writes to.
-			log_module = cast(Any, logHandler)
-			log_module.log.error("Failed to queue function to NVDA main thread", exc_info=True)
+			logHandler.log.error("Failed to queue function to NVDA main thread", exc_info=True)
 			raise RuntimeError(f"Failed to queue to main thread: {queue_error}") from queue_error
 
 		if not done.wait(timeout=effective_timeout):

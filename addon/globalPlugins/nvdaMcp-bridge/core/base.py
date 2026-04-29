@@ -7,13 +7,20 @@ Enforces that InputType == input_schema and OutputType == output_schema.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import TypeVar, Generic, Type, Protocol
+import dataclasses
+from dataclasses import dataclass, is_dataclass
+from typing import Any, Callable, TypeVar, Generic, Type, Protocol
 
 from .schema import InputSchema, OutputSchema
 
 InputType = TypeVar("InputType")
 OutputType = TypeVar("OutputType")
+
+
+@dataclass(frozen=True)
+class EmptyInput:
+	"""Marker type for tools with no input."""
+	pass
 
 
 @dataclass(frozen=True)
@@ -220,3 +227,69 @@ class TypedToolImpl(Tool[InputType, OutputType]):
 	def execute(self, input_obj: InputType) -> OutputType:
 		"""Execute handler on validated input."""
 		return self.handler(input_obj)
+
+	@staticmethod
+	def _coerce_output(output_model: Type[OutputType], output: Any) -> OutputType:
+		"""Ensure handler return value is an output model instance."""
+		if isinstance(output, output_model):
+			return output
+
+		if isinstance(output, dict) and is_dataclass(output_model):
+			allowed_fields = {field.name for field in dataclasses.fields(output_model)}
+			output = {key: value for key, value in output.items() if key in allowed_fields}
+
+		if hasattr(output_model, "model_validate"):
+			return output_model.model_validate(output)  # Pydantic v2
+
+		if hasattr(output_model, "parse_obj"):
+			return output_model.parse_obj(output)  # Pydantic v1
+
+		return output_model(**output)
+
+	@classmethod
+	def from_inputless(
+		cls,
+		metadata: ToolMetadata,
+		output_model: Type[OutputType],
+		handler: Callable[[], Any],
+		input_model: Type[InputType] = EmptyInput,
+		input_schema_version: str = "1.0.0",
+		output_schema_version: str = "1.0.0",
+	) -> "TypedToolImpl[InputType, OutputType]":
+		"""Create a typed tool with no input schema."""
+
+		def _wrapped(_: InputType) -> OutputType:
+			return cls._coerce_output(output_model, handler())
+
+		return cls(
+			metadata,
+			input_model,
+			output_model,
+			_wrapped,
+			input_schema_version=input_schema_version,
+			output_schema_version=output_schema_version,
+		)
+
+	@classmethod
+	def from_handler(
+		cls,
+		metadata: ToolMetadata,
+		input_model: Type[InputType],
+		output_model: Type[OutputType],
+		handler: Callable[[InputType], Any],
+		input_schema_version: str = "1.0.0",
+		output_schema_version: str = "1.0.0",
+	) -> "TypedToolImpl[InputType, OutputType]":
+		"""Create a typed tool from a handler returning either raw dict or typed output."""
+
+		def _wrapped(input_obj: InputType) -> OutputType:
+			return cls._coerce_output(output_model, handler(input_obj))
+
+		return cls(
+			metadata,
+			input_model,
+			output_model,
+			_wrapped,
+			input_schema_version=input_schema_version,
+			output_schema_version=output_schema_version,
+		)
