@@ -1,0 +1,1359 @@
+{
+  "protocol": "nvda-bridge-protocol",
+  "protocol_version": "1.0.0",
+  "bridge_version": "1.0.0",
+  "api_level": 1,
+  "types": {
+    "ToolResponse": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": true
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "ObjectInfo": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "role": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "roleText": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "states": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "role",
+            "roleText",
+            "value",
+            "description",
+            "states"
+          ],
+          "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "WindowInfo": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "handle": {
+              "type": "integer"
+            },
+            "className": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "title",
+            "handle",
+            "className"
+          ],
+          "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "TextLineInfo": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "lineNumber": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "additionalProperties": true
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "SpeechResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "spoken": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "spoken"
+          ],
+          "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "MessageResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "KeyboardActionResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "gesture": {
+              "type": "string"
+            },
+            "repeat": {
+              "type": "integer"
+            },
+            "delay_ms": {
+              "type": "integer"
+            },
+            "sent": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "gesture",
+            "repeat",
+            "delay_ms",
+            "sent"
+          ],
+          "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "MoveFocusResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "direction": {
+              "type": "string",
+              "enum": [
+                "next",
+                "previous"
+              ]
+            },
+            "pendingFocus": {
+              "type": "boolean"
+            },
+            "newFocus": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "roleText": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "role",
+                "roleText"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "direction",
+            "pendingFocus",
+            "newFocus"
+          ],
+          "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "ObjectInspection": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string",
+              "enum": [
+                "focus",
+                "navigator",
+                "desktop"
+              ]
+            },
+            "object": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "target",
+            "object"
+          ],
+          "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "ObjectTreeSnapshot": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string",
+              "enum": [
+                "focus",
+                "navigator",
+                "desktop"
+              ]
+            },
+            "max_depth": {
+              "type": "integer"
+            },
+            "max_children": {
+              "type": "integer"
+            },
+            "tree": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "target",
+            "max_depth",
+            "max_children",
+            "tree"
+          ],
+          "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "FocusLineage": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "focus": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "ancestorCount": {
+              "type": "integer"
+            },
+            "truncated": {
+              "type": "boolean"
+            },
+            "ancestors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          },
+          "required": [
+            "focus",
+            "ancestorCount",
+            "truncated",
+            "ancestors"
+          ],
+          "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "AppModuleInfo": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": [
+                "focus",
+                "navigator",
+                "desktop"
+              ]
+            },
+            "object": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "appModule": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "source",
+            "object",
+            "appModule"
+          ],
+          "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "AddonMetadataList": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "enum": [
+                "running",
+                "available",
+                "all"
+              ]
+            },
+            "count": {
+              "type": "integer"
+            },
+            "runningCount": {
+              "type": "integer"
+            },
+            "availableCount": {
+              "type": "integer"
+            },
+            "addons": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            }
+          },
+          "required": [
+            "scope",
+            "count",
+            "runningCount",
+            "availableCount",
+            "addons"
+          ],
+          "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "HealthSnapshot": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "timestamp": {
+              "type": "integer"
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "include_logs": {
+                  "type": "boolean"
+                },
+                "log_lines": {
+                  "type": "integer"
+                },
+                "include_tree": {
+                  "type": "boolean"
+                },
+                "tree_depth": {
+                  "type": "integer"
+                },
+                "tree_max_children": {
+                  "type": "integer"
+                },
+                "addon_scope": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            },
+            "errors": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "ok": {
+              "type": "boolean"
+            },
+            "errorCount": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "timestamp",
+            "options",
+            "errors",
+            "ok",
+            "errorCount"
+          ],
+          "additionalProperties": true
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "NvdaRestartResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": true
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "LogEntries": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "log_file": {
+              "type": "string"
+            },
+            "returned_lines": {
+              "type": "integer"
+            },
+            "max_lines": {
+              "type": "integer"
+            },
+            "filter_level": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "file_size": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "log_file",
+            "returned_lines",
+            "max_lines",
+            "lines",
+            "file_size"
+          ],
+          "additionalProperties": true
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "PythonExecutionResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "output": {
+                  "type": "string"
+                },
+                "result": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "vars": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "required": [
+                "output",
+                "result"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "stderr": {
+                  "type": "string"
+                },
+                "result": {},
+                "captured_variables": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "execution_error": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "traceback": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "stdout",
+                "stderr"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "tools": [
+    {
+      "name": "execute_python",
+      "version": "1.0.0",
+      "description": "Execute Python source inside NVDA and return console output/result.",
+      "category": "developer",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "snapshot_vars": {
+            "type": "boolean"
+          },
+          "capture_vars": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "code"
+        ]
+      },
+      "outputType": "PythonExecutionResult"
+    },
+    {
+      "name": "get_current_focus",
+      "version": "1.0.0",
+      "description": "Get information about the currently focused UI element.",
+      "category": "focus",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputType": "ObjectInfo"
+    },
+    {
+      "name": "get_desktop_object",
+      "version": "1.0.0",
+      "description": "Get information about the desktop object.",
+      "category": "navigation",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputType": "ObjectInfo"
+    },
+    {
+      "name": "get_focus_lineage",
+      "version": "1.0.0",
+      "description": "Get focused object with ancestor chain for hierarchy debugging.",
+      "category": "diagnostics",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "max_ancestors": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "FocusLineage"
+    },
+    {
+      "name": "get_logs",
+      "version": "1.0.0",
+      "description": "Retrieve recent log entries from NVDA log file with optional filtering.",
+      "category": "diagnostics",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "max_lines": {
+            "type": "integer"
+          },
+          "filter_level": {
+            "type": "string"
+          },
+          "use_tail": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "LogEntries"
+    },
+    {
+      "name": "get_navigator_object",
+      "version": "1.0.0",
+      "description": "Get information about the current navigator object.",
+      "category": "navigation",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputType": "ObjectInfo"
+    },
+    {
+      "name": "get_window_title",
+      "version": "1.0.0",
+      "description": "Get the title and details of the current foreground window.",
+      "category": "window",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputType": "WindowInfo"
+    },
+    {
+      "name": "health_snapshot",
+      "version": "1.0.0",
+      "description": "Collect one-call diagnostics snapshot for NVDA addon debugging.",
+      "category": "diagnostics",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "include_logs": {
+            "type": "boolean"
+          },
+          "log_lines": {
+            "type": "integer"
+          },
+          "include_tree": {
+            "type": "boolean"
+          },
+          "tree_depth": {
+            "type": "integer"
+          },
+          "tree_max_children": {
+            "type": "integer"
+          },
+          "addon_scope": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "HealthSnapshot"
+    },
+    {
+      "name": "inspect_app_module",
+      "version": "1.0.0",
+      "description": "Inspect app module metadata for focus/navigator/desktop source.",
+      "category": "diagnostics",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "AppModuleInfo"
+    },
+    {
+      "name": "inspect_object",
+      "version": "1.0.0",
+      "description": "Inspect focus/navigator/desktop object with rich metadata.",
+      "category": "diagnostics",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string"
+          },
+          "include_relations": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "ObjectInspection"
+    },
+    {
+      "name": "list_loaded_addons",
+      "version": "1.0.0",
+      "description": "List running/available NVDA addons with metadata.",
+      "category": "diagnostics",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "AddonMetadataList"
+    },
+    {
+      "name": "move_focus",
+      "version": "1.0.0",
+      "description": "Move focus to next or previous object.",
+      "category": "focus",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "direction"
+        ]
+      },
+      "outputType": "MoveFocusResult"
+    },
+    {
+      "name": "read_current_line",
+      "version": "1.0.0",
+      "description": "Read the current line from the focused object.",
+      "category": "text",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputType": "TextLineInfo"
+    },
+    {
+      "name": "reload_plugins",
+      "version": "1.0.0",
+      "description": "Reload all global plugins and app modules from scratchpad.",
+      "category": "system",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputType": "ToolResponse"
+    },
+    {
+      "name": "restart_nvda",
+      "version": "1.0.0",
+      "description": "Restart NVDA with optional parameters (disable addons, debug logging).",
+      "category": "system",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "disable_addons": {
+            "type": "boolean"
+          },
+          "debug_logging": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "NvdaRestartResult"
+    },
+    {
+      "name": "send_keyboard",
+      "version": "1.0.0",
+      "description": "Send a keyboard gesture through NVDA for app/addon automation.",
+      "category": "ui",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "gesture": {
+            "type": "string"
+          },
+          "repeat": {
+            "type": "integer"
+          },
+          "delay_ms": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "gesture"
+        ]
+      },
+      "outputType": "KeyboardActionResult"
+    },
+    {
+      "name": "show_message",
+      "version": "1.0.0",
+      "description": "Show a UI message to the user.",
+      "category": "ui",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "message"
+        ]
+      },
+      "outputType": "MessageResult"
+    },
+    {
+      "name": "speak_text",
+      "version": "1.0.0",
+      "description": "Speak the given text using NVDA's speech system.",
+      "category": "speech",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ]
+      },
+      "outputType": "SpeechResult"
+    },
+    {
+      "name": "walk_object_tree",
+      "version": "1.0.0",
+      "description": "Walk a bounded object subtree for focus/navigator/desktop.",
+      "category": "diagnostics",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string"
+          },
+          "max_depth": {
+            "type": "integer"
+          },
+          "max_children": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "ObjectTreeSnapshot"
+    }
+  ],
+  "count": 19
+}
