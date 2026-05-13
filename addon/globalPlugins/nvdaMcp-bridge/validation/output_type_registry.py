@@ -21,7 +21,7 @@ def _tool_response_schema(data_schema: dict[str, Any]) -> dict[str, Any]:
 			"error": {
 				"type": "object",
 				"properties": {
-					"code": {"type": "string"},
+					"code": {"type": "integer"},
 					"message": {"type": "string"},
 				},
 				"required": ["code", "message"],
@@ -73,9 +73,10 @@ def build_output_type_registry() -> dict[str, dict[str, Any]]:
 					"text": {"type": "string"},
 					"lineNumber": {"type": ["integer", "null"]},
 					"note": {"type": "string"},
+					"status": {"type": "string"},
 				},
-				"required": ["text"],
-				"additionalProperties": True,
+				"required": ["text", "status"],
+				"additionalProperties": False,
 			}
 		),
 		"SpeechResult": _tool_response_schema(

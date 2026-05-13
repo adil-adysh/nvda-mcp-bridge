@@ -20,7 +20,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -84,7 +84,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -133,7 +133,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -172,18 +172,22 @@
             },
             "note": {
               "type": "string"
+            },
+            "status": {
+              "type": "string"
             }
           },
           "required": [
-            "text"
+            "text",
+            "status"
           ],
-          "additionalProperties": true
+          "additionalProperties": false
         },
         "error": {
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -227,7 +231,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -271,7 +275,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -324,7 +328,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -397,7 +401,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -448,7 +452,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -507,7 +511,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -565,7 +569,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -621,7 +625,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -687,7 +691,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -766,7 +770,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -807,7 +811,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -873,7 +877,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -972,7 +976,7 @@
           "type": "object",
           "properties": {
             "code": {
-              "type": "string"
+              "type": "integer"
             },
             "message": {
               "type": "string"
@@ -1002,7 +1006,7 @@
         "type": "object",
         "properties": {
           "code": {
-            "type": "string"
+            "type": "integer"
           },
           "snapshot_vars": {
             "type": "boolean"

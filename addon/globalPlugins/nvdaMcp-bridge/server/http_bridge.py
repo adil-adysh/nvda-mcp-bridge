@@ -200,7 +200,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			if request_data is None:
 				return
 
-			if self.path == "/action":
+			if self.path in ("/action", "/execute"):
 				action, params, request_id = self._validate_action_request(request_data, request_id)
 				if action is None:
 					return
@@ -430,8 +430,35 @@ class NVDAHTTPBridge:
 		self._list_tools = self._build_tools_list
 		self._list_output_types = self._build_output_types
 
+	@staticmethod
+	def _compute_tool_constraints(meta: Any) -> Dict[str, Any]:
+		"""Compute bridge-level constraints for a tool based on its category and name.
+
+		These constraints are surfaced in the tool discovery payload so downstream
+		consumers (Rust MCP server, AI agents) know when a tool is expected to be
+		blocked by NVDA state without having to replicate NVDA state-check logic.
+		"""
+		category = meta.category
+		name = meta.name
+		constraints: Dict[str, Any] = {}
+
+		# NVDA state-based blocking hints (mirrors _check_action_allowed logic)
+		constraints["blocked_on_secure_screen"] = category not in SECURE_SCREEN_ALLOWED_CATEGORIES
+		constraints["blocked_on_modal"] = category in MODAL_BLOCKING_BLOCKED_CATEGORIES
+		constraints["blocked_on_menu"] = category in MENU_OPEN_BLOCKED_CATEGORIES
+
+		# Dangerous / opt-in tools
+		constraints["dangerous"] = name in ("execute_python",)
+		constraints["requires_explicit_opt_in"] = name in ("execute_python",)
+
+		return constraints
+
 	def _build_tools_list(self) -> list[Dict[str, Any]]:
-		"""Build tools list for /tools endpoint in protocol v1 format."""
+		"""Build tools list for /tools endpoint in protocol v1 format.
+
+		Each tool entry includes metadata, JSON Schema input, named output type
+		reference, and computed constraints for downstream AI agents.
+		"""
 		tools = []
 		for meta in self.registry.list_tools():
 			input_schema_obj = self.registry.get_input_schema(meta.name, meta.version)
@@ -445,6 +472,7 @@ class NVDAHTTPBridge:
 					"category": meta.category,
 					"inputSchema": input_schema_obj.to_json_schema(),
 					"outputType": self._get_output_type_name(output_schema_obj),
+					"constraints": self._compute_tool_constraints(meta),
 				}
 			)
 		return tools

@@ -1,0 +1,174 @@
+name: CodeQL security analysis
+
+on:
+  workflow_call:
+    inputs:
+      addonFileName:
+        required: true
+        type: string
+      branchName:
+        required: true
+        type: string
+    outputs:
+      warningsJSON:
+        description: "The JSON from CodeQL warnings"
+        value: ${{ jobs.analyze.outputs.codeQLResults }}
+      errorsJSON:
+        description: "The JSON from CodeQL errors"
+        value: ${{ jobs.analyzeExcludingWarnings.outputs.codeQLResults }}
+
+jobs:
+  analyzeExcludingWarnings:
+    name: Analyze add-on excluding warnings
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+      issues: write
+    outputs:
+      codeQLResults: ${{ steps.setSecurityAnalysisStatus.outputs.codeQLResults }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.branchName }}
+
+      - name: Download add-on
+        uses: actions/download-artifact@v4
+        with:
+          name: addon
+
+      - name: Unzip add-on
+        run: |
+          $addonName = "${{ inputs.addonFileName }}"
+          $file = Get-Item -Path "./$addonName" -ErrorAction SilentlyContinue
+          if (-not $file) {
+            $file = Get-ChildItem -Path . -Filter *.nvda-addon -Recurse -File | Select-Object -First 1
+          }
+          if (-not $file) { throw 'No .nvda-addon package was found' }
+          if ($file.Name -ne 'addon.nvda-addon') {
+            Rename-Item -Path $file.FullName -NewName 'addon.nvda-addon'
+          }
+          7z x addon.nvda-addon -oaddon -y
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          config-file: ./.github/codeql/codeql-config-excluding-warnings.yml
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          output: results
+
+      - name: Set security analysis status
+        id: setSecurityAnalysisStatus
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const setSecurityAnalysisStatus = require('./.github/workflows/securityAnalysis.js')
+            const resultsPath = 'results/python.sarif'
+            setSecurityAnalysisStatus({core}, resultsPath)
+
+      - name: Upload results
+        id: uploadResults
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-excluding-warnings
+          path: results/python.sarif
+
+      - name: Warn if analysis fails
+        if: failure() && (github.event.pull_request != null || github.event.issue != null)
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number || github.event.issue.number }}
+          body: |
+            Security analysis has failed for this add-on.
+            You can open this link and [download artifacts containing the results of the analysis](${{ steps.uploadResults.outputs.artifact-url }}).
+            Unzip artifacts and open the .sarif file in your preferred editor.
+            For example, you can use [Microsoft's Sarif web based reader](https://microsoft.github.io/sarif-web-component).
+            Please review the findings and consider whether they require a fix before merging.
+  analyze:
+    name: Analyze add-on
+    needs: analyzeExcludingWarnings
+    continue-on-error: true
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      security-events: write
+      issues: write
+    outputs:
+      codeQLResults: ${{ steps.setSecurityAnalysisStatus.outputs.codeQLResults }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.branchName }}
+
+      - name: Download add-on
+        uses: actions/download-artifact@v4
+        with:
+          name: addon
+
+      - name: Unzip add-on
+        run: |
+          $addonName = "${{ inputs.addonFileName }}"
+          $file = Get-Item -Path "./$addonName" -ErrorAction SilentlyContinue
+          if (-not $file) {
+            $file = Get-ChildItem -Path . -Filter *.nvda-addon -Recurse -File | Select-Object -First 1
+          }
+          if (-not $file) { throw 'No .nvda-addon package was found' }
+          if ($file.Name -ne 'addon.nvda-addon') {
+            Rename-Item -Path $file.FullName -NewName 'addon.nvda-addon'
+          }
+          7z x addon.nvda-addon -oaddon -y
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          output: results
+
+      - name: Set security analysis status
+        id: setSecurityAnalysisStatus
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const setSecurityAnalysisStatus = require('./.github/workflows/securityAnalysis.js')
+            const resultsPath = 'results/python.sarif'
+            setSecurityAnalysisStatus({core}, resultsPath)
+
+      - name: Upload results
+        id: uploadResults
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-warnings
+          path: results/python.sarif
+          overwrite: true
+
+      - name: Warn if analysis fails
+        if: failure() && (github.event.pull_request != null || github.event.issue != null)
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number || github.event.issue.number }}
+          body: |
+            Security analysis has reported warnings for this add-on.
+            This won't prevent merging, but you should review warnings to ensure the code quality and security posture remain strong.
+            You can open this link and [download artifacts containing the results of the analysis](${{ steps.uploadResults.outputs.artifact-url }}).
+            Unzip artifacts and open the .sarif file in your preferred editor.
+            For example, you can use [Microsoft's Sarif web based reader](https://microsoft.github.io/sarif-web-component).

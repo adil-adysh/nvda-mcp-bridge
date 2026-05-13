@@ -5,7 +5,7 @@ use rmcp::{
     model::*,
     service::{RequestContext, RoleServer},
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::{
     collections::{HashMap, HashSet},
@@ -47,27 +47,103 @@ impl Settings {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
-struct BridgeError {
-    code: String,
-    message: String,
+/// Flexible error code — accepts both integer (protocol v1) and string (legacy).
+#[derive(Debug, Clone)]
+struct ErrorCode(String);
+
+impl ErrorCode {
+    fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
-#[derive(Debug, Deserialize, Clone)]
+impl<'de> serde::Deserialize<'de> for ErrorCode {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de;
+        struct ErrorCodeVisitor;
+        impl de::Visitor<'_> for ErrorCodeVisitor {
+            type Value = ErrorCode;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("an integer or string error code")
+            }
+            fn visit_i64<E: de::Error>(self, v: i64) -> std::result::Result<ErrorCode, E> {
+                Ok(ErrorCode(v.to_string()))
+            }
+            fn visit_u64<E: de::Error>(self, v: u64) -> std::result::Result<ErrorCode, E> {
+                Ok(ErrorCode(v.to_string()))
+            }
+            fn visit_str<E: de::Error>(self, v: &str) -> std::result::Result<ErrorCode, E> {
+                Ok(ErrorCode(v.to_string()))
+            }
+        }
+        deserializer.deserialize_any(ErrorCodeVisitor)
+    }
+}
+
+/// Bridge protocol metadata block from every action response.
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+struct BridgeMeta {
+    #[serde(default)]
+    bridge_version: Option<String>,
+    #[serde(default)]
+    api_level: Option<u32>,
+}
+
+/// Snapshot of NVDA runtime state from every action response.
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+struct NvdaStatusSnapshot {
+    #[serde(default)]
+    secure_screen: Option<bool>,
+    #[serde(default)]
+    modal_blocking: Option<bool>,
+    #[serde(default)]
+    menu_open: Option<bool>,
+}
+
+#[derive(Debug, Clone)]
+struct BridgeError {
+    code: ErrorCode,
+    message: String,
+    name: Option<String>,
+    category: Option<String>,
+    retry_policy: Option<String>,
+    retry_after_ms: Option<u64>,
+    details: Option<Value>,
+}
+
+/// Full response envelope from the NVDA bridge /action endpoint.
+/// Carries protocol metadata for downstream AI agent observability.
+#[derive(Debug, Clone)]
 struct BridgeActionEnvelope {
     success: bool,
-    #[serde(default)]
+    request_id: Option<String>,
+    action: Option<String>,
+    duration_ms: Option<f64>,
+    bridge: Option<BridgeMeta>,
+    nvda_status_snapshot: Option<NvdaStatusSnapshot>,
     data: Option<Value>,
-    #[serde(default)]
     error: Option<BridgeError>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[allow(dead_code)]
 struct BridgeToolConstraints {
     #[serde(default)]
     dangerous: Option<bool>,
     #[serde(default)]
     requires_explicit_opt_in: Option<bool>,
+    /// Tool is blocked when NVDA is on a secure desktop.
+    #[serde(default)]
+    blocked_on_secure_screen: Option<bool>,
+    /// Tool is blocked when a modal NVDA dialog is open.
+    #[serde(default)]
+    blocked_on_modal: Option<bool>,
+    /// Tool is blocked when an NVDA menu is open.
+    #[serde(default)]
+    blocked_on_menu: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -354,60 +430,111 @@ impl BridgeClient {
             bail!("Bridge action response must be a JSON object");
         };
 
-        if let Some(success) = obj.get("success").and_then(Value::as_bool) {
-            if success {
-                let data = obj
-                    .get("data")
-                    .cloned()
-                    .or_else(|| obj.get("result").cloned())
-                    .or_else(|| Some(Value::Object(Map::new())));
-                return Ok(BridgeActionEnvelope {
-                    success: true,
-                    data,
-                    error: None,
-                });
-            }
+        let success = obj
+            .get("success")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| anyhow!("Bridge action response missing required 'success' boolean"))?;
 
-            let parsed_error = obj
-                .get("error")
-                .and_then(Value::as_object)
-                .map(|error_obj| BridgeError {
-                    code: error_obj
-                        .get("code")
-                        .and_then(Value::as_str)
-                        .unwrap_or("BRIDGE_ERROR")
-                        .to_string(),
-                    message: error_obj
-                        .get("message")
-                        .and_then(Value::as_str)
-                        .unwrap_or("Unknown bridge error")
-                        .to_string(),
-                })
-                .or_else(|| {
-                    Some(BridgeError {
-                        code: "BRIDGE_ERROR".to_string(),
-                        message: "Bridge returned unsuccessful response without error details"
-                            .to_string(),
-                    })
-                });
+        // Extract protocol metadata for downstream AI agent observability
+        let request_id = obj.get("request_id").and_then(Value::as_str).map(String::from);
+        let action = obj.get("action").and_then(Value::as_str).map(String::from);
+        let duration_ms = obj.get("duration_ms").and_then(Value::as_f64);
+        let bridge: Option<BridgeMeta> = obj
+            .get("bridge")
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
+        let nvda_status_snapshot: Option<NvdaStatusSnapshot> = obj
+            .get("nvda_status_snapshot")
+            .and_then(|v| serde_json::from_value(v.clone()).ok());
 
+        if success {
+            let data = obj
+                .get("data")
+                .cloned()
+                .or_else(|| obj.get("result").cloned())
+                .or_else(|| Some(Value::Object(Map::new())));
             return Ok(BridgeActionEnvelope {
-                success: false,
-                data: obj.get("data").cloned(),
-                error: parsed_error,
+                success: true,
+                request_id,
+                action,
+                duration_ms,
+                bridge,
+                nvda_status_snapshot,
+                data,
+                error: None,
             });
         }
 
-        bail!("Bridge action response missing required 'success' boolean")
+        let parsed_error: BridgeError = obj
+            .get("error")
+            .and_then(|v| Self::parse_bridge_error(v))
+            .unwrap_or_else(|| BridgeError {
+                code: ErrorCode("BRIDGE_ERROR".into()),
+                message: "Bridge returned unsuccessful response without error details".into(),
+                name: None,
+                category: None,
+                retry_policy: None,
+                retry_after_ms: None,
+                details: None,
+            });
+
+        Ok(BridgeActionEnvelope {
+            success: false,
+            request_id,
+            action,
+            duration_ms,
+            bridge,
+            nvda_status_snapshot,
+            data: obj.get("data").cloned(),
+            error: Some(parsed_error),
+        })
+    }
+
+    /// Parse a structured bridge error object from JSON.
+    fn parse_bridge_error(val: &Value) -> Option<BridgeError> {
+        let obj = val.as_object()?;
+        let code = obj
+            .get("code")
+            .and_then(|c| {
+                c.as_i64()
+                    .map(|i| ErrorCode(i.to_string()))
+                    .or_else(|| c.as_str().map(|s| ErrorCode(s.to_string())))
+            })
+            .unwrap_or(ErrorCode("BRIDGE_ERROR".into()));
+        let message = obj
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("Unknown bridge error")
+            .to_string();
+        let name = obj.get("name").and_then(Value::as_str).map(String::from);
+        let category = obj.get("category").and_then(Value::as_str).map(String::from);
+        let retry_policy = obj.get("retry_policy").and_then(Value::as_str).map(String::from);
+        let retry_after_ms = obj.get("retry_after_ms").and_then(Value::as_u64);
+        let details = obj.get("details").cloned();
+        Some(BridgeError {
+            code,
+            message,
+            name,
+            category,
+            retry_policy,
+            retry_after_ms,
+            details,
+        })
     }
 
     fn extract_error_message(body_text: &str) -> String {
         if let Ok(parsed) = serde_json::from_str::<Value>(body_text) {
             if let Some(obj) = parsed.as_object() {
-                if let Some(error_obj) = obj.get("error").and_then(Value::as_object)
-                    && let Some(message_text) = error_obj.get("message").and_then(Value::as_str)
-                {
-                    return message_text.to_string();
+                if let Some(error_obj) = obj.get("error").and_then(Value::as_object) {
+                    if let Some(message_text) = error_obj.get("message").and_then(Value::as_str) {
+                        return format!(
+                            "[{}] {}",
+                            error_obj
+                                .get("code")
+                                .map(|c| c.to_string())
+                                .unwrap_or_default(),
+                            message_text
+                        );
+                    }
                 }
                 if let Some(error_text) = obj.get("error").and_then(Value::as_str) {
                     return error_text.to_string();
@@ -481,6 +608,12 @@ impl NvdaServer {
         Ok(())
     }
 
+    /// Validate the `data` portion of a bridge response against the inner output schema.
+    ///
+    /// The output type schemas in `schema.json` define `{success, data: {...}, error}` envelopes,
+    /// while the actual HTTP response also carries transport metadata (`request_id`, `action`,
+    /// `duration_ms`, `bridge`, `nvda_status_snapshot`).  We validate only the `data` field against
+    /// the inner schema to avoid false rejections from extra envelope fields.
     fn validate_output(runtime: &ToolRuntime, payload: &BridgeActionEnvelope) -> Result<()> {
         if !payload.success {
             return Ok(());
@@ -494,52 +627,144 @@ impl NvdaServer {
             .clone()
             .unwrap_or_else(|| Value::Object(Map::new()));
 
+        // Extract the inner `data` schema from the output type envelope
+        // schema: `{success, data: {...}, error}` → `{...}` (the data schema).
+        let inner_schema = output_schema_value
+            .as_object()
+            .and_then(|obj| obj.get("properties"))
+            .and_then(|props| props.as_object())
+            .and_then(|props| props.get("data"))
+            .unwrap_or(output_schema_value);
+
+        if jsonschema::is_valid(inner_schema, &data_value) {
+            return Ok(());
+        }
+
+        // Fallback: try the full envelope schema (legacy)
         let envelope_value = json!({
             "success": true,
             "data": data_value,
         });
-
         if jsonschema::is_valid(output_schema_value, &envelope_value) {
             return Ok(());
         }
 
-        let legacy_data_only_value = envelope_value.get("data").cloned().unwrap_or(Value::Null);
-
-        if jsonschema::is_valid(output_schema_value, &legacy_data_only_value) {
-            return Ok(());
-        }
-
         bail!(
-            "Bridge output validation failed for '{}': response does not match declared outputType schema",
-            runtime.definition.name
+            "Bridge output validation failed for '{}': response data does not match declared outputType '{}'",
+            runtime.definition.name,
+            runtime.definition.output_type.as_deref().unwrap_or("(none)")
         );
     }
 
+    /// Build MCP content from a successful bridge response.
+    /// Includes protocol metadata (`request_id`, `action`, `duration_ms`, `bridge`,
+    /// `nvda_status_snapshot`) for downstream AI agent observability and traceability.
     fn success_content(payload: &BridgeActionEnvelope) -> Vec<Content> {
-        let body = json!({
+        let mut envelope = json!({
             "success": true,
-            "data": payload.data.clone().unwrap_or_else(|| Value::Object(Map::new()))
         });
-        vec![Content::text(body.to_string())]
+
+        if let Some(ref data) = payload.data {
+            envelope["data"] = data.clone();
+        } else {
+            envelope["data"] = Value::Object(Map::new());
+        }
+
+        // Attach protocol metadata for AI agents
+        if let Some(ref rid) = payload.request_id {
+            envelope["request_id"] = json!(rid);
+        }
+        if let Some(ref act) = payload.action {
+            envelope["action"] = json!(act);
+        }
+        if let Some(dur) = payload.duration_ms {
+            envelope["duration_ms"] = json!(dur);
+        }
+        if let Some(ref b) = payload.bridge {
+            if let Ok(v) = serde_json::to_value(b) {
+                envelope["bridge"] = v;
+            }
+        }
+        if let Some(ref s) = payload.nvda_status_snapshot {
+            if let Ok(v) = serde_json::to_value(s) {
+                envelope["nvda_status_snapshot"] = v;
+            }
+        }
+
+        vec![Content::text(serde_json::to_string_pretty(&envelope).unwrap_or_default())]
     }
 
+    /// Build MCP content from a failed bridge response.
+    /// Includes protocol metadata (`request_id`, `action`, `duration_ms`, `bridge`,
+    /// `nvda_status_snapshot`) for downstream AI agent observability and traceability.
     fn error_content(payload: &BridgeActionEnvelope) -> Vec<Content> {
         let err = payload.error.clone().unwrap_or(BridgeError {
-            code: "BRIDGE_ERROR".to_string(),
-            message: "Unknown bridge error".to_string(),
+            code: ErrorCode("BRIDGE_ERROR".into()),
+            message: "Unknown bridge error".into(),
+            name: None,
+            category: None,
+            retry_policy: None,
+            retry_after_ms: None,
+            details: None,
         });
 
-        let summary = format!("Bridge tool error {}: {}", err.code, err.message);
-        let detail = json!({
+        let code_display = err.code.as_str();
+        let summary = if let Some(ref name) = err.name {
+            format!("Bridge tool error [{}] {}: {}", code_display, name, err.message)
+        } else {
+            format!("Bridge tool error {}: {}", code_display, err.message)
+        };
+
+        let mut detail = json!({
             "success": false,
             "error": {
-                "code": err.code,
-                "message": err.message
-            },
-            "data": payload.data
+                "code": code_display,
+                "message": err.message,
+            }
         });
 
-        vec![Content::text(summary), Content::text(detail.to_string())]
+        if let Some(ref name) = err.name {
+            detail["error"]["name"] = json!(name);
+        }
+        if let Some(ref cat) = err.category {
+            detail["error"]["category"] = json!(cat);
+        }
+        if let Some(ref rp) = err.retry_policy {
+            detail["error"]["retry_policy"] = json!(rp);
+        }
+        if let Some(ram) = err.retry_after_ms {
+            detail["error"]["retry_after_ms"] = json!(ram);
+        }
+        if let Some(ref det) = err.details {
+            detail["error"]["details"] = det.clone();
+        }
+        if let Some(ref d) = payload.data {
+            detail["data"] = d.clone();
+        }
+        if let Some(ref rid) = payload.request_id {
+            detail["request_id"] = json!(rid);
+        }
+        if let Some(ref act) = payload.action {
+            detail["action"] = json!(act);
+        }
+        if let Some(dur) = payload.duration_ms {
+            detail["duration_ms"] = json!(dur);
+        }
+        if let Some(ref b) = payload.bridge {
+            if let Ok(v) = serde_json::to_value(b) {
+                detail["bridge"] = v;
+            }
+        }
+        if let Some(ref s) = payload.nvda_status_snapshot {
+            if let Ok(v) = serde_json::to_value(s) {
+                detail["nvda_status_snapshot"] = v;
+            }
+        }
+
+        vec![
+            Content::text(summary),
+            Content::text(serde_json::to_string_pretty(&detail).unwrap_or_default()),
+        ]
     }
 }
 
@@ -729,9 +954,10 @@ mod tests {
     }
 
     #[test]
-    fn parse_action_payload_error_shape() {
+    fn parse_action_payload_error_shape_string_code() {
         let payload = json!({
             "success": false,
+            "request_id": "test-123",
             "error": {
                 "code": "INVALID_PARAMS",
                 "message": "direction required"
@@ -740,9 +966,38 @@ mod tests {
 
         let parsed = BridgeClient::parse_action_payload(payload).unwrap();
         assert!(!parsed.success);
+        assert_eq!(parsed.request_id.as_deref(), Some("test-123"));
         let err = parsed.error.unwrap();
-        assert_eq!(err.code, "INVALID_PARAMS");
+        assert_eq!(err.code.as_str(), "INVALID_PARAMS");
         assert_eq!(err.message, "direction required");
+    }
+
+    #[test]
+    fn parse_action_payload_error_shape_int_code() {
+        let payload = json!({
+            "success": false,
+            "request_id": "test-456",
+            "action": "get_window_title",
+            "duration_ms": 12.5,
+            "error": {
+                "code": 4102,
+                "name": "INVALID_ACTION_NAME",
+                "message": "Unknown action",
+                "category": "validation",
+                "retry_policy": "never"
+            }
+        });
+
+        let parsed = BridgeClient::parse_action_payload(payload).unwrap();
+        assert!(!parsed.success);
+        assert_eq!(parsed.request_id.as_deref(), Some("test-456"));
+        assert_eq!(parsed.action.as_deref(), Some("get_window_title"));
+        assert!((parsed.duration_ms.unwrap() - 12.5).abs() < 0.01);
+        let err = parsed.error.unwrap();
+        assert_eq!(err.code.as_str(), "4102");
+        assert_eq!(err.name.as_deref(), Some("INVALID_ACTION_NAME"));
+        assert_eq!(err.category.as_deref(), Some("validation"));
+        assert_eq!(err.retry_policy.as_deref(), Some("never"));
     }
 
     #[test]
@@ -757,6 +1012,9 @@ mod tests {
             constraints: Some(BridgeToolConstraints {
                 dangerous: Some(true),
                 requires_explicit_opt_in: Some(true),
+                blocked_on_secure_screen: None,
+                blocked_on_modal: None,
+                blocked_on_menu: None,
             }),
         };
 
@@ -773,7 +1031,7 @@ mod tests {
     }
 
     #[test]
-    fn validate_output_accepts_envelope_schema() {
+    fn validate_output_accepts_inner_data_schema() {
         let runtime = ToolRuntime {
             definition: BridgeToolDef {
                 name: "get_window_title".to_string(),
@@ -803,13 +1061,31 @@ mod tests {
             })),
         };
 
+        // Payload with extra envelope fields — realistic HTTP response shape.
+        // The new validate_output should match the inner `data` schema and ignore
+        // transport fields like request_id, action, duration_ms, bridge, etc.
         let payload = BridgeActionEnvelope {
             success: true,
+            request_id: Some("req-1".into()),
+            action: Some("get_window_title".into()),
+            duration_ms: Some(5.0),
+            bridge: Some(BridgeMeta {
+                bridge_version: Some("1.0.0".into()),
+                api_level: Some(1),
+            }),
+            nvda_status_snapshot: Some(NvdaStatusSnapshot {
+                secure_screen: Some(false),
+                modal_blocking: Some(false),
+                menu_open: Some(false),
+            }),
             data: Some(json!({"title":"Notepad"})),
             error: None,
         };
 
-        assert!(NvdaServer::validate_output(&runtime, &payload).is_ok());
+        assert!(
+            NvdaServer::validate_output(&runtime, &payload).is_ok(),
+            "validate_output should pass: inner data matches schema, envelope extras ignored"
+        );
     }
 
     #[test]

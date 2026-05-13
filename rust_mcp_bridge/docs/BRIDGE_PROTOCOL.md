@@ -2,15 +2,23 @@
 
 Canonical protocol specification and JSON Schemas live in the bridge repository:
 
-- `../nvda-mcp-bridge/docs/protocol/PROTOCOL.md`
-- `../nvda-mcp-bridge/docs/protocol/common.schema.json`
-- `../nvda-mcp-bridge/docs/protocol/health.schema.json`
-- `../nvda-mcp-bridge/docs/protocol/tool-discovery.schema.json`
-- `../nvda-mcp-bridge/docs/protocol/action-request.schema.json`
-- `../nvda-mcp-bridge/docs/protocol/action-response.schema.json`
+- `../../docs/protocol/PROTOCOL.md`
+- `../../docs/protocol/common.schema.json`
+- `../../docs/protocol/health.schema.json`
+- `../../docs/protocol/tool-discovery.schema.json`
+- `../../docs/protocol/action-request.schema.json`
+- `../../docs/protocol/action-response.schema.json`
 
 ## Server conformance notes
 
-- The Rust server should validate bridge responses against the above schemas at the boundary.
+- The Rust server validates bridge responses against the output type schemas at the boundary.
+  Validation targets the **inner `data` schema** only, not the full HTTP envelope,
+  so transport fields (`request_id`, `action`, `duration_ms`, `bridge`,
+  `nvda_status_snapshot`) are accepted without false rejections.
 - Keep serde structs in sync with schema changes.
-- Preserve `request_id` in logs and error propagation for traceability.
+- Preserve `request_id`, `action`, `duration_ms`, and `bridge` metadata in MCP content
+  for downstream AI agent observability and traceability.
+- The Rust server falls back to `/execute` if `/action` returns 404.
+- Tool `constraints` from discovery (`dangerous`, `requires_explicit_opt_in`,
+  `blocked_on_secure_screen`, `blocked_on_modal`, `blocked_on_menu`) are forwarded
+  to MCP tool annotations.

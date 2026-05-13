@@ -1,29 +1,36 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-07-09/server.schema.json",
-  "name": "io.github.YOUR_USERNAME/YOUR_REPO",
-  "description": "An MCP server that provides [describe what your server does]",
-  "status": "active",
-  "repository": {
-    "url": "https://github.com/YOUR_USERNAME/YOUR_REPO",
-    "source": "github"
-  },
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.example/nvda_mcp_server",
+  "description": "MCP server for interacting with NVDA via a local bridge for screen reader automation",
   "version": "1.0.0",
   "packages": [
     {
-      "registry_type": "npm",
-      "registry_base_url": "https://registry.npmjs.org",
-      "identifier": "@YOUR_USERNAME/YOUR_REPO",
+      "registryType": "generic",
+      "identifier": "nvda-mcp-server",
       "version": "1.0.0",
       "transport": {
-        "type": "stdio"
+        "type": "stdio",
+        "command": "nvda-mcp-server.exe"
       },
-      "environment_variables": [
+      "environmentVariables": [
         {
-          "description": "Your API key for the service",
-          "is_required": true,
+          "name": "NVDA_BRIDGE_URL",
+          "description": "URL of the NVDA bridge service",
+          "isRequired": true,
+          "format": "string"
+        },
+        {
+          "name": "NVDA_BRIDGE_TOKEN",
+          "description": "Authentication token for NVDA bridge",
+          "isRequired": true,
           "format": "string",
-          "is_secret": true,
-          "name": "YOUR_API_KEY"
+          "isSecret": true
+        },
+        {
+          "name": "LOG_LEVEL",
+          "description": "Logging level (e.g., INFO, DEBUG)",
+          "isRequired": false,
+          "format": "string"
         }
       ]
     }

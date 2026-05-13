@@ -83,9 +83,12 @@ Tool metadata:
 - Inline output contracts are not allowed.
 - No unused type definitions are allowed.
 
-### `POST /action`
+### `POST /action` (primary) and `POST /execute` (alias)
 
 Purpose: execute one tool/action.
+
+`POST /execute` is a Rust-client-compatible alias for `POST /action`.
+Both endpoints accept and return the same payload shape.
 
 Request:
 
@@ -97,10 +100,10 @@ Request:
 
 Response envelope (always):
 
-- `request_id`
+- `request_id`: echoed from request
 - `success`: bool
-- `action`
-- `duration_ms`
+- `action`: echoed from request
+- `duration_ms`: elapsed bridge execution time
 - `bridge`: `{ bridge_version, api_level }`
 - `nvda_status_snapshot`: `{ secure_screen, modal_blocking, menu_open }`
 - `data`: present on success
