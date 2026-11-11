@@ -191,6 +191,8 @@ class KeyboardActionResult:
 	repeat: int
 	delay_ms: int
 	sent: bool
+	sent_count: int = 1
+	cancelled: bool = False
 
 
 @dataclass(frozen=True)

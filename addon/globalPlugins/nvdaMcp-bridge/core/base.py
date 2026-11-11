@@ -45,6 +45,33 @@ class ToolMetadata:
 	tags: tuple[str, ...] = ()
 	"""Optional tags for filtering/discovery."""
 
+	read_only: bool = False
+	"""Whether the tool is read-only (observes without mutating state)."""
+
+	destructive: bool = False
+	"""Whether calling the tool may perform destructive modifications."""
+
+	idempotent: bool = False
+	"""Whether repeated calls with identical parameters produce identical results."""
+
+	side_effects: bool = False
+	"""Whether the tool has side effects (speech, audio, clipboard, OS focus)."""
+
+	required_permission: str = "read_only"
+	"""Permission capability required to execute this tool."""
+
+	allowed_nvda_states: tuple[str, ...] = ("normal",)
+	"""NVDA runtime states in which this tool is permitted (e.g., normal, modal, menu, secure_desktop)."""
+
+	expected_duration_ms: int = 50
+	"""Expected execution duration in milliseconds."""
+
+	cancellation_supported: bool = False
+	"""Whether long-running executions can be cancelled."""
+
+	retry_safe: bool = False
+	"""Whether safe to automatically retry upon transport failure."""
+
 	def __post_init__(self) -> None:
 		"""Validate metadata."""
 		if not self.name or not self.name.replace("_", "").isalnum():

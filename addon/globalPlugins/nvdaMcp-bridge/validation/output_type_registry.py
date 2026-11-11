@@ -119,6 +119,8 @@ def build_output_type_registry() -> dict[str, dict[str, Any]]:
 					"repeat": {"type": "integer"},
 					"delay_ms": {"type": "integer"},
 					"sent": {"type": "boolean"},
+					"sent_count": {"type": "integer"},
+					"cancelled": {"type": "boolean"},
 				},
 				"required": ["gesture", "repeat", "delay_ms", "sent"],
 				"additionalProperties": False,

@@ -116,19 +116,16 @@ def execute_python(
 	if capture_vars is not None:
 		capture_vars = validate_string_list(capture_vars)
 
-	# Debug: log incoming code shape to help diagnose multiline issues
+	# Sanitize execution logging: never log code snippets, variable names, or execution results
 	try:
 		logHandler.log.debug(
-			"execute_python.received code_len=%d lines=%d snapshot_vars=%s capture_vars=%s repr_head=%s",
+			"execute_python.executing code_len=%d lines=%d snapshot_vars=%s",
 			len(code),
-			code.count("\n"),
+			code.count("\n") + 1,
 			snapshot_vars,
-			capture_vars,
-			repr(code[:200]),
 		)
 	except Exception:
-		# Never fail execution due to logging
-		logHandler.log.debug("execute_python: failed to log incoming code", exc_info=True)
+		pass
 
 	# Import locally to avoid widening module import surface at top-level.
 	import pythonConsole as _pythonConsole
