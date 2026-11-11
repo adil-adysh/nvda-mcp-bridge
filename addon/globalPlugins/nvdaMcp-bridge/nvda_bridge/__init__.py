@@ -43,6 +43,8 @@ from .text import (
 # Re-export UI functions
 from .ui import (
 	send_keyboard,
+	send_single_gesture,
+	resolve_gesture,
 	get_window_title,
 	show_message,
 )
@@ -88,6 +90,8 @@ __all__ = [
 	"speak_text",
 	# UI
 	"send_keyboard",
+	"send_single_gesture",
+	"resolve_gesture",
 	"get_window_title",
 	"show_message",
 	# System

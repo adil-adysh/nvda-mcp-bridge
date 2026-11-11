@@ -74,7 +74,7 @@ Create `.vscode/mcp.json`:
 
 > **Note on Authentication:** The NVDA bridge generates a secure random token at `%APPDATA%\nvda\nvda-mcp-bridge\token.key` upon first start. `nvda-mcp-server` automatically detects this file when running under the same Windows user. If running across user accounts or containers, set `NVDA_BRIDGE_TOKEN` to your token value.
 
-> **Note on Developer Mode:** By default, arbitrary code execution via `execute_python` is disabled for safety. Use standard tools (`speak_text`, `get_current_focus`, `send_keyboard`, etc.) out of the box, or enable developer mode via `POST /admin/developer-mode` with `{"enabled": true}`.
+> **Note on Developer Mode:** By default, arbitrary code execution via `execute_python` is disabled for safety. Use standard tools (`speak_text`, `get_current_focus`, `send_keyboard`, etc.) out of the box. Elevation to developer mode cannot be authorized by remote HTTP callers using only the bridge token; it requires independent local user approval (via a time-limited local approval token in `%APPDATA%\nvda\nvda-mcp-bridge\dev_approval.key` or local approval API).
 
 Then in VS Code:
 

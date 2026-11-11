@@ -24,13 +24,14 @@ import threading
 import time
 import uuid
 from datetime import datetime, timezone
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
+from urllib.parse import urlparse, urlsplit
 from typing import Dict, Any, Optional
 import logHandler
 
 from ..core import ToolRegistry, ToolExecutor
 from ..tools.registry import NVDA_TOOLS_REGISTRY
-from .main_thread_executor import MainThreadExecutor
+from .main_thread_executor import MainThreadExecutor, OperationState
 from .protocol import (
 	API_LEVEL,
 	BRIDGE_VERSION,
@@ -51,11 +52,49 @@ from .protocol import (
 from .response import build_action_error, build_error_envelope
 from .security import (
 	DeveloperModeManager,
+	PermissionPolicy,
 	check_action_permissions,
 	constant_time_compare,
 	get_or_create_bridge_token,
 )
 from ..validation.output_type_registry import build_output_type_registry, validate_output_type_registry
+
+
+class BoundedThreadingHTTPServer(ThreadingHTTPServer):
+	"""Multi-threaded HTTP server with bounded concurrency to prevent resource exhaustion."""
+
+	daemon_threads = True
+	max_concurrency = 16
+
+	def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True):
+		super().__init__(server_address, RequestHandlerClass, bind_and_activate=bind_and_activate)
+		self.concurrency_semaphore = threading.Semaphore(self.max_concurrency)
+
+	def process_request(self, request, client_address):
+		if not self.concurrency_semaphore.acquire(blocking=False):
+			try:
+				request.settimeout(2.0)
+				request.sendall(
+					b"HTTP/1.1 503 Service Unavailable\r\n"
+					b"Content-Type: application/json\r\n"
+					b"Connection: close\r\n\r\n"
+					b'{"success": false, "error": {"code": 5003, "message": "Server concurrency limit reached"}}\n'
+				)
+			except Exception:
+				pass
+			finally:
+				self.shutdown_request(request)
+			return
+
+		def _worker():
+			try:
+				super(BoundedThreadingHTTPServer, self).process_request(request, client_address)
+			finally:
+				self.concurrency_semaphore.release()
+
+		t = threading.Thread(target=_worker, daemon=True, name="NVDA-HTTP-Worker")
+		t.start()
+
 
 
 def _new_request_id() -> str:
@@ -91,16 +130,23 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			logHandler.log.error(f"Error sending response: {e}", exc_info=True)
 
 	def _validate_host_and_origin(self) -> bool:
-		"""Validate Host and Origin headers to prevent DNS rebinding and cross-site attacks."""
-		host_header = self.headers.get("Host", "").split(":")[0].strip().lower()
-		if host_header and host_header not in ("127.0.0.1", "localhost"):
-			logHandler.log.warning(f"Rejected request with unauthorized Host header: {host_header}")
-			return False
+		"""Validate Host and Origin headers using strict URL parsing to prevent DNS rebinding and cross-site attacks."""
+		host_header = self.headers.get("Host", "").strip()
+		if host_header:
+			split_host = urlsplit(f"//{host_header}")
+			hostname = (split_host.hostname or "").lower()
+			if hostname not in ("127.0.0.1", "localhost", "::1"):
+				logHandler.log.warning(f"Rejected request with unauthorized Host header: {host_header}")
+				return False
 
-		origin = self.headers.get("Origin", "")
+		origin = self.headers.get("Origin", "").strip()
 		if origin:
-			origin_clean = origin.rstrip("/").lower()
-			if not (origin_clean.startswith("http://127.0.0.1") or origin_clean.startswith("http://localhost")):
+			parsed_origin = urlparse(origin)
+			if parsed_origin.scheme not in ("http", "https"):
+				logHandler.log.warning(f"Rejected request with unauthorized Origin scheme: {origin}")
+				return False
+			origin_host = (parsed_origin.hostname or "").lower()
+			if origin_host not in ("127.0.0.1", "localhost", "::1"):
 				logHandler.log.warning(f"Rejected cross-origin request from unauthorized Origin: {origin}")
 				return False
 		return True
@@ -275,7 +321,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				pass
 
 	def _handle_developer_mode(self, request_data: Dict[str, Any], request_id: str):
-		"""Handle developer mode toggle requests."""
+		"""Handle developer mode toggle requests with mandatory local user authorization."""
 		enabled = request_data.get("enabled")
 		if not isinstance(enabled, bool):
 			envelope = self._build_error_envelope(
@@ -298,15 +344,48 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			self._send_json_response(envelope, 500)
 			return
 
-		if enabled:
-			manager.enable()
-		else:
+		if not enabled:
+			# Disabling developer mode is always permitted and takes effect immediately
 			manager.disable()
+			self._send_json_response({
+				"success": True,
+				"developer_mode": False,
+				"message": "Developer mode disabled successfully",
+			})
+			return
+
+		# Enabling developer mode requires independent local approval
+		local_approval_token = request_data.get("local_approval_token")
+		if not local_approval_token or not isinstance(local_approval_token, str):
+			envelope = self._build_error_envelope(
+				request_id=request_id,
+				action="admin/developer-mode",
+				code=4003,
+				message="Developer mode elevation requires independent local user approval; "
+				"ordinary bridge token cannot authorize developer mode.",
+			)
+			self._send_json_response(envelope, 403)
+			return
+
+		duration_seconds = request_data.get("duration_seconds")
+		if duration_seconds is not None and (not isinstance(duration_seconds, int) or duration_seconds < 1):
+			duration_seconds = None
+
+		if not manager.approve_with_token(local_approval_token, duration_seconds=duration_seconds):
+			envelope = self._build_error_envelope(
+				request_id=request_id,
+				action="admin/developer-mode",
+				code=4003,
+				message="Invalid, expired, or previously consumed local developer approval token",
+			)
+			self._send_json_response(envelope, 403)
+			return
 
 		self._send_json_response({
 			"success": True,
-			"developer_mode": manager.is_enabled,
-			"message": "Developer mode updated successfully",
+			"developer_mode": True,
+			"time_remaining_seconds": round(manager.time_remaining_seconds, 1),
+			"message": "Developer mode enabled successfully via verified local approval",
 		})
 
 	def _parse_request_body(self, request_id: str) -> Optional[Dict[str, Any]]:
@@ -343,6 +422,16 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				return None
 
 			body = self.rfile.read(content_length)
+			if len(body) < content_length:
+				envelope = self._build_error_envelope(
+					request_id=request_id,
+					action="unknown",
+					code=4101,
+					message=f"Incomplete request body: received {len(body)} of {content_length} bytes",
+				)
+				self._send_json_response(envelope, 400)
+				return None
+
 			request_data = json.loads(body.decode("utf-8"))
 			if not isinstance(request_data, dict):
 				envelope = self._build_error_envelope(
@@ -494,13 +583,15 @@ class NVDAHTTPBridge:
 		bridge_token: Optional[str] = None,
 		tool_registry: Optional[ToolRegistry] = None,
 		developer_mode: bool = False,
+		permission_policy: Optional[PermissionPolicy] = None,
 	):
 		self.host = host
 		self.port = port
 		self.shutdown_event = shutdown_event or threading.Event()
+		self.permission_policy = permission_policy or PermissionPolicy()
 		self.developer_mode_manager = DeveloperModeManager(initial_enabled=developer_mode)
 		self.bridge_token = bridge_token if bridge_token is not None else get_or_create_bridge_token()
-		self.server: Optional[HTTPServer] = None
+		self.server: Optional[BoundedThreadingHTTPServer] = None
 		self.main_thread_executor = MainThreadExecutor(default_timeout=10.0)
 		self.tool_executor = ToolExecutor()
 		self.started_at_monotonic = time.monotonic()
@@ -524,6 +615,15 @@ class NVDAHTTPBridge:
 	@property
 	def is_developer_mode_enabled(self) -> bool:
 		return self.developer_mode_manager.is_enabled
+
+	def grant_permission(self, permission: str) -> None:
+		self.permission_policy.grant(permission)
+
+	def revoke_permission(self, permission: str) -> None:
+		self.permission_policy.revoke(permission)
+
+	def reset_permissions(self) -> None:
+		self.permission_policy.reset()
 
 	@staticmethod
 	def _compute_tool_constraints(meta: Any) -> Dict[str, Any]:
@@ -609,6 +709,7 @@ class NVDAHTTPBridge:
 			metadata=metadata,
 			nvda_status_snapshot=status_snapshot,
 			dev_mode_enabled=self.developer_mode_manager.is_enabled,
+			permission_policy=self.permission_policy,
 			tool_category=tool_category,
 		)
 		if not allowed:
@@ -750,36 +851,30 @@ class NVDAHTTPBridge:
 
 			cancellation_event = threading.Event()
 
-			# Special handling for repeated keyboard gestures:
-			# Execute pacing in the worker thread, dispatching each keystroke to main thread,
-			# so that NVDA main thread is NEVER slept on or blocked.
-			if (
-				action_name == "send_keyboard"
-				and int(resolved_params.get("repeat", 1)) > 1
-				and int(resolved_params.get("delay_ms", 0)) > 0
-			):
-				def _dispatch_keystroke():
-					single_params = dict(resolved_params)
-					single_params["repeat"] = 1
-					single_params["delay_ms"] = 0
-					return self.main_thread_executor.execute(
-						lambda: self.tool_executor.execute_and_serialize(tool, single_params),
-						timeout=effective_timeout,
-						cancellation_event=cancellation_event,
-					)
-
-				from .. import nvda_bridge
+			# Safe execution of keyboard sequences:
+			# Sequence orchestration and pacing delays run in worker thread under input lock.
+			# Individual keystrokes are dispatched directly to main thread without reacquiring lock.
+			if action_name == "send_keyboard":
+				from ..nvda_bridge import ui as nvda_ui
 
 				repeat = int(resolved_params.get("repeat", 1))
 				delay_ms = int(resolved_params.get("delay_ms", 0))
 				gesture = str(resolved_params.get("gesture", ""))
 
-				kb_result = nvda_bridge.send_keyboard(
+				def _dispatch_single_gesture(resolved_gesture: Any):
+					return self.main_thread_executor.execute(
+						lambda: nvda_ui.send_single_gesture(resolved_gesture),
+						timeout=effective_timeout,
+						cancellation_event=cancellation_event,
+					)
+
+				kb_result = nvda_ui.send_keyboard(
 					gesture=gesture,
 					repeat=repeat,
 					delay_ms=delay_ms,
 					cancellation_event=cancellation_event,
-					main_thread_fn=_dispatch_keystroke,
+					main_thread_fn=_dispatch_single_gesture,
+					timeout=effective_timeout,
 				)
 				result = {"success": True, "output": kb_result}
 			else:
@@ -901,11 +996,12 @@ class NVDAHTTPBridge:
 	def start(self):
 		"""Start the HTTP bridge server (blocking) with robust error handling."""
 		try:
-			self.server = HTTPServer((self.host, self.port), NVDABridgeRequestHandler)
+			self.server = BoundedThreadingHTTPServer((self.host, self.port), NVDABridgeRequestHandler)
 			self.server.timeout = 1.0
 
 			self.server.bridge_token = self.bridge_token
 			self.server.developer_mode_manager = self.developer_mode_manager
+			self.server.permission_policy = self.permission_policy
 			self.server.execute_action = self.execute_action
 			self.server.list_tools = self._list_tools
 			self.server.list_output_types = self._list_output_types
@@ -929,7 +1025,7 @@ class NVDAHTTPBridge:
 			logHandler.log.info("NVDA HTTP Bridge stopped")
 
 		except OSError as e:
-			if "address already in use" in str(e).lower() or e.errno == 10048:
+			if "address already in use" in str(e).lower() or getattr(e, "errno", 0) == 10048:
 				logHandler.log.error(f"Port {self.port} already in use. Cannot start bridge.", exc_info=True)
 			else:
 				logHandler.log.error(f"Socket error starting bridge: {e}", exc_info=True)
@@ -939,11 +1035,12 @@ class NVDAHTTPBridge:
 			raise
 
 	def stop(self):
-		"""Stop the bridge server gracefully and reset developer mode."""
+		"""Stop the bridge server gracefully and reset developer mode and permissions."""
 		try:
 			logHandler.log.info("Stopping NVDA HTTP Bridge...")
 			self.shutdown_event.set()
 			self.developer_mode_manager.reset()
+			self.permission_policy.reset()
 
 			if self.server:
 				try:
