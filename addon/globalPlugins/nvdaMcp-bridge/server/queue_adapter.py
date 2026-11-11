@@ -23,6 +23,6 @@ class NVDAQueueAdapter(MainThreadQueue):
 	def queue(self, func: Callable[[], Any]) -> None:
 		try:
 			queueHandler.queueFunction(queueHandler.eventQueue, func)
-		except Exception as e:
+		except Exception:
 			logHandler.log.error("Failed to queue function to NVDA main thread", exc_info=True)
 			raise

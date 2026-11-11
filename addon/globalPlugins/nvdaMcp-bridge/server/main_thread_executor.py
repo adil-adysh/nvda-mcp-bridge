@@ -7,7 +7,7 @@ All NVDA API calls must run on NVDA's main thread.
 import threading
 from dataclasses import dataclass
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any
 
 import logHandler  # type: ignore[reportMissingImports]
 
