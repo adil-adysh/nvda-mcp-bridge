@@ -147,6 +147,43 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		except Exception as e:
 			logHandler.log.error(f"NVDA HTTP Bridge error: {e}", exc_info=True)
 
+	def _recordEvent(self, kind, obj):
+		"""Append to the bridge's event journal. Must stay cheap and safe."""
+		bridge = getattr(self, "_bridge", None)
+		if bridge is None:
+			return
+		journal = getattr(bridge, "event_journal", None)
+		if journal is None:
+			return
+		try:
+			journal.record(kind, obj)
+		except Exception:  # noqa: BLE001 — never break NVDA's event chain
+			pass
+
+	def event_gainFocus(self, obj, nextHandler):
+		self._recordEvent("focus", obj)
+		nextHandler()
+
+	def event_nameChange(self, obj, nextHandler):
+		self._recordEvent("name", obj)
+		nextHandler()
+
+	def event_valueChange(self, obj, nextHandler):
+		self._recordEvent("value", obj)
+		nextHandler()
+
+	def event_stateChange(self, obj, nextHandler):
+		self._recordEvent("state", obj)
+		nextHandler()
+
+	def event_show(self, obj, nextHandler):
+		self._recordEvent("show", obj)
+		nextHandler()
+
+	def event_foreground(self, obj, nextHandler):
+		self._recordEvent("foreground", obj)
+		nextHandler()
+
 	def terminate(self):
 		"""Clean shutdown of HTTP bridge with comprehensive error handling"""
 		try:

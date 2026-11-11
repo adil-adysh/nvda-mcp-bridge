@@ -25,7 +25,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, urlsplit
+from urllib.parse import parse_qs, urlparse, urlsplit
 from typing import Dict, Any, Optional
 import logHandler
 
@@ -52,6 +52,7 @@ from .protocol import (
 	validate_tools_discovery_payload,
 	build_tools_payload,
 )
+from .events import EventJournal
 from .response import build_action_error, build_error_envelope
 from .security import (
 	DeveloperModeManager,
@@ -66,6 +67,10 @@ from ..validation.output_type_registry import build_output_type_registry, valida
 #: Upper bound on how much of an oversized body is read and discarded before
 #: answering 413, so the response reaches the client instead of a socket reset.
 _MAX_DRAIN_BYTES = 8 * 1024 * 1024
+
+#: Longest a /events long-poll may hold a worker thread. The bridge serves a
+#: bounded thread pool, so waiters must be short-lived and few.
+_MAX_EVENT_WAIT_MS = 30000
 
 
 class BoundedThreadingHTTPServer(ThreadingHTTPServer):
@@ -260,6 +265,15 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				self._handle_tools_discovery()
 				return
 
+			route = urlsplit(self.path)
+			if route.path == "/state":
+				self._handle_state(route)
+				return
+
+			if route.path == "/events":
+				self._handle_events(route)
+				return
+
 			self._send_json_response({"error": "Not found"}, 404)
 		except Exception as e:
 			logHandler.log.error(f"Error in GET handler: {e}", exc_info=True)
@@ -274,6 +288,55 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				self._send_json_response(envelope, 500)
 			except Exception:
 				pass
+
+	def _require_auth(self, action: str) -> bool:
+		"""Send a 401 envelope when the bridge token is missing or wrong."""
+		if self._check_auth():
+			return True
+		envelope = self._build_error_envelope(
+			request_id=_new_request_id(),
+			action=action,
+			code=4001,
+			message="Unauthorized (invalid or missing token)",
+		)
+		self._send_json_response(envelope, 401)
+		return False
+
+	def _handle_state(self, route) -> None:
+		"""Serve the current observation as a single document."""
+		if not self._require_auth("state"):
+			return
+		self._send_json_response(self.server.get_state_payload())
+
+	def _handle_events(self, route) -> None:
+		"""Serve event history, or block until the version advances.
+
+		``since`` is a cursor; ``timeout_ms > 0`` turns the call into a long-poll.
+		``timeout_ms`` is capped so a client cannot pin a worker thread forever.
+		"""
+		if not self._require_auth("events"):
+			return
+
+		query = parse_qs(route.query)
+
+		def _int_param(name: str, default: int) -> int:
+			try:
+				return int(query.get(name, [default])[0])
+			except (TypeError, ValueError):
+				return default
+
+		since = max(0, _int_param("since", 0))
+		limit = max(1, min(1000, _int_param("limit", 100)))
+		timeout_ms = max(0, min(_MAX_EVENT_WAIT_MS, _int_param("timeout_ms", 0)))
+		kinds = [kind for kind in ",".join(query.get("kinds", [""])).split(",") if kind]
+
+		payload = self.server.event_journal.wait(
+			since=since,
+			timeout_ms=timeout_ms,
+			limit=limit,
+			kinds=kinds,
+		)
+		self._send_json_response(payload)
 
 	def _handle_tools_discovery(self):
 		if not self._check_auth():
@@ -675,6 +738,9 @@ class NVDAHTTPBridge:
 		self.port = port
 		self.shutdown_event = shutdown_event or threading.Event()
 		self.permission_policy = permission_policy or PermissionPolicy()
+		# Versioned UI event journal: backs /events (long-poll and history) and
+		# the MCP companion's resource-update notifications.
+		self.event_journal = EventJournal()
 		if permission_policy is None:
 			# Restore the capability set the user saved through the settings panel.
 			# An unset value keeps the conservative in-memory defaults.
@@ -780,6 +846,42 @@ class NVDAHTTPBridge:
 
 	def _bridge_metadata(self) -> Dict[str, Any]:
 		return {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL}
+
+	def get_state_payload(self, timeout: float = 2.0) -> Dict[str, Any]:
+		"""Collect the current observation for the ``nvda://ui/state`` resource.
+
+		NVDA API calls must run on the main thread; the caller is an HTTP worker.
+		"""
+		from ..nvda_bridge import focus as nvda_focus
+		from ..nvda_bridge import ui as nvda_ui
+
+		def _collect() -> Dict[str, Any]:
+			try:
+				focus = nvda_focus.get_current_focus()
+			except Exception as e:  # noqa: BLE001
+				focus = {"error": str(e)}
+			try:
+				window = nvda_ui.get_window_title()
+			except Exception as e:  # noqa: BLE001
+				window = {"error": str(e)}
+			return {
+				"state_version": self.event_journal.version,
+				"focus": focus,
+				"window": window,
+				"nvda": self.get_nvda_status(),
+			}
+
+		return self.main_thread_executor.execute(_collect, timeout=timeout)
+
+	def get_events_payload(
+		self,
+		since: int = 0,
+		timeout_ms: int = 0,
+		limit: int = 100,
+		kinds: Optional[list] = None,
+	) -> Dict[str, Any]:
+		"""Thin wrapper so the journal is reachable through the bridge object."""
+		return self.event_journal.wait(since=since, timeout_ms=timeout_ms, limit=limit, kinds=kinds)
 
 	def _check_action_allowed(
 		self,
@@ -1102,6 +1204,9 @@ class NVDAHTTPBridge:
 			self.server.get_nvda_status = self.get_nvda_status
 			self.server.get_nvda_status_snapshot = self.get_nvda_status_snapshot
 			self.server.get_health_payload = self.get_health_payload
+			self.server.get_state_payload = self.get_state_payload
+			self.server.get_events_payload = self.get_events_payload
+			self.server.event_journal = self.event_journal
 
 			logHandler.log.info(f"NVDA HTTP Bridge listening on {self.host}:{self.port}")
 			logHandler.log.info(f"Bridge token authentication active on header {TOKEN_HEADER}")

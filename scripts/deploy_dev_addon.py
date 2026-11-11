@@ -14,6 +14,8 @@ SRC = REPO / "addon" / "globalPlugins" / "nvdaMcp-bridge"
 ADDON_ROOT = Path(os.environ["APPDATA"]) / "nvda" / "addons" / "nvdaMcpBridge" / "globalPlugins"
 
 CHANGED = [
+    r"__init__.py",
+    r"server\events.py",
     r"core\__init__.py",
     r"core\base.py",
     r"core\error.py",
