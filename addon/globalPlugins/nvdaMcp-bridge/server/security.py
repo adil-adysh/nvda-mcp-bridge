@@ -270,10 +270,89 @@ class PermissionPolicy:
 			self._granted = set(DEFAULT_PERMISSIONS)
 		logHandler.log.info("SECURITY AUDIT: Reset bridge permissions to default")
 
+	def set_granted(self, permissions: Iterable[str]) -> None:
+		"""Replace the granted set, ignoring unknown capability names."""
+		normalized = {p.strip().lower() for p in permissions if p and p.strip()}
+		with self._lock:
+			self._granted = {p for p in normalized if p in ALL_PERMISSIONS}
+		logHandler.log.info(f"SECURITY AUDIT: Applied permission set {sorted(self.get_granted())}")
+
 	def get_granted(self) -> frozenset[str]:
 		"""Return a snapshot of currently granted permissions."""
 		with self._lock:
 			return frozenset(self._granted)
+
+
+# Capability permissions the user may persist through the settings panel.
+# "developer" is deliberately excluded: it is time-limited and must always
+# require fresh local approval, never a stored grant.
+PERSISTABLE_PERMISSIONS = frozenset({
+	PERMISSION_READ_ONLY,
+	PERMISSION_SPEECH_OUTPUT,
+	PERMISSION_INPUT_CONTROL,
+	PERMISSION_DIAGNOSTICS,
+	PERMISSION_NVDA_LIFECYCLE,
+})
+
+CONFIG_SECTION = "nvdaMcpBridge"
+CONFIG_PERMISSIONS_KEY = "permissions"
+
+
+def register_config_spec() -> None:
+	"""Register the persistent settings section with NVDA's configuration system.
+
+	Must run before the section is read or written. Safe to call repeatedly and
+	safe to call outside NVDA (it simply does nothing when config is absent).
+	"""
+	try:
+		import config
+
+		conf = getattr(config, "conf", None)
+		if conf is None or not hasattr(conf, "spec"):
+			return
+		conf.spec.setdefault(CONFIG_SECTION, {CONFIG_PERMISSIONS_KEY: "string"})
+	except Exception as e:  # pragma: no cover - depends on NVDA runtime
+		logHandler.log.debug(f"NVDA MCP Bridge: could not register config spec: {e}")
+
+
+def load_persisted_permissions() -> Optional[frozenset[str]]:
+	"""Return the saved permission set, or None when nothing was ever saved.
+
+	An empty or unreadable value means "no stored preference", so callers keep
+	the safe defaults rather than starting with no capabilities at all.
+	"""
+	try:
+		import config
+
+		raw = config.conf[CONFIG_SECTION][CONFIG_PERMISSIONS_KEY]
+	except Exception:
+		return None
+
+	if not isinstance(raw, str) or not raw.strip():
+		return None
+
+	requested = {item.strip().lower() for item in raw.split(",") if item.strip()}
+	accepted = {p for p in requested if p in PERSISTABLE_PERMISSIONS}
+	# read_only and speech_output are the baseline capabilities, never toggleable
+	# in the UI, so a stored preference always keeps them enabled.
+	return frozenset(accepted | set(DEFAULT_PERMISSIONS))
+
+
+def save_persisted_permissions(granted: Iterable[str]) -> bool:
+	"""Store the given capability set so it survives NVDA restarts and reloads."""
+	persistable = sorted({p.strip().lower() for p in granted if p and p.strip()} & PERSISTABLE_PERMISSIONS)
+	try:
+		import config
+
+		config.conf[CONFIG_SECTION][CONFIG_PERMISSIONS_KEY] = ",".join(persistable)
+		save = getattr(config.conf, "save", None)
+		if callable(save):
+			save()
+		logHandler.log.info(f"SECURITY AUDIT: Persisted bridge permissions {persistable}")
+		return True
+	except Exception as e:  # pragma: no cover - depends on NVDA runtime
+		logHandler.log.warning(f"NVDA MCP Bridge: could not persist permissions: {e}")
+		return False
 
 
 class DeveloperModeManager:

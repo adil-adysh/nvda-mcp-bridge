@@ -51,6 +51,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		try:
 			# Import HTTP bridge module
 			from .server import http_bridge as nvda_http_bridge
+			from .server.security import register_config_spec
+
+			# Register the persistent settings section before the bridge reads it
+			# so capability grants survive NVDA restarts and plugin reloads.
+			register_config_spec()
 
 			# Create bridge instance
 			self._bridge = nvda_http_bridge.NVDAHTTPBridge(

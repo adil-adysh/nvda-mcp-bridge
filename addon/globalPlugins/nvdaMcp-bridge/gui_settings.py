@@ -34,6 +34,7 @@ from .server.security import (
 	PERMISSION_NVDA_LIFECYCLE,
 	PERMISSION_READ_ONLY,
 	PERMISSION_SPEECH_OUTPUT,
+	save_persisted_permissions,
 )
 
 # Defensive imports conforming to official NVDA settingsDialogs architecture
@@ -641,6 +642,8 @@ if _GUI_AVAILABLE:
 				self.inputControlCheckbox.SetValue(policy.is_granted(PERMISSION_INPUT_CONTROL))
 				self.diagnosticsCheckbox.SetValue(policy.is_granted(PERMISSION_DIAGNOSTICS))
 				self.lifecycleCheckbox.SetValue(policy.is_granted(PERMISSION_NVDA_LIFECYCLE))
+				# Persist the reset too, otherwise the old grants come back on restart.
+				save_persisted_permissions(policy.get_granted())
 			self._refresh_status()
 
 		def onInstallCompanion(self, event):
@@ -664,6 +667,9 @@ if _GUI_AVAILABLE:
 		def onSave(self):
 			policy = getattr(self._bridge, "permission_policy", None)
 			if not policy:
+				logHandler.log.warning(
+					"NVDA MCP Bridge: could not save permissions because no active bridge was found"
+				)
 				return
 
 			if self.inputControlCheckbox.IsChecked():
@@ -680,6 +686,9 @@ if _GUI_AVAILABLE:
 				policy.grant(PERMISSION_NVDA_LIFECYCLE)
 			else:
 				policy.revoke(PERMISSION_NVDA_LIFECYCLE)
+
+			# Store the choice so it survives NVDA restarts and plugin reloads.
+			save_persisted_permissions(policy.get_granted())
 
 			logHandler.log.info("Saved NVDA MCP Bridge permission configuration")
 else:
