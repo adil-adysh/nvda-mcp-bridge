@@ -305,7 +305,7 @@ New in this plan:
 | `invoke` | `(ref, action: null \| name)` | yes |
 | `set_value` | `(ref, value)` — platform `SetValue` when the object exposes it, keyboard otherwise | yes |
 | `focus` | `(ref)` | yes |
-| `press` | `(keys, repeat=1, delay_ms=0)` | yes, default `quiet` |
+| `press` | `(keys, repeat=1, delay_ms=0, expect=null)` | yes, default `quiet` |
 | `read` | `(ref = null, scope="line" \| "selection" \| "document" \| "subtree", max_chars=4000)` | no |
 | `navigate` | `(direction="next" \| "previous" \| "first" \| "last" \| "parent" \| "child", ref = null)` | yes |
 | `scroll` | `(ref = null, direction, amount="page" \| "line")` | yes |
@@ -327,6 +327,41 @@ applications do expose `ValuePattern`, so the platform path is worth having — 
 on the web the honest implementation is focus, select-all, type, and the tool
 must say so rather than pretend it set a value atomically.
 
+### 4.1 The result envelope
+
+Every tool returns the same shape, and it is the same for reads and actions. Without
+this a caller cannot tell "the call ran" from "the UI did what I meant", which is
+exactly how `send_keyboard` came to report `completed: true` while the focus read
+was still stale.
+
+| Field | Where | Meaning |
+| --- | --- | --- |
+| `ok` | all | the call ran; says nothing about the UI |
+| `state_version` | all | the version this result is valid for, so staleness is detectable without another call |
+| `changed` | actions | whether the projection actually differed — measured, not assumed |
+| `delta` | actions | *what* differed, as a compact diff (§3.2) |
+| `settled_ms` | actions | how long until the observation was stable |
+| `uncertain` | actions | delivery could not be confirmed; this is the field that must abort a replay |
+| `completed` | actions | reserved for "the stated `expect` was confirmed" — never for "input was posted" |
+
+`send_keyboard`'s current `completed` means *posted* and must be renamed
+`dispatched`. Dispatch facts (`sent`, `sent_count`, `gesture`) stay as they are.
+
+Actions also accept an optional `expect`, e.g. `expect={"focus.name": "Search"}`,
+returning `completed: true|false` plus the delta either way. Two consumers want
+the same thing: a replay engine verifying step 3, and a test asserting an add-on
+behaves. Without it both have to re-derive intent from the diff after the fact.
+
+The delta is deliberately not the observation. A full browser projection is
+vertices of ancestors plus states plus text — easily a thousand tokens on every
+keystroke. A delta is typically one to three fields, and the projection it is
+diffed against already runs for settle at 13.9 ms median, so it is nearly free.
+
+Adding these fields is an `api_level: 2` change on both the add-on and the
+companion: v1 output schemas are closed (`additionalProperties: false`). P1 must
+therefore produce the projection and the diff internally even though nothing on
+the wire carries them yet — the envelope is then a serialization, not a refactor.
+
 ---
 
 ## 5. Phases
@@ -336,15 +371,16 @@ against a live NVDA.
 
 ### P1 — Observation core (no new tools, no contract change)
 
-* `server/state.py`: normaliser, coalescer, projection, `revision` and
-  `state_version`.
+* `server/state.py`: normaliser, coalescer, projection, diff, `revision` and
+  `state_version`. The diff is the payload the §4.1 envelope will carry later, so
+  it is built here rather than retrofitted.
 * Recorder wired to the 16 kinds; journal stores *transitions*, not raw events.
 * `GET /state` serves the projection; `GET /events` keeps raw events behind a
   debug flag for `get_events`.
 
 Pass: typing `abc` in Edge produces at most 2 transitions and 1 `state_version`
-bump; an idle minute produces zero bumps; `observe`-equivalent projection stays
-under 10 ms cold, 1 ms warm.
+bump; an idle minute produces zero bumps; a focus move yields a delta naming the
+old and new name; projection stays under 20 ms cold, 1 ms warm.
 
 ### P2 — Actions, refs, settle
 
@@ -447,3 +483,26 @@ Still unmeasured, and worth checking before the phases that depend on them:
   probe ran for seconds, not hours.
 * **Non-Chromium browsers** (Firefox/Gecko) and **terminal emulators**, which
   carry their own event quirks and are common computer-use targets.
+
+## 8. Deferred: reusing a solved task
+
+A recorded task cannot be replayed as a list of calls: `ref`s are version-bound by
+design, element indices shift, and keystrokes encode layout rather than intent.
+The replayable artifact is a **step with a selector and a postcondition** —
+"invoke the button named Run action inside the document, expect the live region to
+change" — and that is exactly what `expect` (§4.1) and selector-based refs (§3.4)
+exist to make expressible.
+
+Two consequences for the phases above, and no phase of its own yet:
+
+* **Record the intent, not the keystroke.** A recorded Tab that moved focus to the
+  search field generalizes to `focus(selector=…)`, not to `press("tab")`. Keyboard
+  steps are how the model discovers intent, and are tagged least-replayable
+  because Tab order depends on layout, locale and visible controls.
+* **A cache key needs a fingerprint**, not a process: app name, window class, URL
+  host, and a structural digest of the reachable nodes; anything else marks the
+  entry stale rather than replaying it silently.
+
+Ordering note: this is worth building only after P2, because a recorder with
+nothing to select by records keystrokes, and keystrokes are the one thing that
+does not replay.
