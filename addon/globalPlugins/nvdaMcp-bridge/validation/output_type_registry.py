@@ -36,8 +36,16 @@ def _tool_response_schema(data_schema: dict[str, Any]) -> dict[str, Any]:
 def build_output_type_registry() -> dict[str, dict[str, Any]]:
 	"""Build all named output types exposed by GET /tools."""
 	return {
-		"ToolResponse": _tool_response_schema(
-			{"type": "object", "properties": {}, "additionalProperties": True}
+		"ReloadResult": _tool_response_schema(
+			{
+				"type": "object",
+				"properties": {
+					"status": {"type": "string"},
+					"message": {"type": "string"},
+				},
+				"required": ["status"],
+				"additionalProperties": False,
+			}
 		),
 		"ObjectInfo": _tool_response_schema(
 			{
@@ -49,6 +57,8 @@ def build_output_type_registry() -> dict[str, dict[str, Any]]:
 					"value": {"type": "string"},
 					"description": {"type": "string"},
 					"states": {"type": "string"},
+					"windowClassName": {"type": "string"},
+					"windowControlID": {"type": "integer"},
 				},
 				"required": ["name", "role", "roleText", "value", "description", "states"],
 				"additionalProperties": False,
@@ -248,39 +258,18 @@ def build_output_type_registry() -> dict[str, dict[str, Any]]:
 		),
 		"PythonExecutionResult": _tool_response_schema(
 			{
-				"anyOf": [
-					{
-						"type": "object",
-						"properties": {
-							"output": {"type": "string"},
-							"result": {"type": ["string", "null"]},
-							"vars": {"type": "object", "additionalProperties": True},
-						},
-						"required": ["output", "result"],
-						"additionalProperties": False,
+				"type": "object",
+				"properties": {
+					"stdout": {"type": "string"},
+					"stderr": {"type": "string"},
+					"result": {"type": ["string", "null"]},
+					"captured_variables": {
+						"type": ["object", "null"],
+						"additionalProperties": True,
 					},
-					{
-						"type": "object",
-						"properties": {
-							"stdout": {"type": "string"},
-							"stderr": {"type": "string"},
-							"result": {},
-							"captured_variables": {"type": "object", "additionalProperties": True},
-							"execution_error": {
-								"type": ["object", "null"],
-								"properties": {
-									"type": {"type": "string"},
-									"message": {"type": "string"},
-									"traceback": {"type": "string"},
-								},
-								"required": ["type", "message"],
-								"additionalProperties": False,
-							},
-						},
-						"required": ["stdout", "stderr"],
-						"additionalProperties": False,
-					},
-				],
+				},
+				"required": ["stdout", "stderr"],
+				"additionalProperties": False,
 			}
 		),
 	}

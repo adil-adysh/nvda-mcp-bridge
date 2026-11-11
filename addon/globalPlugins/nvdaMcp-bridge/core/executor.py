@@ -13,6 +13,7 @@ Fails fast on any mismatch.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Any, TypeVar, Generic
 
 from .base import Tool
@@ -59,7 +60,14 @@ class ExecutionResult(Generic[T]):
 		return f"<ExecutionResult error={self.error.error_code.value}>"
 
 	def as_dict(self) -> dict[str, Any]:
-		"""Serialize to transport format."""
+		"""Serialize to transport format.
+
+		Optional dataclass fields that were left at their default of ``None``
+		are omitted from the payload. A handler that returns ``{"stdout": ...}``
+		should not surface spurious ``captured_variables: null`` / ``execution_error:
+		null`` keys, which would otherwise fail JSON Schema validation on the
+		consumer (Rust) side.
+		"""
 		if self.success:
 			# For Pydantic models, use model_dump()
 			if hasattr(self.output, "model_dump"):
@@ -67,7 +75,20 @@ class ExecutionResult(Generic[T]):
 					"success": True,
 					"output": self.output.model_dump(),
 				}
-			# For dataclasses/regular objects, use __dict__
+			# For dataclasses, serialize field-by-field and drop unset optional
+			# fields (those with a default) whose value is None.
+			if dataclasses.is_dataclass(self.output) and not isinstance(self.output, type):
+				data: dict[str, Any] = {}
+				for field in dataclasses.fields(self.output):
+					value = getattr(self.output, field.name)
+					if value is None and field.default is not dataclasses.MISSING:
+						continue
+					data[field.name] = value
+				return {
+					"success": True,
+					"output": data,
+				}
+			# For regular objects, use __dict__
 			if hasattr(self.output, "__dict__"):
 				return {
 					"success": True,

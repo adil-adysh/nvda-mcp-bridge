@@ -4,7 +4,7 @@
   "bridge_version": "1.0.0",
   "api_level": 1,
   "types": {
-    "ToolResponse": {
+    "ReloadResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
       "properties": {
@@ -13,8 +13,18 @@
         },
         "data": {
           "type": "object",
-          "properties": {},
-          "additionalProperties": true
+          "properties": {
+            "status": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": false
         },
         "error": {
           "type": "object",
@@ -68,6 +78,12 @@
             },
             "states": {
               "type": "string"
+            },
+            "windowClassName": {
+              "type": "string"
+            },
+            "windowControlID": {
+              "type": "integer"
             }
           },
           "required": [
@@ -903,74 +919,33 @@
           "type": "boolean"
         },
         "data": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "output": {
-                  "type": "string"
-                },
-                "result": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "vars": {
-                  "type": "object",
-                  "additionalProperties": true
-                }
-              },
-              "required": [
-                "output",
-                "result"
-              ],
-              "additionalProperties": false
+          "type": "object",
+          "properties": {
+            "stdout": {
+              "type": "string"
             },
-            {
-              "type": "object",
-              "properties": {
-                "stdout": {
-                  "type": "string"
-                },
-                "stderr": {
-                  "type": "string"
-                },
-                "result": {},
-                "captured_variables": {
-                  "type": "object",
-                  "additionalProperties": true
-                },
-                "execution_error": {
-                  "type": [
-                    "object",
-                    "null"
-                  ],
-                  "properties": {
-                    "type": {
-                      "type": "string"
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "traceback": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "type",
-                    "message"
-                  ],
-                  "additionalProperties": false
-                }
-              },
-              "required": [
-                "stdout",
-                "stderr"
+            "stderr": {
+              "type": "string"
+            },
+            "result": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "captured_variables": {
+              "type": [
+                "object",
+                "null"
               ],
-              "additionalProperties": false
+              "additionalProperties": true
             }
-          ]
+          },
+          "required": [
+            "stdout",
+            "stderr"
+          ],
+          "additionalProperties": false
         },
         "error": {
           "type": "object",
@@ -1006,16 +981,23 @@
         "type": "object",
         "properties": {
           "code": {
-            "type": "integer"
+            "type": "string"
           },
           "snapshot_vars": {
             "type": "boolean"
           },
           "capture_vars": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false,
@@ -1081,7 +1063,21 @@
             "type": "integer"
           },
           "filter_level": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "DEBUG",
+                  "INFO",
+                  "WARNING",
+                  "ERROR",
+                  "CRITICAL"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "use_tail": {
             "type": "boolean"
@@ -1142,7 +1138,12 @@
             "type": "integer"
           },
           "addon_scope": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "running",
+              "available",
+              "all"
+            ]
           }
         },
         "additionalProperties": false
@@ -1159,7 +1160,12 @@
         "type": "object",
         "properties": {
           "source": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "focus",
+              "navigator",
+              "desktop"
+            ]
           }
         },
         "additionalProperties": false
@@ -1176,7 +1182,12 @@
         "type": "object",
         "properties": {
           "target": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "focus",
+              "navigator",
+              "desktop"
+            ]
           },
           "include_relations": {
             "type": "boolean"
@@ -1196,7 +1207,12 @@
         "type": "object",
         "properties": {
           "scope": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "running",
+              "available",
+              "all"
+            ]
           }
         },
         "additionalProperties": false
@@ -1213,7 +1229,11 @@
         "type": "object",
         "properties": {
           "direction": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "next",
+              "previous"
+            ]
           }
         },
         "additionalProperties": false,
@@ -1247,7 +1267,7 @@
         "properties": {},
         "additionalProperties": false
       },
-      "outputType": "ToolResponse"
+      "outputType": "ReloadResult"
     },
     {
       "name": "restart_nvda",
@@ -1345,7 +1365,12 @@
         "type": "object",
         "properties": {
           "target": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "focus",
+              "navigator",
+              "desktop"
+            ]
           },
           "max_depth": {
             "type": "integer"

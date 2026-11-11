@@ -7,7 +7,7 @@ boilerplate while preserving tool metadata, schemas, and behavior.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Type
+from typing import Any, Callable
 
 from ..core import ToolMetadata, TypedToolImpl
 from . import handlers as tool_handlers
@@ -132,7 +132,7 @@ ALL_NVDA_TOOLS = [
     ),
     TypedToolImpl.from_inputless(
         ToolMetadata(name="reload_plugins", version="1.0.0", description="Reload all global plugins and app modules from scratchpad.", category="system"),
-        models.ToolResponse,
+        models.ReloadResult,
         tool_handlers.reload_plugins,
     ),
     TypedToolImpl.from_handler(

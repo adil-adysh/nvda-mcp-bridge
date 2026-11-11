@@ -8,7 +8,7 @@ Zero-dependency models using stdlib dataclasses.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 
 # ============================================================================
@@ -27,7 +27,7 @@ class EmptyInput:
 class MoveFocusInput:
 	"""Move focus to next or previous object."""
 
-	direction: str  # 'next' or 'previous'
+	direction: Literal["next", "previous"]
 
 
 @dataclass(frozen=True)
@@ -57,7 +57,7 @@ class SendKeyboardInput:
 class InspectObjectInput:
 	"""Inspect object with rich metadata."""
 
-	target: str = "focus"  # 'focus', 'navigator', or 'desktop'
+	target: Literal["focus", "navigator", "desktop"] = "focus"
 	include_relations: bool = False
 
 
@@ -65,7 +65,7 @@ class InspectObjectInput:
 class WalkObjectTreeInput:
 	"""Walk object tree with bounds."""
 
-	target: str = "focus"  # 'focus', 'navigator', or 'desktop'
+	target: Literal["focus", "navigator", "desktop"] = "focus"
 	max_depth: int = 3
 	max_children: int = 20
 
@@ -81,14 +81,14 @@ class GetFocusLineageInput:
 class InspectAppModuleInput:
 	"""Inspect app module metadata."""
 
-	source: str = "focus"  # 'focus', 'navigator', or 'desktop'
+	source: Literal["focus", "navigator", "desktop"] = "focus"
 
 
 @dataclass(frozen=True)
 class ListLoadedAddonsInput:
 	"""List loaded addons."""
 
-	scope: str = "running"  # 'running', 'available', or 'all'
+	scope: Literal["running", "available", "all"] = "running"
 
 
 @dataclass(frozen=True)
@@ -100,7 +100,7 @@ class HealthSnapshotInput:
 	include_tree: bool = False
 	tree_depth: int = 2
 	tree_max_children: int = 10
-	addon_scope: str = "running"
+	addon_scope: Literal["running", "available", "all"] = "running"
 
 
 @dataclass(frozen=True)
@@ -116,7 +116,7 @@ class GetLogsInput:
 	"""Get NVDA logs."""
 
 	max_lines: int = 100
-	filter_level: Optional[str] = None  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+	filter_level: Optional[Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]] = None
 	use_tail: bool = True
 
 
@@ -144,6 +144,8 @@ class ObjectInfo:
 	value: str
 	description: str
 	states: str
+	windowClassName: str = ""
+	windowControlID: int = 0
 
 
 @dataclass(frozen=True)
@@ -292,15 +294,13 @@ class PythonExecutionResult:
 
 	stdout: str = ""
 	stderr: str = ""
-	result: Optional[Any] = None
+	result: Optional[str] = None
 	captured_variables: Optional[dict[str, Any]] = None
-	execution_error: Optional[dict[str, Any]] = None
 
 
 @dataclass(frozen=True)
-class ToolResponse:
-	"""Generic tool response."""
+class ReloadResult:
+	"""Result of reloading global plugins and app modules."""
 
 	status: str
 	message: str = ""
-	data: Optional[dict[str, Any]] = None

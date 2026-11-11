@@ -313,6 +313,8 @@ def get_navigator_object() -> Dict[str, Any]:
 		"value": data["value"],
 		"description": data["description"],
 		"states": data["states"],
+		"windowClassName": data["windowClassName"],
+		"windowControlID": data["windowControlID"],
 	}
 
 
@@ -337,6 +339,8 @@ def get_desktop_object() -> Dict[str, Any]:
 		"value": data["value"],
 		"description": data["description"],
 		"states": data["states"],
+		"windowClassName": data["windowClassName"],
+		"windowControlID": data["windowControlID"],
 	}
 
 

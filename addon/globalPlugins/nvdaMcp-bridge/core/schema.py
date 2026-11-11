@@ -7,7 +7,7 @@ No dynamic schema construction. All schemas declared explicitly.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, TypeVar, Generic, Type
+from typing import Any, TypeVar, Generic, Type, Literal
 
 try:
 	from pydantic import BaseModel, ValidationError as PydanticValidationError
@@ -18,6 +18,44 @@ except ImportError:
 
 
 T = TypeVar("T")
+
+
+def _hint_to_json_schema(field_type: Any) -> dict[str, Any]:
+	"""Map a Python type hint to a JSON Schema Draft 7 fragment.
+
+	Handles ``str``, ``int``, ``bool``, ``float``, ``list[...]`` and
+	``Literal[...]`` (emitted as an ``enum``). Unsupported hints fall back to a
+	permissive ``object``.
+	"""
+	import typing
+
+	origin = typing.get_origin(field_type)
+	args = typing.get_args(field_type)
+
+	# Literal[...] -> {"type": "string", "enum": [...]}
+	if origin is Literal or str(origin) == "typing.Literal":
+		values = [arg for arg in args]
+		# Infer the JSON type from the literal values.
+		if all(isinstance(arg, bool) for arg in values):
+			return {"type": "boolean", "enum": values}
+		if all(isinstance(arg, int) and not isinstance(arg, bool) for arg in values):
+			return {"type": "integer", "enum": values}
+		return {"type": "string", "enum": [str(arg) for arg in values]}
+
+	if origin is list:
+		item_type = args[0] if args else str
+		return {"type": "array", "items": _hint_to_json_schema(item_type)}
+
+	if field_type is str:
+		return {"type": "string"}
+	if field_type is int:
+		return {"type": "integer"}
+	if field_type is bool:
+		return {"type": "boolean"}
+	if field_type is float:
+		return {"type": "number"}
+
+	return {"type": "object"}
 
 
 @dataclass(frozen=True)
@@ -167,7 +205,12 @@ class InputSchema(Generic[T]):
 		"""Convert dataclass model to JSON Schema dict.
 
 		Returns:
-			JSON Schema dictionary compatible with JSON Schema Draft 7
+			JSON Schema dictionary compatible with JSON Schema Draft 7.
+
+		Constrained string fields declared with ``Literal[...]`` are emitted with
+		an ``enum`` so that downstream tool-calling clients (MCP servers, AI
+		agents) know the set of valid values. ``Optional[...]`` fields are emitted
+		as ``{"type": [base, "null"]}``.
 		"""
 		import dataclasses
 		import typing
@@ -182,39 +225,36 @@ class InputSchema(Generic[T]):
 				"additionalProperties": self.allow_extra_fields,
 			}
 
-		properties = {}
-		required = []
+		properties: dict[str, Any] = {}
+		required: list[str] = []
 
 		type_hints = typing.get_type_hints(self.model)
 
 		for f in dataclasses.fields(self.model):
-			# Get the type hint
 			field_type = type_hints.get(f.name, f.type)
 
-			# Handle Optional types
+			# Unwrap Optional[...] so we can emit a nullable schema.
 			is_optional = False
 			origin = typing.get_origin(field_type)
 			if origin in (typing.Union, UnionType):
 				args = typing.get_args(field_type)
 				if type(None) in args:
 					is_optional = True
-					# Get the non-None type
 					field_type = next((arg for arg in args if arg is not type(None)), str)
-					origin = typing.get_origin(field_type)
 
-			# Map Python types to JSON schema types
-			if field_type == str:
-				properties[f.name] = {"type": "string"}
-			elif field_type == int:
-				properties[f.name] = {"type": "integer"}
-			elif field_type == bool:
-				properties[f.name] = {"type": "boolean"}
-			elif origin is list:
-				properties[f.name] = {"type": "array", "items": {"type": "string"}}
+			field_schema = _hint_to_json_schema(field_type)
+
+			if is_optional:
+				# Emit an unambiguous nullable schema. Using {"type": [base, "null"]}
+				# alongside an "enum" is misleading (the enum would still reject null),
+				# so wrap with anyOf instead.
+				properties[f.name] = {
+					"anyOf": [field_schema, {"type": "null"}],
+				}
 			else:
-				properties[f.name] = {"type": "object"}
+				properties[f.name] = field_schema
 
-			# Add to required if field has no default and is not optional
+			# Add to required if the field has no default and is not optional.
 			if f.default == f.default_factory == dataclasses.MISSING and not is_optional:
 				required.append(f.name)
 
