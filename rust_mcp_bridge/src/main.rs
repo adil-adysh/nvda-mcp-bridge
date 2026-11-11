@@ -5,7 +5,6 @@ use rmcp::{
     model::*,
     service::{RequestContext, RoleServer},
 };
-use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::{
     collections::{HashMap, HashSet},
@@ -17,9 +16,15 @@ use std::{
 use tracing::{error, info, warn};
 use tracing_subscriber::{EnvFilter, fmt};
 
-const TOKEN_HEADER: &str = "X-NVDA-Bridge-Token";
-const PROTOCOL_NAME: &str = "nvda-bridge-protocol";
-const SUPPORTED_API_LEVEL: u32 = 1;
+mod protocol;
+use protocol::{
+    API_LEVEL, PROTOCOL_NAME, TOKEN_HEADER,
+    BridgeActionEnvelope, BridgeError, BridgeMeta,
+    BridgeToolDef, BridgeToolsResponse,
+    ErrorCode, NvdaStatusSnapshot,
+    validate_tools_payload,
+};
+
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone)]
@@ -45,130 +50,6 @@ impl Settings {
             log_level,
         })
     }
-}
-
-/// Flexible error code — accepts both integer (protocol v1) and string (legacy).
-#[derive(Debug, Clone)]
-struct ErrorCode(String);
-
-impl ErrorCode {
-    fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for ErrorCode {
-    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use serde::de;
-        struct ErrorCodeVisitor;
-        impl de::Visitor<'_> for ErrorCodeVisitor {
-            type Value = ErrorCode;
-            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                f.write_str("an integer or string error code")
-            }
-            fn visit_i64<E: de::Error>(self, v: i64) -> std::result::Result<ErrorCode, E> {
-                Ok(ErrorCode(v.to_string()))
-            }
-            fn visit_u64<E: de::Error>(self, v: u64) -> std::result::Result<ErrorCode, E> {
-                Ok(ErrorCode(v.to_string()))
-            }
-            fn visit_str<E: de::Error>(self, v: &str) -> std::result::Result<ErrorCode, E> {
-                Ok(ErrorCode(v.to_string()))
-            }
-        }
-        deserializer.deserialize_any(ErrorCodeVisitor)
-    }
-}
-
-/// Bridge protocol metadata block from every action response.
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
-struct BridgeMeta {
-    #[serde(default)]
-    bridge_version: Option<String>,
-    #[serde(default)]
-    api_level: Option<u32>,
-}
-
-/// Snapshot of NVDA runtime state from every action response.
-#[derive(Debug, Deserialize, Serialize, Clone, Default)]
-struct NvdaStatusSnapshot {
-    #[serde(default)]
-    secure_screen: Option<bool>,
-    #[serde(default)]
-    modal_blocking: Option<bool>,
-    #[serde(default)]
-    menu_open: Option<bool>,
-}
-
-#[derive(Debug, Clone)]
-struct BridgeError {
-    code: ErrorCode,
-    message: String,
-    name: Option<String>,
-    category: Option<String>,
-    retry_policy: Option<String>,
-    retry_after_ms: Option<u64>,
-    details: Option<Value>,
-}
-
-/// Full response envelope from the NVDA bridge /action endpoint.
-/// Carries protocol metadata for downstream AI agent observability.
-#[derive(Debug, Clone)]
-struct BridgeActionEnvelope {
-    success: bool,
-    request_id: Option<String>,
-    action: Option<String>,
-    duration_ms: Option<f64>,
-    bridge: Option<BridgeMeta>,
-    nvda_status_snapshot: Option<NvdaStatusSnapshot>,
-    data: Option<Value>,
-    error: Option<BridgeError>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[allow(dead_code)]
-struct BridgeToolConstraints {
-    #[serde(default)]
-    dangerous: Option<bool>,
-    #[serde(default)]
-    requires_explicit_opt_in: Option<bool>,
-    /// Tool is blocked when NVDA is on a secure desktop.
-    #[serde(default)]
-    blocked_on_secure_screen: Option<bool>,
-    /// Tool is blocked when a modal NVDA dialog is open.
-    #[serde(default)]
-    blocked_on_modal: Option<bool>,
-    /// Tool is blocked when an NVDA menu is open.
-    #[serde(default)]
-    blocked_on_menu: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-struct BridgeToolDef {
-    name: String,
-    description: String,
-    #[serde(rename = "inputSchema")]
-    input_schema: Map<String, Value>,
-    #[serde(rename = "outputType")]
-    output_type: Option<String>,
-    version: String,
-    category: String,
-    #[serde(default)]
-    constraints: Option<BridgeToolConstraints>,
-}
-
-#[derive(Debug, Deserialize)]
-struct BridgeToolsResponse {
-    protocol: String,
-    protocol_version: String,
-    bridge_version: String,
-    api_level: u32,
-    types: Map<String, Value>,
-    tools: Vec<BridgeToolDef>,
-    count: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -265,39 +146,15 @@ impl BridgeClient {
         let payload: BridgeToolsResponse = serde_json::from_str(&body_text)
             .context("Bridge /tools response had unexpected JSON shape")?;
 
-        Self::validate_tools_payload(&payload)?;
+        validate_tools_payload(
+            &payload.protocol,
+            &payload.protocol_version,
+            &payload.bridge_version,
+            payload.api_level,
+            payload.count,
+            payload.tools.len(),
+        ).map_err(|msg| anyhow!("{}", msg))?;
         Self::build_catalog(payload)
-    }
-
-    fn validate_tools_payload(payload: &BridgeToolsResponse) -> Result<()> {
-        if payload.protocol != PROTOCOL_NAME {
-            bail!(
-                "Bridge protocol mismatch: expected '{}', got '{}'",
-                PROTOCOL_NAME,
-                payload.protocol
-            );
-        }
-        if payload.api_level != SUPPORTED_API_LEVEL {
-            bail!(
-                "Bridge API level mismatch: expected {}, got {}",
-                SUPPORTED_API_LEVEL,
-                payload.api_level
-            );
-        }
-        if payload.protocol_version.trim().is_empty() {
-            bail!("Bridge protocol_version cannot be empty");
-        }
-        if payload.bridge_version.trim().is_empty() {
-            bail!("Bridge bridge_version cannot be empty");
-        }
-        if payload.count != payload.tools.len() {
-            bail!(
-                "Bridge tools count mismatch: declared {}, actual {}",
-                payload.count,
-                payload.tools.len()
-            );
-        }
-        Ok(())
     }
 
     fn build_catalog(payload: BridgeToolsResponse) -> Result<ToolCatalog> {
@@ -777,7 +634,7 @@ impl ServerHandler for NvdaServer {
             },
             instructions: Some(format!(
                 "Bridge-backed tools discovered from /tools. protocol={} api_level={} bridge_version={}",
-                PROTOCOL_NAME, SUPPORTED_API_LEVEL, self.tool_catalog.bridge_version
+                PROTOCOL_NAME, API_LEVEL, self.tool_catalog.bridge_version
             )),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             ..Default::default()
@@ -928,6 +785,7 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::BridgeToolConstraints;
 
     #[test]
     fn parse_action_payload_success_uses_data() {
@@ -1099,7 +957,15 @@ mod tests {
             .expect("schema.json did not deserialize into BridgeToolsResponse");
 
         // Validate payload shape as BridgeClient expects
-        BridgeClient::validate_tools_payload(&payload).expect("validate_tools_payload failed");
+        validate_tools_payload(
+            &payload.protocol,
+            &payload.protocol_version,
+            &payload.bridge_version,
+            payload.api_level,
+            payload.count,
+            payload.tools.len(),
+        )
+        .expect("validate_tools_payload failed");
 
         // Ensure build_catalog can consume it and produce a catalog
         let catalog = BridgeClient::build_catalog(payload).expect("build_catalog failed");
