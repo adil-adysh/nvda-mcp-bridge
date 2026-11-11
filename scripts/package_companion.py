@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import struct
 from pathlib import Path
 import sys
 import tomllib
@@ -29,11 +30,22 @@ def expected_version() -> str:
         return tomllib.load(source)["package"]["version"]
 
 
+def require_windows_x64(binary: bytes) -> None:
+    """Reject non-PE and non-x64 binaries before distribution."""
+    if len(binary) < 1024 or binary[:2] != b"MZ":
+        raise RuntimeError("Companion is not a valid Windows PE executable")
+    offset = struct.unpack_from("<I", binary, 0x3C)[0]
+    if offset + 6 > len(binary) or binary[offset:offset + 4] != b"PE\\x00\\x00":
+        raise RuntimeError("Companion has an invalid PE header")
+    machine = struct.unpack_from("<H", binary, offset + 4)[0]
+    if machine != 0x8664:
+        raise RuntimeError(f"Expected Windows x64 companion, PE machine is 0x{machine:04x}")
+
+
 def stage(binary: Path) -> None:
     if not binary.is_file() or binary.stat().st_size < 1024:
         raise RuntimeError(f"Missing or unexpectedly small Rust companion: {binary}")
-    if binary.open("rb").read(2) != b"MZ":
-        raise RuntimeError(f"Rust companion is not a Windows PE executable: {binary}")
+    require_windows_x64(binary.read_bytes())
     import shutil
     target = ROOT / "addon" / PACKAGE_REL
     target.mkdir(parents=True, exist_ok=True)
@@ -67,8 +79,7 @@ def verify(archive: Path) -> None:
         raise RuntimeError("Bundled companion version does not match Cargo.toml")
     if info.get("executable") != EXECUTABLE or info.get("min_bridge_api_level") != 1:
         raise RuntimeError("Bundled companion metadata is inconsistent")
-    if len(binary) < 1024 or binary[:2] != b"MZ":
-        raise RuntimeError("Bundled companion is missing a valid Windows PE header")
+    require_windows_x64(binary)
     digest = hashlib.sha256(binary).hexdigest()
     if digest != info.get("sha256"):
         raise RuntimeError(f"Bundled companion digest mismatch: {digest}")
