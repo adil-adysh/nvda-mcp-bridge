@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from ..core import ToolMetadata, TypedToolImpl
+from ..core import ExecutionMode, ToolMetadata, TypedToolImpl
 from . import handlers as tool_handlers
 from . import models
 
@@ -146,7 +146,7 @@ ALL_NVDA_TOOLS = [
         models.MessageResult,
         lambda input_obj: tool_handlers.show_message(message=input_obj.message),
     ),
-    TypedToolImpl.from_handler(
+    TypedToolImpl.from_coordinator(
         ToolMetadata(
             name="send_keyboard",
             version="1.0.0",
@@ -161,13 +161,15 @@ ALL_NVDA_TOOLS = [
             expected_duration_ms=50,
             cancellation_supported=True,
             retry_safe=False,
+            execution_mode=ExecutionMode.COORDINATOR,
         ),
         models.SendKeyboardInput,
         models.KeyboardActionResult,
-        lambda input_obj: tool_handlers.send_keyboard(
+        lambda input_obj, context: tool_handlers.send_keyboard(
             gesture=input_obj.gesture,
             repeat=input_obj.repeat,
             delay_ms=input_obj.delay_ms,
+            context=context,
         ),
     ),
     TypedToolImpl.from_inputless(

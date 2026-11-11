@@ -53,7 +53,12 @@ class TypedToolImplTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.output.value, "ok")
 
-    def test_from_inputless_filters_extra_output_fields(self):
+    def test_from_inputless_rejects_extra_output_fields(self):
+        """Extra output fields are a contract bug, not something to drop silently.
+
+        Silently filtering is what allowed `completed`/`uncertain` to disappear
+        from the KeyboardActionResult contract while unit tests stayed green.
+        """
         tool = TypedToolImpl.from_inputless(
             ToolMetadata(name="test_inputless_extra", version="1.0.0", description="Test inputless tool with extra fields", category="test"),
             TestOutput,
@@ -62,8 +67,9 @@ class TypedToolImplTests(unittest.TestCase):
 
         result = ToolExecutor().execute(tool, {})
 
-        self.assertTrue(result.success)
-        self.assertEqual(result.output.value, "ok")
+        self.assertFalse(result.success)
+        self.assertEqual(result.error.error_code.value, "invalid_output_schema")
+        self.assertIn("extra", str(result.error.details))
 
     def test_from_handler_accepts_raw_dict_output(self):
         tool = TypedToolImpl.from_handler(

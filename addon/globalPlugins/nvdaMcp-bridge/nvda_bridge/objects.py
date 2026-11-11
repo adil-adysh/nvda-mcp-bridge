@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import api
 
+from .errors import DomainUnavailableError
 from .validators import validate_target, validate_bounded_int
 
 
@@ -24,10 +25,18 @@ def _nvda_obj_role(obj: Any) -> Tuple[Optional[int], str]:
 	get_navigator_object returned a str under the same "role" key.
 	"""
 	raw_role = getattr(obj, "role", None)
-	return (
-		int(raw_role) if raw_role is not None else None,
-		getattr(obj, "roleText", None) or "",
-	)
+	role_int = int(raw_role) if raw_role is not None else None
+	role_text = getattr(obj, "roleText", None) or ""
+
+	# UIA objects frequently expose no roleText at all. Fall back to the role's
+	# own display label so the field is never empty for a valid role.
+	if not role_text and raw_role is not None:
+		try:
+			role_text = raw_role.displayString
+		except Exception:
+			role_text = ""
+
+	return role_int, role_text
 
 
 def _resolve_target_object(target: str) -> Any:
@@ -358,27 +367,26 @@ def inspect_app_module(source: str = "focus") -> Dict[str, Any]:
 		RuntimeError: If app module cannot be resolved
 	"""
 	obj = _resolve_target_object(source)
-	app_module = getattr(obj, "appModule", None)
-	if app_module is None:
-		raise RuntimeError(f"No app module available for source: {source}")
+	# Resolving app-module metadata can raise for objects without a process (the
+	# desktop root reports processHandle 0). That is a property of the target,
+	# not a bridge fault, so report it as an unavailable domain target rather
+	# than an internal error. Every attribute below is process-dependent, so the
+	# whole block is guarded, not just the appModule lookup.
+	try:
+		app_module = getattr(obj, "appModule", None)
+		if app_module is None:
+			raise DomainUnavailableError(
+				f"No app module available for source: {source}",
+				details={"source": source.lower()},
+			)
 
-	module_name = type(app_module).__module__
-	module_file = None
-	loaded_module = sys.modules.get(module_name)
-	if loaded_module is not None:
-		module_file = getattr(loaded_module, "__file__", None)
+		module_name = type(app_module).__module__
+		module_file = None
+		loaded_module = sys.modules.get(module_name)
+		if loaded_module is not None:
+			module_file = getattr(loaded_module, "__file__", None)
 
-	is_alive = getattr(app_module, "isAlive", None)
-	if callable(is_alive):
-		try:
-			is_alive = bool(is_alive())
-		except Exception:
-			is_alive = None
-
-	return {
-		"source": source.lower(),
-		"object": _serialize_object(obj),
-		"appModule": {
+		app_module_payload = {
 			"className": type(app_module).__name__,
 			"classModule": module_name,
 			"moduleFile": module_file,
@@ -387,6 +395,26 @@ def inspect_app_module(source: str = "focus") -> Dict[str, Any]:
 			"productVersion": getattr(app_module, "productVersion", None) or "",
 			"processID": int(getattr(app_module, "processID", 0) or 0),
 			"sleepMode": bool(getattr(app_module, "sleepMode", False)),
-			"isAlive": is_alive,
-		},
+			"isAlive": None,
+		}
+	except DomainUnavailableError:
+		raise
+	except Exception as e:
+		raise DomainUnavailableError(
+			f"No app module available for source '{source}': {e}",
+			details={"source": source.lower()},
+		) from e
+
+	is_alive = getattr(app_module, "isAlive", None)
+	if callable(is_alive):
+		try:
+			is_alive = bool(is_alive())
+		except Exception:
+			is_alive = None
+	app_module_payload["isAlive"] = is_alive
+
+	return {
+		"source": source.lower(),
+		"object": _serialize_object(obj),
+		"appModule": app_module_payload,
 	}

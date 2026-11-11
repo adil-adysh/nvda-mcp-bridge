@@ -45,10 +45,39 @@ def show_message(message: str) -> dict[str, Any]:
 	return nvda_bridge.show_message(message=message)
 
 
-def send_keyboard(gesture: str, repeat: int = 1, delay_ms: int = 0) -> dict[str, Any]:
-	from .. import nvda_bridge
+def send_keyboard(
+	gesture: str,
+	repeat: int = 1,
+	delay_ms: int = 0,
+	context: Any = None,
+) -> dict[str, Any]:
+	"""Send a keyboard sequence.
 
-	return nvda_bridge.send_keyboard(gesture=gesture, repeat=repeat, delay_ms=delay_ms)
+	Coordinator tool: runs on the bridge worker thread so the inter-gesture
+	pacing does not block NVDA's main thread, and uses the execution context to
+	move each individual gesture onto it.
+	"""
+	from .. import nvda_bridge
+	from ..nvda_bridge import ui as nvda_ui
+
+	cancellation_event = getattr(context, "cancellation_event", None) if context else None
+	timeout = getattr(context, "timeout", None) if context else None
+	dispatch = getattr(context, "dispatch", None) if context else None
+
+	main_thread_fn = None
+	if dispatch is not None:
+		main_thread_fn = lambda resolved_gesture: dispatch(  # noqa: E731
+			lambda: nvda_ui.send_single_gesture(resolved_gesture),
+		)
+
+	return nvda_bridge.send_keyboard(
+		gesture=gesture,
+		repeat=repeat,
+		delay_ms=delay_ms,
+		cancellation_event=cancellation_event,
+		main_thread_fn=main_thread_fn,
+		timeout=timeout if timeout is not None else 10.0,
+	)
 
 
 def get_window_title() -> dict[str, Any]:

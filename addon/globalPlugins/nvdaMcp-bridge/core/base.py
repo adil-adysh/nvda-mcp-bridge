@@ -7,8 +7,9 @@ Enforces that InputType == input_schema and OutputType == output_schema.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-import dataclasses
 from dataclasses import dataclass, is_dataclass
+from enum import Enum
+import threading
 from typing import Any, Callable, TypeVar, Generic, Type, Protocol
 
 from .schema import InputSchema, OutputSchema
@@ -21,6 +22,38 @@ OutputType = TypeVar("OutputType")
 class EmptyInput:
 	"""Marker type for tools with no input."""
 	pass
+
+
+class ExecutionMode(str, Enum):
+	"""Where a tool's handler body runs.
+
+	MAIN_THREAD tools are fast NVDA API calls; the engine runs the whole handler
+	on NVDA's main thread. COORDINATOR tools own a sequence (pacing, retries,
+	waiting for a UI change) and therefore run on the bridge worker thread,
+	dispatching individual main-thread operations through the execution context.
+	"""
+
+	MAIN_THREAD = "main_thread"
+	COORDINATOR = "coordinator"
+
+
+@dataclass(frozen=True)
+class ExecutionContext:
+	"""Runtime services handed to COORDINATOR handlers.
+
+	Nothing here may be called from the main thread for anything that blocks:
+	``dispatch`` marshals one operation onto NVDA's main thread and waits, so a
+	coordinator can pace between operations without freezing the UI.
+	"""
+
+	dispatch: Callable[[Any], Any] | None = None
+	"""Run a single callable on NVDA's main thread and return its result."""
+
+	cancellation_event: threading.Event | None = None
+	"""Set when the caller cancelled or the request deadline expired."""
+
+	timeout: float | None = None
+	"""Seconds remaining for the whole tool call, when a deadline is known."""
 
 
 @dataclass(frozen=True)
@@ -71,6 +104,9 @@ class ToolMetadata:
 
 	retry_safe: bool = False
 	"""Whether safe to automatically retry upon transport failure."""
+
+	execution_mode: ExecutionMode = ExecutionMode.MAIN_THREAD
+	"""Where the handler body runs; see ExecutionMode."""
 
 	def __post_init__(self) -> None:
 		"""Validate metadata."""
@@ -170,7 +206,7 @@ class Tool(ABC, Generic[InputType, OutputType]):
 		return self._output_schema_cache
 
 	@abstractmethod
-	def execute(self, input_obj: InputType) -> OutputType:
+	def execute(self, input_obj: InputType, context: ExecutionContext | None = None) -> OutputType:
 		"""Execute tool logic on validated input.
 
 		Preconditions (guaranteed by execution engine):
@@ -185,6 +221,7 @@ class Tool(ABC, Generic[InputType, OutputType]):
 
 		Args:
 			input_obj: Validated typed input (NEVER raw dict)
+			context: Runtime services for COORDINATOR tools; None otherwise
 
 		Returns:
 			Typed output (NEVER raw dict), never None
@@ -229,6 +266,7 @@ class TypedToolImpl(Tool[InputType, OutputType]):
 		self.input_model = input_model
 		self.output_model = output_model
 		self.handler = handler
+		self._accepts_context = False
 		self._input_schema = InputSchema(
 			input_model,
 			version=input_schema_version,
@@ -251,25 +289,45 @@ class TypedToolImpl(Tool[InputType, OutputType]):
 		"""Return output schema."""
 		return self._output_schema
 
-	def execute(self, input_obj: InputType) -> OutputType:
+	def execute(self, input_obj: InputType, context: ExecutionContext | None = None) -> OutputType:
 		"""Execute handler on validated input."""
+		if self._accepts_context:
+			return self.handler(input_obj, context)
 		return self.handler(input_obj)
 
 	@staticmethod
 	def _coerce_output(output_model: Type[OutputType], output: Any) -> OutputType:
-		"""Ensure handler return value is an output model instance."""
+		"""Ensure handler return value is an output model instance.
+
+		Undefined keys are an error, not something to silently drop: a handler
+		that reports a field its output model does not declare is a contract
+		bug, and dropping it here would hide exactly the drift that broke
+		``send_keyboard``.
+		"""
 		if isinstance(output, output_model):
 			return output
-
-		if isinstance(output, dict) and is_dataclass(output_model):
-			allowed_fields = {field.name for field in dataclasses.fields(output_model)}
-			output = {key: value for key, value in output.items() if key in allowed_fields}
 
 		if hasattr(output_model, "model_validate"):
 			return output_model.model_validate(output)  # Pydantic v2
 
 		if hasattr(output_model, "parse_obj"):
 			return output_model.parse_obj(output)  # Pydantic v1
+
+		if is_dataclass(output_model) and isinstance(output, dict):
+			from ..validation.dataclass_validator import ValidationError as DataclassValidationError
+			from ..validation.dataclass_validator import validate_and_map
+			from .error import ErrorCode, ToolExecutionError
+
+			try:
+				return validate_and_map(output, output_model, strict=True)
+			except DataclassValidationError as e:
+				raise ToolExecutionError(
+					error_code=ErrorCode.INVALID_OUTPUT_SCHEMA,
+					tool_name="<output-coercion>",
+					message=f"Handler output does not match {output_model.__name__}: {e}",
+					details={"field_errors": e.errors},
+					root_cause=e,
+				) from e
 
 		return output_model(**output)
 
@@ -320,3 +378,39 @@ class TypedToolImpl(Tool[InputType, OutputType]):
 			input_schema_version=input_schema_version,
 			output_schema_version=output_schema_version,
 		)
+
+	@classmethod
+	def from_coordinator(
+		cls,
+		metadata: ToolMetadata,
+		input_model: Type[InputType],
+		output_model: Type[OutputType],
+		handler: Callable[[InputType, ExecutionContext | None], Any],
+		input_schema_version: str = "1.0.0",
+		output_schema_version: str = "1.0.0",
+	) -> "TypedToolImpl[InputType, OutputType]":
+		"""Create a coordinator-mode tool whose handler receives an execution context.
+
+		Coordinator tools run on the bridge worker thread so they can pace
+		between operations; ``context.dispatch`` moves a single operation onto
+		NVDA's main thread. This keeps one execution pipeline for sequenced work
+		instead of a special case inside the HTTP bridge.
+		"""
+		if metadata.execution_mode is not ExecutionMode.COORDINATOR:
+			raise ValueError(
+				f"Tool '{metadata.name}' must declare ExecutionMode.COORDINATOR to use from_coordinator()",
+			)
+
+		def _wrapped(input_obj: InputType, context: ExecutionContext | None) -> OutputType:
+			return cls._coerce_output(output_model, handler(input_obj, context))
+
+		tool = cls(
+			metadata,
+			input_model,
+			output_model,
+			_wrapped,
+			input_schema_version=input_schema_version,
+			output_schema_version=output_schema_version,
+		)
+		tool._accepts_context = True
+		return tool

@@ -3,17 +3,16 @@
 
 import json
 import sys
+from pathlib import Path
 import urllib.request
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from bridge_auth import auth_headers  # noqa: E402
+
 BASE_URL = "http://127.0.0.1:8765"
-TOKEN_HEADER = "X-NVDA-Bridge-Token"
-BRIDGE_TOKEN = "nvda-bridge-secret-change-me"
-HEADERS = {
-    TOKEN_HEADER: BRIDGE_TOKEN,
-    "Content-Type": "application/json",
-}
+HEADERS = auth_headers()
 
 
 def send_request(path, method="GET", data=None):

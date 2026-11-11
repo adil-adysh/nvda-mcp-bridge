@@ -2,14 +2,16 @@
 """Test the NVDA HTTP bridge execute_python action."""
 
 import json
+import sys
+from pathlib import Path
 import urllib.request
 from urllib.error import HTTPError, URLError
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from bridge_auth import auth_headers  # noqa: E402
+
 BASE_URL = "http://127.0.0.1:8765"
-HEADERS = {
-    "X-NVDA-Bridge-Token": "nvda-bridge-secret-change-me",
-    "Content-Type": "application/json",
-}
+HEADERS = auth_headers()
 
 CODE = "x = 1 + 1\nprint('hello')\nx"
 

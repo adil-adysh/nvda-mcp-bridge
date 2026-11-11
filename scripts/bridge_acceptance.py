@@ -43,7 +43,14 @@ TOKEN_HEADER = "X-NVDA-Bridge-Token"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCHEMA_PATH = REPO_ROOT / "schema.json"
 
-ERROR_CODES = {4001, 4003, 4101, 4102, 4103, 4201, 4202, 4203, 4204, 5001, 5003, 5004, 5303}
+# Protocol error codes (mirrors docs/protocol/protocol-constants.json).
+ERROR_CODES = {
+    4001, 4003,
+    4101, 4102, 4103,
+    4201, 4202, 4203, 4204, 4205,
+    5001, 5003, 5004,
+    5303,
+}
 ENVELOPE_KEYS = {
     "success", "request_id", "action", "duration_ms", "bridge",
     "nvda_status_snapshot", "data", "error",

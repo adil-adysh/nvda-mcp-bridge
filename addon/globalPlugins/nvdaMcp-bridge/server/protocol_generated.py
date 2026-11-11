@@ -34,6 +34,7 @@ ERROR_CODES: Dict[int, Dict[str, Any]] = {
     4202: {"name": "MODAL_DIALOG_BLOCKING", "category": "nvda_state", "retry_policy": "after_delay", "retry_after_ms": 500},
     4203: {"name": "MENU_OPEN_BLOCKING", "category": "nvda_state", "retry_policy": "after_delay", "retry_after_ms": 500},
     4204: {"name": "ACTION_CANCELLED", "category": "runtime", "retry_policy": "never"},
+    4205: {"name": "TARGET_UNAVAILABLE", "category": "nvda_state", "retry_policy": "after_state_change"},
     5001: {"name": "NVDA_COM_TIMEOUT", "category": "runtime", "retry_policy": "after_delay", "retry_after_ms": 1000},
     5003: {"name": "TOOL_EXECUTION_EXCEPTION", "category": "runtime", "retry_policy": "after_delay", "retry_after_ms": 1000},
     5004: {"name": "EXECUTION_TIMEOUT", "category": "runtime", "retry_policy": "never"},

@@ -24,26 +24,29 @@ import threading
 import time
 import uuid
 from datetime import datetime, timezone
-from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, urlsplit
 from typing import Dict, Any, Optional
 import logHandler
 
-from ..core import ToolRegistry, ToolExecutor
+from ..core import (
+	ExecutionContext,
+	ExecutionMode,
+	RegistryError,
+	ToolExecutor,
+	ToolRegistry,
+	protocol_code_for_serialized,
+)
 from ..tools.registry import NVDA_TOOLS_REGISTRY
-from .main_thread_executor import MainThreadExecutor, OperationState
+from .main_thread_executor import MainThreadExecutor
 from .protocol import (
 	API_LEVEL,
 	BRIDGE_VERSION,
-	DEFAULT_BRIDGE_TOKEN,
 	ERROR_CODES,
 	MAX_REQUEST_BODY_SIZE,
 	MAX_REQUEST_ID_LENGTH,
-	MENU_OPEN_BLOCKED_CATEGORIES,
-	MODAL_BLOCKING_BLOCKED_CATEGORIES,
 	PROTOCOL,
 	PROTOCOL_VERSION,
-	SECURE_SCREEN_ALLOWED_CATEGORIES,
 	TOKEN_HEADER,
 	http_status_from_error_code,
 	validate_tools_discovery_payload,
@@ -59,6 +62,10 @@ from .security import (
 	load_persisted_permissions,
 )
 from ..validation.output_type_registry import build_output_type_registry, validate_output_type_registry
+
+#: Upper bound on how much of an oversized body is read and discarded before
+#: answering 413, so the response reaches the client instead of a socket reset.
+_MAX_DRAIN_BYTES = 8 * 1024 * 1024
 
 
 class BoundedThreadingHTTPServer(ThreadingHTTPServer):
@@ -117,13 +124,20 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 		"""Suppress verbose HTTP server logging to avoid clutter and potential log crashes."""
 		pass
 
-	def _send_json_response(self, data: Dict[str, Any], status_code: int = 200):
+	def _send_json_response(
+		self,
+		data: Dict[str, Any],
+		status_code: int = 200,
+		extra_headers: Optional[Dict[str, str]] = None,
+	):
 		"""Send JSON response with error handling and secure headers."""
 		try:
 			self.send_response(status_code)
 			self.send_header("Content-Type", "application/json")
 			self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1")
 			self.send_header("X-Content-Type-Options", "nosniff")
+			for name, value in (extra_headers or {}).items():
+				self.send_header(name, value)
 			self.end_headers()
 			response_json = json.dumps(data, ensure_ascii=False, indent=2)
 			self.wfile.write(response_json.encode("utf-8"))
@@ -200,6 +214,30 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 		self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		self.send_header("Access-Control-Allow-Headers", f"Content-Type, {TOKEN_HEADER}")
 		self.end_headers()
+
+	def _method_not_allowed(self) -> None:
+		"""Answer unsupported HTTP methods with a JSON envelope instead of HTML."""
+		self._drain_request_body(int(self.headers.get("Content-Length", 0) or 0))
+		self.close_connection = True
+		envelope = self._build_error_envelope(
+			request_id=_new_request_id(),
+			action="http_method",
+			code=4102,
+			message=f"HTTP method {self.command} is not supported; use GET or POST",
+		)
+		self._send_json_response(envelope, 405, extra_headers={"Allow": "GET, POST, OPTIONS"})
+
+	def do_PUT(self):
+		self._method_not_allowed()
+
+	def do_DELETE(self):
+		self._method_not_allowed()
+
+	def do_PATCH(self):
+		self._method_not_allowed()
+
+	def do_HEAD(self):
+		self._method_not_allowed()
 
 	def do_GET(self):
 		"""Handle GET requests with error handling."""
@@ -389,6 +427,18 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			"message": "Developer mode enabled successfully via verified local approval",
 		})
 
+	def _drain_request_body(self, length: int) -> None:
+		"""Read and discard up to ``length`` bytes of an unwanted request body."""
+		remaining = max(0, length)
+		while remaining > 0:
+			try:
+				chunk = self.rfile.read(min(65536, remaining))
+			except Exception:  # noqa: BLE001 — draining is best-effort
+				return
+			if not chunk:
+				return
+			remaining -= len(chunk)
+
 	def _parse_request_body(self, request_id: str) -> Optional[Dict[str, Any]]:
 		try:
 			content_length = int(self.headers.get("Content-Length", 0))
@@ -403,11 +453,20 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				return None
 
 			if content_length > MAX_REQUEST_BODY_SIZE:
+				# Drain what the client already pushed so the socket closes cleanly.
+				# Answering without reading makes the kernel reset the connection,
+				# and the caller then sees a transport error instead of this JSON
+				# envelope explaining what was wrong.
+				self._drain_request_body(min(content_length, _MAX_DRAIN_BYTES))
+				self.close_connection = True
 				envelope = self._build_error_envelope(
 					request_id=request_id,
 					action="unknown",
 					code=4101,
-					message="Request too large",
+					message=(
+						f"Request too large: {content_length} bytes exceeds the "
+						f"{MAX_REQUEST_BODY_SIZE} byte limit"
+					),
 				)
 				self._send_json_response(envelope, 413)
 				return None
@@ -479,6 +538,32 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 		action = request_data.get("action")
 		params = request_data.get("params")
 		timeout_ms = request_data.get("timeout_ms")
+
+		# Honour a caller-supplied id so requests can be correlated with client
+		# logs and with the bridge audit trail. Generate one only when absent.
+		client_request_id = request_data.get("request_id")
+		if client_request_id is not None:
+			if not isinstance(client_request_id, str):
+				envelope = self._build_error_envelope(
+					request_id=request_id,
+					action="unknown",
+					code=4101,
+					message="'request_id' must be a string",
+				)
+				self._send_json_response(envelope, 400)
+				return None, None, request_id, None
+			client_request_id = client_request_id.strip()
+			if len(client_request_id) > MAX_REQUEST_ID_LENGTH:
+				envelope = self._build_error_envelope(
+					request_id=request_id,
+					action="unknown",
+					code=4101,
+					message=f"'request_id' is too long (max {MAX_REQUEST_ID_LENGTH} characters)",
+				)
+				self._send_json_response(envelope, 400)
+				return None, None, request_id, None
+			if client_request_id:
+				request_id = client_request_id
 
 		if timeout_ms is not None:
 			if not isinstance(timeout_ms, int) or timeout_ms < 100 or timeout_ms > 300000:
@@ -824,8 +909,11 @@ class NVDAHTTPBridge:
 		logHandler.log.debug(f"bridge.action.start action={action_name}")
 
 		try:
-			tool = self.registry.get(action_name)
-			if not tool:
+			try:
+				tool = self.registry.get(action_name)
+			except RegistryError:
+				# The registry raises for unknown names; a caller typo is a request
+				# problem (4102), not a bridge failure (5303).
 				logHandler.log.warning(f"bridge.action.unknown action={action_name}")
 				return {
 					"request_id": request_id,
@@ -860,84 +948,26 @@ class NVDAHTTPBridge:
 
 			cancellation_event = threading.Event()
 
-			# Safe execution of keyboard sequences:
-			# Sequence orchestration and pacing delays run in worker thread under input lock.
-			# Individual keystrokes are dispatched directly to main thread without reacquiring lock.
-			if action_name == "send_keyboard":
-				from ..nvda_bridge import ui as nvda_ui
+			# COORDINATOR tools own a sequence (pacing, waiting) and therefore run
+			# on this worker thread, reaching NVDA's main thread per operation
+			# through the execution context. Every other tool runs entirely on the
+			# main thread. Both paths share one validation pipeline.
+			execution_context = ExecutionContext(
+				dispatch=lambda operation: self.main_thread_executor.execute(
+					operation,
+					timeout=max(0.1, effective_timeout),
+					cancellation_event=cancellation_event,
+				),
+				cancellation_event=cancellation_event,
+				timeout=effective_timeout,
+			)
 
-				repeat = int(resolved_params.get("repeat", 1))
-				delay_ms = int(resolved_params.get("delay_ms", 0))
-				gesture = str(resolved_params.get("gesture", ""))
-				seq_deadline = time.monotonic() + effective_timeout
+			def _execute_tool() -> Dict[str, Any]:
+				return self.tool_executor.execute_and_serialize(tool, resolved_params, execution_context)
 
-				def _dispatch_single_gesture(resolved_gesture: Any):
-					remaining_seq_time = max(0.1, seq_deadline - time.monotonic())
-					return self.main_thread_executor.execute(
-						lambda: nvda_ui.send_single_gesture(resolved_gesture),
-						timeout=remaining_seq_time,
-						cancellation_event=cancellation_event,
-					)
-
-				try:
-					kb_result = nvda_ui.send_keyboard(
-						gesture=gesture,
-						repeat=repeat,
-						delay_ms=delay_ms,
-						cancellation_event=cancellation_event,
-						main_thread_fn=_dispatch_single_gesture,
-						timeout=effective_timeout,
-					)
-				except nvda_ui.KeyboardExecutionError as ke:
-					duration_ms = (time.perf_counter() - start_time) * 1000
-					logHandler.log.error(
-						f"bridge.action.keyboard_error action={action_name} duration_ms={duration_ms:.1f} error={str(ke)}",
-						exc_info=True,
-					)
-					err_code = 5004 if ke.timed_out else (4204 if ke.cancelled else 5003)
-					return {
-						"request_id": request_id,
-						"success": False,
-						"action": action_name,
-						"duration_ms": round(duration_ms, 2),
-						"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
-						"nvda_status_snapshot": self.get_nvda_status_snapshot(),
-						"data": ke.to_details(),
-						"error": {
-							"code": err_code,
-							"name": ERROR_CODES[err_code]["name"],
-							"message": str(ke),
-							"category": ERROR_CODES[err_code]["category"],
-							"retry_policy": "never",
-							"details": ke.to_details(),
-						},
-					}
-
-				if kb_result.get("cancelled"):
-					duration_ms = (time.perf_counter() - start_time) * 1000
-					return {
-						"request_id": request_id,
-						"success": False,
-						"action": action_name,
-						"duration_ms": round(duration_ms, 2),
-						"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
-						"nvda_status_snapshot": self.get_nvda_status_snapshot(),
-						"data": kb_result,
-						"error": {
-							"code": 4204,
-							"name": ERROR_CODES[4204]["name"],
-							"message": f"Keyboard sequence cancelled after dispatching {kb_result.get('sent_count', 0)} of {repeat} gestures",
-							"category": ERROR_CODES[4204]["category"],
-							"retry_policy": "never",
-							"details": kb_result,
-						},
-					}
-
-				result = {"success": True, "output": kb_result}
+			if tool.get_metadata().execution_mode is ExecutionMode.COORDINATOR:
+				result = _execute_tool()
 			else:
-				def _execute_tool():
-					return self.tool_executor.execute_and_serialize(tool, resolved_params)
-
 				result = self.main_thread_executor.execute(
 					_execute_tool,
 					timeout=effective_timeout,
@@ -968,6 +998,13 @@ class NVDAHTTPBridge:
 
 			inner_error = result.get("error") if isinstance(result.get("error"), dict) else {}
 			inner_message = str(inner_error.get("message") or "Tool execution failed")
+			error_code = protocol_code_for_serialized(inner_error)
+			if error_code not in ERROR_CODES:
+				error_code = 5303
+			logHandler.log.info(
+				f"bridge.action.failed action={action_name} code={error_code} "
+				f"error_code={inner_error.get('error_code')} duration_ms={duration_ms:.1f}"
+			)
 			return {
 				"request_id": request_id,
 				"success": False,
@@ -976,11 +1013,11 @@ class NVDAHTTPBridge:
 				"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
 				"nvda_status_snapshot": self.get_nvda_status_snapshot(),
 				"error": {
-					"code": 5303,
-					"name": ERROR_CODES[5303]["name"],
+					"code": error_code,
+					"name": ERROR_CODES[error_code]["name"],
 					"message": inner_message,
-					"category": ERROR_CODES[5303]["category"],
-					"retry_policy": ERROR_CODES[5303]["retry_policy"],
+					"category": ERROR_CODES[error_code]["category"],
+					"retry_policy": ERROR_CODES[error_code]["retry_policy"],
 					"details": inner_error,
 				},
 			}

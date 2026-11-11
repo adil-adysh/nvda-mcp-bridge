@@ -17,6 +17,9 @@ _input_lock = threading.Lock()
 class KeyboardExecutionError(RuntimeError):
 	"""Base exception for keyboard execution failures with structured execution tracking."""
 
+	#: Wire error code for this failure, so the transport does not have to guess.
+	protocol_code: int = 5003
+
 	def __init__(
 		self,
 		message: str,
@@ -51,6 +54,8 @@ class KeyboardExecutionError(RuntimeError):
 class KeyboardTimeoutError(KeyboardExecutionError, TimeoutError):
 	"""Raised when a keyboard sequence or gesture dispatch times out."""
 
+	protocol_code = 5004
+
 	def __init__(
 		self,
 		message: str,
@@ -74,6 +79,8 @@ class KeyboardTimeoutError(KeyboardExecutionError, TimeoutError):
 
 class KeyboardCancelledError(KeyboardExecutionError):
 	"""Raised when a keyboard sequence is cancelled before completion."""
+
+	protocol_code = 4204
 
 	def __init__(
 		self,
@@ -100,7 +107,7 @@ def resolve_gesture(gesture: str) -> Any:
 	"""Validate and resolve an NVDA keyboard gesture name.
 
 	Args:
-		gesture: NVDA keyboard gesture name (for example: ``windows+d``, ``alt+tab``).
+		gesture: NVDA keyboard gesture name (for example: ``windows+d``, ``control+a``).
 
 	Returns:
 		Resolved NVDA KeyboardInputGesture instance.
@@ -111,13 +118,56 @@ def resolve_gesture(gesture: str) -> Any:
 	if not isinstance(gesture, str) or not gesture.strip():
 		raise ValueError("'gesture' must be a non-empty string")
 
-	normalized_gesture = gesture.strip()
+	normalized_gesture = normalize_gesture_name(gesture)
 	import keyboardHandler
 
 	try:
 		return keyboardHandler.KeyboardInputGesture.fromName(normalized_gesture)
 	except Exception as e:
 		raise ValueError(f"Failed to resolve keyboard gesture '{normalized_gesture}': {e}")
+
+
+#: Modifier spellings that callers write but NVDA does not accept.
+#: NVDA gesture names use ``control`` and ``windows``; ``ctrl``/``win``/``esc``
+#: are the conventional spellings and rejecting them costs a round trip on the
+#: most common verbs in the vocabulary.
+_MODIFIER_ALIASES = {
+	"ctrl": "control",
+	"ctl": "control",
+	"win": "windows",
+	"super": "windows",
+	"meta": "windows",
+	"esc": "escape",
+	"del": "delete",
+	"ins": "insert",
+	"pgup": "pageup",
+	"pgdn": "pagedown",
+	"return": "enter",
+}
+
+_KEY_ALIASES = {
+	"esc": "escape",
+	"pgup": "pageup",
+	"pgdn": "pagedown",
+	"return": "enter",
+	"del": "delete",
+}
+
+
+def normalize_gesture_name(gesture: str) -> str:
+	"""Normalise a gesture name to NVDA's spelling.
+
+	``ctrl+a`` becomes ``control+a``; ``shift+esc`` becomes ``shift+escape``.
+	Unknown tokens are passed through untouched so NVDA can still reject them.
+	"""
+	parts = [part.strip().lower() for part in gesture.strip().split("+")]
+	if not parts or not parts[-1]:
+		return gesture.strip()
+
+	*modifiers, key = parts
+	modifiers = [_MODIFIER_ALIASES.get(modifier, modifier) for modifier in modifiers]
+	key = _KEY_ALIASES.get(key, key)
+	return "+".join([*modifiers, key])
 
 
 def send_single_gesture(gesture_or_resolved: Any) -> None:
@@ -177,7 +227,7 @@ def send_keyboard(
 	if delay_ms < 0 or delay_ms > 5000:
 		raise ValueError("'delay_ms' must be between 0 and 5000")
 
-	normalized_gesture = gesture.strip()
+	normalized_gesture = normalize_gesture_name(gesture)
 	resolved_gesture = resolve_gesture(normalized_gesture)
 
 	deadline = time.monotonic() + timeout

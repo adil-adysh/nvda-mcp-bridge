@@ -14,9 +14,13 @@ Fails fast on any mismatch.
 from __future__ import annotations
 
 import dataclasses
-from typing import Any, TypeVar, Generic
+from typing import Any, TypeVar, Generic, TYPE_CHECKING
 
 from .base import Tool
+
+if TYPE_CHECKING:
+	from .base import ExecutionContext
+
 from .error import (
 	ToolExecutionError,
 	ValidationError,
@@ -78,12 +82,16 @@ class ExecutionResult(Generic[T]):
 			# For dataclasses, serialize field-by-field and drop unset optional
 			# fields (those with a default) whose value is None.
 			if dataclasses.is_dataclass(self.output) and not isinstance(self.output, type):
+				from ..validation.dataclass_validator import to_json_dict
+
 				data: dict[str, Any] = {}
 				for field in dataclasses.fields(self.output):
 					value = getattr(self.output, field.name)
 					if value is None and field.default is not dataclasses.MISSING:
 						continue
-					data[field.name] = value
+					# Nested output dataclasses must become plain dicts, otherwise
+					# the transport cannot serialise them.
+					data[field.name] = to_json_dict(value)
 				return {
 					"success": True,
 					"output": data,
@@ -120,12 +128,14 @@ class ToolExecutor:
 		self,
 		tool: Tool,
 		raw_input: dict[str, Any],
+		context: "ExecutionContext | None" = None,
 	) -> ExecutionResult:
 		"""Execute tool with full validation pipeline.
 
 		Args:
 			tool: Tool to execute
 			raw_input: Raw input (typically from JSON)
+			context: Runtime services for COORDINATOR tools
 
 		Returns:
 			ExecutionResult (always succeeds at this level)
@@ -156,14 +166,32 @@ class ToolExecutor:
 
 		# Phase 2: HANDLER EXECUTION
 		try:
-			output = tool.execute(validated_input)
+			output = tool.execute(validated_input, context)
+		except ToolExecutionError as e:
+			# Already structured (e.g. output coercion reported a contract bug);
+			# keep its code instead of flattening it to a generic handler error.
+			e.tool_name = metadata.name
+			e.version = metadata.version
+			return ExecutionResult(success=False, error=e)
 		except Exception as e:
-			# Handler raised domain exception
+			# Handler raised domain exception. Preserve any structured detail the
+			# exception carries (partial dispatch counts, for example) so a caller
+			# can tell how far a cancelled sequence got.
+			details: dict[str, Any] = {}
+			to_details = getattr(e, "to_details", None)
+			if callable(to_details):
+				try:
+					collected = to_details()
+					if isinstance(collected, dict):
+						details = collected
+				except Exception:
+					details = {}
 			error = HandlerError(
 				tool_name=metadata.name,
 				version=metadata.version,
 				message=f"{type(e).__name__}: {str(e)}",
 				root_cause=e,
+				details=details,
 			)
 			return ExecutionResult(success=False, error=error)
 
@@ -193,6 +221,7 @@ class ToolExecutor:
 		self,
 		tool: Tool,
 		raw_input: dict[str, Any],
+		context: "ExecutionContext | None" = None,
 	) -> dict[str, Any]:
 		"""Execute tool and serialize result to transport format.
 
@@ -201,10 +230,11 @@ class ToolExecutor:
 		Args:
 			tool: Tool to execute
 			raw_input: Raw input (from JSON)
+			context: Runtime services for COORDINATOR tools
 
 		Returns:
 			Dict with either {"success": True, "output": ...}
 			or {"success": False, "error": {...}}
 		"""
-		result = self.execute(tool, raw_input)
+		result = self.execute(tool, raw_input, context)
 		return result.as_dict()

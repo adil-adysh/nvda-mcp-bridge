@@ -7,7 +7,19 @@
 #>
 
 $baseUrl = "http://127.0.0.1:8765"
-$token = "nvda-bridge-secret-change-me"
+
+# Token discovery mirrors the add-on: env var, then the per-installation file.
+$token = $env:NVDA_BRIDGE_TOKEN
+if (-not $token) {
+    $tokenFile = Join-Path $env:APPDATA "nvda\nvda-mcp-bridge\token.key"
+    if (Test-Path $tokenFile) {
+        $token = (Get-Content $tokenFile -Raw).Trim()
+    }
+}
+if (-not $token) {
+    throw "No bridge token found. Set NVDA_BRIDGE_TOKEN or run the add-on so it writes token.key."
+}
+
 $headers = @{
     "X-NVDA-Bridge-Token" = $token
     "Content-Type" = "application/json"

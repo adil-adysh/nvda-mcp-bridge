@@ -7,6 +7,7 @@ from typing import Any, Dict
 
 import api
 
+from .errors import DomainUnavailableError
 from .objects import _nvda_obj_role
 
 
@@ -21,7 +22,7 @@ def get_current_focus() -> Dict[str, Any]:
 	"""
 	focus = api.getFocusObject()
 	if not focus:
-		raise RuntimeError("No focus object available")
+		raise DomainUnavailableError("No focus object available")
 
 	role_int, role_text = _nvda_obj_role(focus)
 	return {
@@ -55,14 +56,14 @@ def move_focus(direction: str) -> Dict[str, Any]:
 
 	focus = api.getFocusObject()
 	if not focus:
-		raise RuntimeError("No focus object available")
+		raise DomainUnavailableError("No focus object available")
 
 	# Determine navigation direction
 	if direction.lower() == "next":
 		# Move to next object
 		next_obj = getattr(focus, "next", None)
 		if not next_obj:
-			raise RuntimeError("No next object available")
+			raise DomainUnavailableError("No next object available")
 
 		next_obj.setFocus()
 		# setFocus() posts an async Windows message; NVDA won't register the
@@ -84,7 +85,7 @@ def move_focus(direction: str) -> Dict[str, Any]:
 		# Move to previous object
 		prev_obj = getattr(focus, "previous", None)
 		if not prev_obj:
-			raise RuntimeError("No previous object available")
+			raise DomainUnavailableError("No previous object available")
 
 		prev_obj.setFocus()
 		# See note above: data reflects the target object, not confirmed focus.
@@ -122,7 +123,7 @@ def get_focus_lineage(max_ancestors: int = 15) -> Dict[str, Any]:
 
 	focus = api.getFocusObject()
 	if not focus:
-		raise RuntimeError("No focus object available")
+		raise DomainUnavailableError("No focus object available")
 
 	ancestors: list[Dict[str, Any]] = []
 	seen: set[int] = {id(focus)}

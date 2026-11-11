@@ -63,6 +63,13 @@ class ToolExecutionError(Exception):
 	message: str = ""
 	details: dict[str, Any] = field(default_factory=dict)
 	root_cause: Exception | None = field(default=None, repr=False)
+	protocol_code: int | None = None
+	"""Explicit wire error code, when the failure has a precise protocol meaning.
+
+	Left unset, the transport maps ``error_code`` through ``PROTOCOL_CODE_FOR``.
+	Set by code that knows better than a generic classification — for example a
+	domain rule ("no such object") or a cancellation versus a timeout.
+	"""
 
 	def __str__(self) -> str:
 		"""Format error for logging/display."""
@@ -75,13 +82,16 @@ class ToolExecutionError(Exception):
 
 	def as_dict(self) -> dict[str, Any]:
 		"""Serialize to transport format (JSON-safe)."""
-		return {
+		payload: dict[str, Any] = {
 			"error_code": self.error_code.value,
 			"tool_name": self.tool_name,
 			"version": self.version,
 			"message": self.message,
 			"details": self.details,
 		}
+		if self.protocol_code is not None:
+			payload["protocol_code"] = self.protocol_code
+		return payload
 
 
 class ValidationError(ToolExecutionError):
@@ -113,13 +123,17 @@ class HandlerError(ToolExecutionError):
 		version: str | None,
 		message: str,
 		root_cause: Exception | None = None,
+		error_code: ErrorCode = ErrorCode.HANDLER_EXECUTION_FAILED,
+		details: dict[str, Any] | None = None,
 	) -> None:
 		super().__init__(
-			error_code=ErrorCode.HANDLER_EXECUTION_FAILED,
+			error_code=error_code,
 			tool_name=tool_name,
 			version=version,
 			message=message,
+			details=details or {},
 			root_cause=root_cause,
+			protocol_code=getattr(root_cause, "protocol_code", None),
 		)
 
 
@@ -141,3 +155,54 @@ class RegistryError(ToolExecutionError):
 			message=message,
 			details=details or {},
 		)
+
+
+#: Maps the internal error vocabulary onto bridge protocol codes.
+#:
+#: This is the single place where a tool failure becomes a wire code. Anything
+#: not listed falls back to BRIDGE_INTERNAL_ERROR (5303), which callers should
+#: treat as "the bridge is broken", not "my request was wrong".
+PROTOCOL_CODE_FOR: dict[ErrorCode, int] = {
+	# Caller corrected: bad, missing or extra input.
+	ErrorCode.INVALID_INPUT_SCHEMA: 4103,
+	ErrorCode.INVALID_INPUT_TYPE: 4103,
+	ErrorCode.MISSING_REQUIRED_FIELD: 4103,
+	ErrorCode.EXTRA_FIELD_NOT_ALLOWED: 4103,
+	# Caller corrected: no such tool.
+	ErrorCode.TOOL_NOT_FOUND: 4102,
+	ErrorCode.VERSION_NOT_FOUND: 4102,
+	# Handler contract violation: the add-on is at fault, not the caller.
+	ErrorCode.INVALID_OUTPUT_TYPE: 5003,
+	ErrorCode.INVALID_OUTPUT_SCHEMA: 5003,
+	ErrorCode.MISSING_REQUIRED_OUTPUT_FIELD: 5003,
+	ErrorCode.HANDLER_RETURNED_NONE: 5003,
+}
+
+
+def protocol_code_for(error: ToolExecutionError | ErrorCode) -> int:
+	"""Return the protocol error code for an error instance or internal code."""
+	if isinstance(error, ToolExecutionError):
+		if error.protocol_code is not None:
+			return error.protocol_code
+		return PROTOCOL_CODE_FOR.get(error.error_code, 5303)
+	return PROTOCOL_CODE_FOR.get(error, 5303)
+
+
+def protocol_code_for_serialized(payload: dict[str, Any]) -> int:
+	"""Return the protocol error code from a serialized error dictionary.
+
+	Honours an explicit ``protocol_code`` set by the code that raised, then maps
+	the serialized ``error_code`` name through PROTOCOL_CODE_FOR, and finally
+	falls back to BRIDGE_INTERNAL_ERROR.
+	"""
+	explicit = payload.get("protocol_code")
+	if isinstance(explicit, int) and not isinstance(explicit, bool):
+		return explicit
+
+	raw_code = payload.get("error_code")
+	if isinstance(raw_code, str):
+		try:
+			return PROTOCOL_CODE_FOR.get(ErrorCode(raw_code), 5303)
+		except ValueError:
+			return 5303
+	return 5303
