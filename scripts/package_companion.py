@@ -35,7 +35,7 @@ def require_windows_x64(binary: bytes) -> None:
     if len(binary) < 1024 or binary[:2] != b"MZ":
         raise RuntimeError("Companion is not a valid Windows PE executable")
     offset = struct.unpack_from("<I", binary, 0x3C)[0]
-    if offset + 6 > len(binary) or binary[offset:offset + 4] != b"PE\\x00\\x00":
+    if offset + 6 > len(binary) or binary[offset:offset + 4] != b"PE\x00\x00":
         raise RuntimeError("Companion has an invalid PE header")
     machine = struct.unpack_from("<H", binary, offset + 4)[0]
     if machine != 0x8664:
