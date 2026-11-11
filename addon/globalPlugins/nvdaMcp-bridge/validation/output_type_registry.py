@@ -121,6 +121,10 @@ def build_output_type_registry() -> dict[str, dict[str, Any]]:
 					"sent": {"type": "boolean"},
 					"sent_count": {"type": "integer"},
 					"cancelled": {"type": "boolean"},
+					# Reported by the sequence coordinator so clients can tell a
+					# fully dispatched sequence from a partial or uncertain one.
+					"completed": {"type": "boolean"},
+					"uncertain": {"type": "boolean"},
 				},
 				"required": ["gesture", "repeat", "delay_ms", "sent"],
 				"additionalProperties": False,

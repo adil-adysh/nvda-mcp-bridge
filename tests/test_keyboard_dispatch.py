@@ -390,6 +390,26 @@ class TestKeyboardDispatchSemantics(unittest.TestCase):
         self.assertEqual(ctx.exception.sent_count, 2)
         self.assertEqual(attempts, 3)
 
+    def test_13_output_contract_covers_all_dispatch_fields(self):
+        """13. The declared KeyboardActionResult must accept every field the dispatcher returns.
+
+        The bridge rejects responses that carry fields missing from the named
+        output type, so a new field added to the dispatch result without the
+        matching schema property breaks send_keyboard end to end.
+        """
+        import dataclasses
+
+        from nvdaMcpBridge.tools import models
+        from nvdaMcpBridge.validation.output_type_registry import build_output_type_registry
+
+        result = send_keyboard("home", repeat=2, main_thread_fn=lambda resolved: None)
+        schema_properties = set(
+            build_output_type_registry()["KeyboardActionResult"]["properties"]["data"]["properties"],
+        )
+
+        self.assertEqual(set(result), schema_properties)
+        self.assertEqual({field.name for field in dataclasses.fields(models.KeyboardActionResult)}, schema_properties)
 
 if __name__ == "__main__":
     unittest.main()
+

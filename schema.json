@@ -336,6 +336,12 @@
             },
             "cancelled": {
               "type": "boolean"
+            },
+            "completed": {
+              "type": "boolean"
+            },
+            "uncertain": {
+              "type": "boolean"
             }
           },
           "required": [

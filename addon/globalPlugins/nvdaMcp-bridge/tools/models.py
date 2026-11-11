@@ -185,7 +185,12 @@ class MessageResult:
 
 @dataclass(frozen=True)
 class KeyboardActionResult:
-	"""Keyboard action result."""
+	"""Keyboard action result.
+
+	Mirrors the dictionary returned by ``nvda_bridge.ui.send_keyboard`` exactly.
+	The bridge validates responses against this schema with extra fields
+	rejected, so every key the dispatch code reports must be declared here.
+	"""
 
 	gesture: str
 	repeat: int
@@ -193,6 +198,8 @@ class KeyboardActionResult:
 	sent: bool
 	sent_count: int = 1
 	cancelled: bool = False
+	completed: bool = True
+	uncertain: bool = False
 
 
 @dataclass(frozen=True)
