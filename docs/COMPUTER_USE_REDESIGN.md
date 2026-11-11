@@ -353,6 +353,114 @@ and include `dialog: {title, buttons[]}` in `observe()`.
 This is the difference between an agent that can verify itself and one that
 cannot. It also makes the bridge's own audit log meaningful.
 
+### 3.7 Event delivery at the MCP boundary
+
+Everything above is the add-on's own contract. How those events reach an MCP
+client is a separate decision, and it is easy to get wrong in two opposite ways:
+forward every accessibility event to the model (a flood of noise per keystroke),
+or make the agent poll (`observe()` in a loop) and pay a round trip for every
+frame it misses.
+
+The right shape is three distinct lanes, because they answer three different
+questions:
+
+| Lane | Question it answers | Mechanism |
+| --- | --- | --- |
+| Settled action | "I acted. What changed, and can I decide now?" | `press`/`invoke`/`set_value` return the post-action observation (§3.4) |
+| State resource | "Something changed without me. Should I look?" | MCP resource + change notification |
+| Event history | "What exactly happened while I was away?" | bounded, versioned ring buffer read by cursor |
+
+All three are fed by the same in-process event journal (C1 in §6). None of them
+puts a raw `event_gainFocus` on the wire.
+
+#### The MCP mechanism, as of the 2026-07-28 revision
+
+`subscriptions/listen` replaced `resources/subscribe`. It is a long-lived
+request whose filter names notification *types*, not event types:
+
+```jsonc
+{
+  "method": "subscriptions/listen",
+  "params": {
+    "notifications": {
+      "toolsListChanged": false,
+      "resourcesListChanged": false,
+      "resourceSubscriptions": ["nvda://ui/state"]
+    }
+  }
+}
+```
+
+The server acknowledges with `notifications/subscriptions/acknowledged`, MUST NOT
+send types that were not requested, tags every notification with
+`io.modelcontextprotocol/subscriptionId`, and the client then re-reads the
+resource with `resources/read`. See the
+[subscriptions pattern](https://modelcontextprotocol.io/specification/2026-07-28/basic/patterns/subscriptions.md).
+
+Two consequences that shape the design:
+
+1. **The only subscription granularity is a resource URI.** There is no
+   "subscribe to focus changes" type. Any useful event stream has to be modelled
+   as a small set of state resources, which is precisely the argument for
+   collapsing NVDA events into `observe()` rather than exposing them raw.
+2. **A notification is a signal, not a payload.** The client decides whether to
+   re-read. So notifications must be cheap enough to send often and rare enough
+   not to be ignored: coalesce on a trailing edge (≈100 ms) and send one
+   notification per quiet period, not one per event.
+
+#### What this costs in this repository
+
+The companion (`rust_mcp_bridge/`) is a thin stdio proxy built on `rmcp 0.3.2`.
+It advertises only `Capabilities { tools }` and speaks the *legacy*,
+handshake-based protocol. The 2026-07-28 revision made MCP stateless: it removed
+`initialize`, removed sessions, requires `server/discover`, requires `resultType`
+on every result, and introduced multi-round-trip requests. Adopting
+`subscriptions/listen` therefore is not "add a notification type" — it is moving
+the companion to a new protocol generation (dual-era at minimum), which is a
+migration with its own risk and no effect on whether the agent can act.
+
+So the sequencing is:
+
+1. **Event journal in the add-on** — no protocol dependency, and `settle` needs
+   it anyway.
+2. **`wait_for_events(timeout_ms, since)` long-poll tool** — works with every
+   client and every protocol generation, including the current companion. This is
+   the *primary* event delivery path, not a compatibility fallback: most hosts
+   will not re-invoke the model just because a notification arrived.
+3. **State resource + subscriptions** — only after the companion is dual-era, and
+   only if a client the user actually runs consumes it.
+
+#### Transport detail: one endpoint, two uses
+
+The bridge is a localhost HTTP server, so the companion should not be pushed to.
+Expose a cursor-based endpoint that serves both history and long-polling:
+
+```
+GET /events?since=1841&timeout_ms=2000&kinds=focus,value,name
+→ {"from_version": 1842, "to_version": 1907, "truncated": false,
+   "events": [{"version": 1842, "kind": "focus", "role": "button", ...}],
+   "observation": { ... }}          # included when the cursor reached head
+```
+
+`timeout_ms=0` returns immediately (pure history read); a non-zero timeout waits
+for at least one event or returns an empty page. The same call backs the
+`wait_for_events` tool, the `get_events` history tool, and — later — the
+companion's notification trigger. `truncated: true` means the ring buffer
+wrapped and the caller must re-`observe()` rather than reason from a gap.
+
+Constraint: the bridge runs a bounded 16-thread HTTP server, so long-polls must
+be capped (two concurrent waiters is plenty) and must block on a condition
+variable, never on a worker-thread sleep, or they starve ordinary calls.
+
+#### Opportunity: confirmations, not just events
+
+The same revision replaced server-initiated requests with multi-round-trip
+requests: a server may answer `resultType: "input_required"` with `inputRequests`
+and the client retries with `inputResponses`. That is a better fit than a custom
+tool for confirming a destructive action — the failure that restarted NVDA with
+add-ons disabled would have been a confirmation, not a type error. Worth
+considering once the companion is dual-era.
+
 ---
 
 ## 4. Redesign for add-on development
@@ -418,6 +526,18 @@ re-fetch `/tools` when it changes. Then:
 
 ## 5. Contract fixes (independent of the new tools)
 
+**Status: implemented** in `2a95371` (type contracts, derived schemas) and
+`d61cf09` (single pipeline, unified error taxonomy, transport fixes), verified
+against a live NVDA with `scripts/bridge_acceptance.py` at 0/16 wrong-typed
+inputs accepted and 8/8 security checks. The list is kept as the rationale; items
+2 and 3 were solved structurally rather than literally (`execution_mode` replaced
+the special case; one mapping replaced the hardcoded code).
+
+`outputSchema` in `/tools` and `schema_hash` in `/health` — mentioned in §4.3 —
+are **not** implemented: the v1 protocol schemas set `additionalProperties:
+false` on both payloads, so publishing them is an `api_level: 2` change and
+belongs with the rest of the protocol bump.
+
 These are bug fixes, not design. Recommended order:
 
 1. **Enforce input types.** Make `InputSchema.validate` validate against the same
@@ -453,6 +573,8 @@ Everything above is additive except §5, which is behaviour-changing.
   is `developer`, which must keep requiring fresh local approval.
 * The settle contract should ship **on by default** (`settle="quiet"`), because
   the current default is the one that produces wrong answers.
+* Event delivery follows §3.7's order: journal, then long-poll, then resources
+  and subscriptions. Do not block computer use on an MCP protocol migration.
 
 Suggested first increment, smallest change with the largest safety gain:
 
