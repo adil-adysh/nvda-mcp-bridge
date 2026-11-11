@@ -114,6 +114,11 @@ Additionally, these arrived on the browser UIA path and are not in the MSAA map:
   class), so "tell me when *this* button changes" is not expressible.
 * **No payload.** `valueChange` says a value changed; it does not say to what.
   `stateChange` says a state changed; not which. Every consumer must re-read.
+* **No event for ordinary content change.** A page that rewrote a plain `div`
+  every 25 ms produced **zero** events over 3 s; the only events were 9
+  `liveRegionChange` from a separate `aria-live` region updated 2.5 times/s.
+  Content changes are visible to an agent only through `liveRegionChange`, a
+  focus/name/state change, the focused element's own text, or an explicit read.
 
 That last point is the whole argument for the architecture below: the events are
 *edge triggers for a re-read*, so the useful abstraction is a coalesced
@@ -170,10 +175,21 @@ would be stale before the next call.
 * `state_version` — bumped only when the *projection* differs from the last one.
   This is what `ref`s bind to and what callers compare.
 
-`project()` is cheap: 0.01 ms warm, 5.5 ms cold for focus + five ancestors, so it
-can run on every settle without cost. It must never be computed on the HTTP
-thread (NVDA's API is main-thread only), which is why `revision` exists as the
-thread-safe signal to wait on.
+`project()` is not free, and the cheap number is a lie. Reading a warm cache
+costs 0.01 ms, but the cache is wrong: a checkbox that had just been toggled
+still reported its old `states`, because NVDA caches properties per object and
+nothing invalidates them behind its back. Invalidating the focus and its
+ancestors before reading gives the true observation at **median 13.9 ms, p90
+17.0 ms** in Edge. So:
+
+* projection runs **on demand** (per `observe`, per settle round), never per
+  event;
+* it always invalidates first, or `changed` is systematically false for exactly
+  the actions that worked;
+* the settle budget must account for 2–3 projections, not one.
+
+Projection must never run on the HTTP thread (NVDA's API is main-thread only),
+which is why `revision` exists as the thread-safe signal to wait on.
 
 ### 3.3 Settle: stability, not a fixed quiet window
 
@@ -208,13 +224,36 @@ Two properties worth stating: `changed: false` is a real, reportable outcome (th
 action did nothing, which an agent must know rather than infer), and the budget
 is per action, not per event.
 
+Budget arithmetic from the measurements: a focus change settles in ~140 ms and one
+correct projection costs ~14 ms, so a settle round should be event-driven with a
+25 ms poll floor and two or three projections — roughly 180–250 ms per action,
+which is one authored decision, not a stall. Polling faster is wasted effort: the
+observation cannot change faster than the application emits work.
+
 ### 3.4 References
 
-`ref` is a locator, not an object: `(processID, windowHandle, role path, name,
-state_version)` plus a cached weakref. Resolution tries the weakref, then walks
-from the window root, and returns `4205 STALE_REFERENCE` with a fresh
-observation if either fails. Deliberately no re-resolution by name: in a browser,
-"the button called OK" is ambiguous.
+`ref` is a locator, not a pointer, and **resolving one must not walk the tree.**
+Walking to the focused control in a 15-node page took 130 ms — about 9 ms per
+node, because every `children` call crosses into the browser process. A 300-node
+page would cost seconds per action.
+
+So:
+
+* an `observe` captures the focused node, its ancestors, and a *bounded*
+  neighbourhood (cap ~40 nodes), assigning refs to what it saw and keeping both
+  a strong reference and its identity fields;
+* resolution uses that reference first, re-reads `role`/`name`/`windowHandle` to
+  confirm identity, and re-invalidates before use;
+* if the object is gone, the answer is `4205 STALE_REFERENCE` with a fresh
+  observation — never a re-scan, and never re-resolution by name.
+
+Identity checks have no shortcut: `isAlive` and `isDefunct` do not exist on these
+objects, and `isCurrent` was `False` for the focused, valid text field, so it
+cannot be used as a validity predicate. The predicate is "the identity fields
+still read back, and the read does not raise".
+
+Positive evidence for this design: the same DOM node kept **one** Python object
+across 12 samples over 1.8 s, so the retained-reference path will usually hit.
 
 ### 3.5 Event kinds to record
 
@@ -262,7 +301,7 @@ New in this plan:
 | --- | --- | --- |
 | `observe` | `(include: ["focus","ancestors","value","selection","dialog"], max_text: 200)` | returns `state_version` |
 | `invoke` | `(ref, action: null \| name)` | yes |
-| `set_value` | `(ref, value)` | yes |
+| `set_value` | `(ref, value)` — platform `SetValue` when the object exposes it, keyboard otherwise | yes |
 | `focus` | `(ref)` | yes |
 | `press` | `(keys, repeat=1, delay_ms=0)` | yes, default `quiet` |
 | `read` | `(ref = null, scope="line" \| "selection" \| "document" \| "subtree", max_chars=4000)` | no |
@@ -276,6 +315,15 @@ New in this plan:
 `("normal", "modal", "menu")` states. It exists because the current rule lets an
 agent enter a modal and then forbids every tool from leaving it — a safety rule
 that only traps.
+
+`set_value` is deliberately written as "platform when available, keyboard
+otherwise" because the probe found **no write path** on a Chromium text field:
+`value` has no setter, the object exposes neither `UIAElement` nor
+`IAccessibleEditableText` (`QueryInterface` returns "No such interface
+supported"), and `TextInfo` offers only `setEndPoint`/`updateSelection`. UIA
+applications do expose `ValuePattern`, so the platform path is worth having — but
+on the web the honest implementation is focus, select-all, type, and the tool
+must say so rather than pretend it set a value atomically.
 
 ---
 
@@ -349,3 +397,44 @@ Pass: `bridge_acceptance.py` green at api level 2 with both levels advertised.
 * **Speech capture is out of scope** for now. If announcements matter, start from
   `UIA_notification.displayString`, which arrives with the event and needs no
   speech interception.
+* **Errors that cannot be acted on.** During probing, two consecutive requests
+  were rejected with `403 Forbidden Host/Origin` and no further detail, then the
+  same request succeeded. The probe could only guess "enable developer mode",
+  which was wrong. A 403 has three distinct causes — bad host/origin, bad token,
+  withheld permission — and an agent cannot recover from a guess, so the response
+  must say which.
+
+## 7. Evidence index
+
+Every design decision above traces to a measurement. Reproduce with
+`scripts/browser_event_probe.py` (events, settle) and
+`scripts/action_surface_probe.py` (actions, refs, projection).
+
+| Measurement | Value | Decision it drives |
+| --- | --- | --- |
+| 5 typed characters in Notepad | 29 events, 1 visible change | journal records transitions, not events |
+| 3 typed characters in Edge | 16 events, 5 kinds, 1 change | coalesce to a state; `state_version` is not the event counter |
+| `valueChange` → `stateChange`, same character | +146 ms | a 60 ms quiet window is wrong; settle on the observation |
+| Focus settle after one Tab, Edge | 117–182 ms, median 140 | settle budget 1 s, poll floor 25 ms |
+| Immediate read after a keystroke that was stale | 3 of 5 | settle must ride with the action |
+| Plain `div` rewritten 40×/s for 3 s | 0 events | content change is not observable; `read` exists for it |
+| `aria-live` region at 2.5/s | 9 `liveRegionChange` in 3 s | keep `liveRegionChange`; it is the only dynamic-content signal |
+| Tree walk to the focused control | 130 ms / 15 nodes (~9 ms/node) | refs are captured, not resolved by scanning |
+| Same DOM node, 12 samples over 1.8 s | 1 Python object | retained-reference resolution will usually hit |
+| `doAction()` on an unfocused button | page reacted, 0.2 ms | `invoke` is viable and does not need focus |
+| Checkbox toggled, cached `states` unchanged | stale | projection must invalidate before reading |
+| Projection, cached vs invalidated | 0.01 ms vs 13.9 ms median | projection on demand, 2–3 per settle |
+| `value` setter / IA2 editable text / UIA element | absent / absent / absent | `set_value` is keyboard-backed on the web |
+| `isAlive`, `isDefunct`, `isCurrent` | missing, missing, `False` on a valid object | validate refs by identity re-read, not a flag |
+
+Still unmeasured, and worth checking before the phases that depend on them:
+
+* **Heavy applications** — Word, VS Code, a 1000-node web app. The 130 ms walk
+  and 14 ms projection are small-page numbers; both could be an order of
+  magnitude worse, which would change the ref cap and the settle budget.
+* **UIA-only applications**, where `ValuePattern` and UIA text patterns exist and
+  `set_value` may be a real assignment rather than a keystroke impersonation.
+* **Long sessions** — whether repeated invalidation leaks or slows down; the
+  probe ran for seconds, not hours.
+* **Non-Chromium browsers** (Firefox/Gecko) and **terminal emulators**, which
+  carry their own event quirks and are common computer-use targets.
