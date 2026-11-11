@@ -288,16 +288,28 @@ class DeveloperModeManager:
 	- Resets to disabled on NVDA restart or bridge shutdown.
 	"""
 
-	def __init__(self, initial_enabled: bool = False, default_ttl_seconds: int = 300):
+	def __init__(
+		self,
+		initial_enabled: bool = False,
+		default_ttl_seconds: int = 300,
+		permission_policy: Optional[PermissionPolicy] = None,
+	):
 		self._enabled: bool = False
 		self._expires_at: Optional[float] = None
 		self._default_ttl_seconds: int = default_ttl_seconds
 		self._local_approval_secret: Optional[str] = None
 		self._secret_expires_at: Optional[float] = None
 		self._local_token_path: Optional[Path] = None
+		self._permission_policy: Optional[PermissionPolicy] = permission_policy
 
 		if initial_enabled:
 			self.approve_locally(duration_seconds=default_ttl_seconds)
+
+	def set_permission_policy(self, policy: PermissionPolicy) -> None:
+		"""Link permission policy for atomic capability grant and revocation."""
+		self._permission_policy = policy
+		if self.is_enabled:
+			policy.grant(PERMISSION_DEVELOPER)
 
 	@property
 	def is_enabled(self) -> bool:
@@ -323,6 +335,8 @@ class DeveloperModeManager:
 		self._expires_at = time.monotonic() + max(1, ttl)
 		self._local_approval_secret = None
 		self._secret_expires_at = None
+		if self._permission_policy is not None:
+			self._permission_policy.grant(PERMISSION_DEVELOPER)
 		logHandler.log.warning(
 			f"SECURITY AUDIT: Developer mode enabled via local approval for {ttl} seconds. "
 			f"Arbitrary Python execution is permitted until expiration."
@@ -380,6 +394,8 @@ class DeveloperModeManager:
 		self._enabled = False
 		self._expires_at = None
 		self._cleanup_local_token()
+		if self._permission_policy is not None:
+			self._permission_policy.revoke(PERMISSION_DEVELOPER)
 		logHandler.log.info("SECURITY AUDIT: Developer mode disabled.")
 
 	def reset(self) -> None:
@@ -387,6 +403,8 @@ class DeveloperModeManager:
 		self._enabled = False
 		self._expires_at = None
 		self._cleanup_local_token()
+		if self._permission_policy is not None:
+			self._permission_policy.revoke(PERMISSION_DEVELOPER)
 
 	def _cleanup_local_token(self) -> None:
 		self._local_approval_secret = None

@@ -713,7 +713,7 @@ impl ServerHandler for NvdaServer {
             )),
             capabilities: ServerCapabilities {
                 tools: Some(ToolsCapability {
-                    list_changed: Some(true),
+                    list_changed: Some(false),
                 }),
                 ..Default::default()
             },
@@ -1198,5 +1198,20 @@ mod tests {
         assert_eq!(data.get("title").and_then(Value::as_str).unwrap_or(""), "MockWindow");
 
         Ok(())
+    }
+
+    #[test]
+    fn server_capabilities_advertise_static_tool_catalog() {
+        let dummy_catalog = ToolCatalog {
+            tools_for_mcp: Vec::new(),
+            runtime_by_name: HashMap::new(),
+            bridge_version: "1.0.0".into(),
+        };
+        let dummy_client = BridgeClient::new("http://127.0.0.1:8765".into(), "dummy".into()).unwrap();
+        let server = NvdaServer::new(dummy_client, dummy_catalog);
+        let info = server.get_info();
+
+        let tools_cap = info.capabilities.tools.expect("tools capability must be present");
+        assert_eq!(tools_cap.list_changed, Some(false));
     }
 }

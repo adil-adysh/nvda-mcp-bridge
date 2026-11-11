@@ -66,11 +66,73 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			logHandler.log.info("NVDA HTTP Bridge started successfully on 127.0.0.1:8765")
 			logHandler.log.info("Connect nvda-mcp-server to this bridge for MCP access")
 
+			# Register accessible Settings Panel and Tools menu items
+			try:
+				import gui
+				from .gui_settings import MCPBridgeSettingsPanel, install_menu_items
+
+				if hasattr(gui, "settingsDialogs") and hasattr(gui.settingsDialogs, "NVDASettingsDialog"):
+					if MCPBridgeSettingsPanel and MCPBridgeSettingsPanel not in gui.settingsDialogs.NVDASettingsDialog.categoryClasses:
+						gui.settingsDialogs.NVDASettingsDialog.categoryClasses.append(MCPBridgeSettingsPanel)
+				elif hasattr(gui, "NVDASettingsDialog"):
+					if MCPBridgeSettingsPanel and MCPBridgeSettingsPanel not in gui.NVDASettingsDialog.categoryClasses:
+						gui.NVDASettingsDialog.categoryClasses.append(MCPBridgeSettingsPanel)
+
+				install_menu_items(self)
+			except Exception as e:
+				logHandler.log.debug(f"GUI registration skipped or failed: {e}")
+
+			# Fast, non-blocking inspection of companion installation
+			try:
+				from .companion_manager import CompanionManager
+				comp_mgr = CompanionManager()
+				comp_status = comp_mgr.inspect_installed()
+				if not comp_status.installed or not comp_status.compatible:
+					logHandler.log.info(
+						f"NVDA MCP Companion status: {comp_status.status_message}. "
+						"You can install it via NVDA Tools Menu -> NVDA MCP Bridge -> Install or Repair MCP Companion."
+					)
+			except Exception as e:
+				logHandler.log.debug(f"Lightweight companion startup check skipped: {e}")
+
 		except Exception as e:
 			logHandler.log.error(f"Failed to start NVDA HTTP Bridge: {e}", exc_info=True)
 			# Don't crash NVDA if bridge fails
 			self._bridge = None
 			self._bridge_thread = None
+
+	def script_showBridgeStatus(self, gesture):
+		"""Report current NVDA MCP Bridge status, permissions, and companion installation."""
+		from .gui_settings import get_bridge_status_summary
+		import ui
+		summary = get_bridge_status_summary(self._bridge)
+		ui.message(summary)
+
+	script_showBridgeStatus.__doc__ = "Reports NVDA MCP Bridge status, permissions, and companion state."
+
+	def script_toggleDeveloperMode(self, gesture):
+		"""Toggle developer mode with accessible confirmation dialog."""
+		from .gui_settings import disable_developer_mode_interactive, enable_developer_mode_interactive
+		if self._bridge and self._bridge.developer_mode_manager.is_enabled:
+			disable_developer_mode_interactive(self._bridge)
+		else:
+			enable_developer_mode_interactive(self._bridge)
+
+	script_toggleDeveloperMode.__doc__ = "Toggles NVDA MCP Bridge developer mode with confirmation dialog."
+
+	def script_installCompanion(self, gesture):
+		"""Launch accessible companion installation or repair dialog."""
+		from .gui_settings import install_companion_interactive
+		install_companion_interactive()
+
+	script_installCompanion.__doc__ = "Installs or repairs the bundled NVDA MCP Companion binary."
+
+	def script_configureClients(self, gesture):
+		"""Launch accessible MCP client configurator."""
+		from .gui_settings import configure_clients_interactive
+		configure_clients_interactive()
+
+	script_configureClients.__doc__ = "Configures supported MCP clients to use the NVDA MCP Companion."
 
 	def _run_bridge(self):
 		"""Run the HTTP bridge in background thread"""
@@ -115,7 +177,21 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				except Exception as e:
 					logHandler.log.error(f"Error joining bridge thread: {e}", exc_info=True)
 
-			# Step 4: Clean up references
+			# Step 4: Clean up GUI items
+			try:
+				import gui
+				from .gui_settings import MCPBridgeSettingsPanel, remove_menu_items
+				remove_menu_items(self)
+				if hasattr(gui, "settingsDialogs") and hasattr(gui.settingsDialogs, "NVDASettingsDialog"):
+					if MCPBridgeSettingsPanel and MCPBridgeSettingsPanel in gui.settingsDialogs.NVDASettingsDialog.categoryClasses:
+						gui.settingsDialogs.NVDASettingsDialog.categoryClasses.remove(MCPBridgeSettingsPanel)
+				elif hasattr(gui, "NVDASettingsDialog"):
+					if MCPBridgeSettingsPanel and MCPBridgeSettingsPanel in gui.NVDASettingsDialog.categoryClasses:
+						gui.NVDASettingsDialog.categoryClasses.remove(MCPBridgeSettingsPanel)
+			except Exception as e:
+				logHandler.log.debug(f"GUI cleanup error: {e}")
+
+			# Step 5: Clean up references
 			self._bridge = None
 			self._bridge_thread = None
 			self._shutdown_event = None
