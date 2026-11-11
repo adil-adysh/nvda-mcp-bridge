@@ -53,8 +53,30 @@ fn resolve_bridge_token() -> Result<String> {
         }
     }
 
-    // Attempt to discover from user profile directories
+    // Attempt to discover from user profile directories or explicit configuration
     let mut candidate_paths = Vec::new();
+
+    // 1. Explicit token path override
+    if let Ok(token_path) = env::var("NVDA_TOKEN_PATH") {
+        let trimmed = token_path.trim().to_string();
+        if !trimmed.is_empty() {
+            candidate_paths.push(std::path::PathBuf::from(trimmed));
+        }
+    }
+
+    // 2. Config path override (for portable NVDA or test environments)
+    if let Ok(config_path) = env::var("NVDA_CONFIG_PATH") {
+        let trimmed = config_path.trim().to_string();
+        if !trimmed.is_empty() {
+            candidate_paths.push(
+                std::path::PathBuf::from(trimmed)
+                    .join("nvda-mcp-bridge")
+                    .join("token.key"),
+            );
+        }
+    }
+
+    // 3. %APPDATA%\nvda\nvda-mcp-bridge\token.key
     if let Ok(appdata) = env::var("APPDATA") {
         candidate_paths.push(
             std::path::PathBuf::from(appdata)
@@ -63,6 +85,7 @@ fn resolve_bridge_token() -> Result<String> {
                 .join("token.key"),
         );
     }
+    // 4. %LOCALAPPDATA%\nvda-mcp-bridge\token.key
     if let Ok(localappdata) = env::var("LOCALAPPDATA") {
         candidate_paths.push(
             std::path::PathBuf::from(localappdata)
@@ -70,6 +93,7 @@ fn resolve_bridge_token() -> Result<String> {
                 .join("token.key"),
         );
     }
+    // 5. %USERPROFILE%\.nvda-mcp-bridge\token.key
     if let Ok(userprofile) = env::var("USERPROFILE") {
         candidate_paths.push(
             std::path::PathBuf::from(userprofile)
@@ -687,7 +711,12 @@ impl ServerHandler for NvdaServer {
                 "Bridge-backed tools discovered from /tools. protocol={} api_level={} bridge_version={}",
                 PROTOCOL_NAME, API_LEVEL, self.tool_catalog.bridge_version
             )),
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            capabilities: ServerCapabilities {
+                tools: Some(ToolsCapability {
+                    list_changed: Some(true),
+                }),
+                ..Default::default()
+            },
             ..Default::default()
         }
     }
@@ -1009,6 +1038,27 @@ mod tests {
             env::remove_var("NVDA_BRIDGE_TOKEN");
             env::remove_var("ALLOW_INSECURE_DEFAULT_TOKEN");
         }
+    }
+
+    #[test]
+    fn resolve_bridge_token_supports_token_path_and_config_path() {
+        let temp_dir = std::env::temp_dir().join(format!("nvda_test_{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+        let key_file = temp_dir.join("token.key");
+        std::fs::write(&key_file, "custom-discovered-token-12345").unwrap();
+
+        unsafe {
+            env::remove_var("NVDA_BRIDGE_TOKEN");
+            env::set_var("NVDA_TOKEN_PATH", key_file.to_str().unwrap());
+        }
+
+        let result = resolve_bridge_token().unwrap();
+        assert_eq!(result, "custom-discovered-token-12345");
+
+        unsafe {
+            env::remove_var("NVDA_TOKEN_PATH");
+        }
+        let _ = std::fs::remove_dir_all(temp_dir);
     }
 
     #[test]
