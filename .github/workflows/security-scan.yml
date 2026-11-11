@@ -40,9 +40,20 @@ jobs:
         run: |
           cargo test --manifest-path rust_mcp_bridge/Cargo.toml
 
+      - name: Build and stage bundled Rust companion
+        run: |
+          cargo build --release --manifest-path rust_mcp_bridge/Cargo.toml
+          python scripts/package_companion.py stage
+
       - name: Build add-on package
         run: |
           scons
+
+      - name: Validate bundled companion in add-on
+        run: |
+          $addon = Get-ChildItem -Path . -Filter *.nvda-addon -File | Select-Object -First 1
+          if (-not $addon) { throw 'No .nvda-addon package found for verification' }
+          python scripts/package_companion.py verify $addon.FullName
 
       - name: Find packaged add-on
         id: findAddon
