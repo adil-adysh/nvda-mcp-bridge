@@ -3,7 +3,7 @@ use reqwest::{Client, Response};
 use rmcp::{
     ServerHandler, ServiceExt,
     model::*,
-    service::{RequestContext, RoleServer},
+    service::{RequestContext, RoleServer, SubscriptionContext},
 };
 use serde_json::{Map, Value, json};
 use std::{
@@ -26,6 +26,9 @@ use protocol::{
 };
 
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+/// The one resource this companion serves: a snapshot of the NVDA UI state.
+const STATE_URI: &str = "nvda://ui/state";
 
 #[derive(Debug, Clone)]
 struct Settings {
@@ -314,6 +317,34 @@ impl BridgeClient {
         })
     }
 
+    /// Fetch one bridge document (``/state``, ``/events``) as raw JSON.
+    async fn get_json(&self, path_and_query: &str) -> Result<Value> {
+        let url = format!("{}{}", self.base_url, path_and_query);
+        let response = self
+            .client
+            .get(&url)
+            .header(TOKEN_HEADER, &self.auth_token)
+            .send()
+            .await
+            .with_context(|| format!("Failed to connect to bridge for {path_and_query}"))?;
+
+        let status = response.status();
+        let body_text = response.text().await.unwrap_or_default();
+        if status.as_u16() == 401 {
+            bail!("Invalid authentication token for bridge");
+        }
+        if status.as_u16() >= 400 {
+            bail!(
+                "Bridge returned {} for {}: {}",
+                status.as_u16(),
+                path_and_query,
+                Self::extract_error_message(&body_text)
+            );
+        }
+        serde_json::from_str(&body_text)
+            .with_context(|| format!("Bridge returned non-JSON for {path_and_query}"))
+    }
+
     async fn execute_action(&self, action: &str, params: Map<String, Value>) -> Result<BridgeActionEnvelope> {
         let request_id = Self::next_request_id();
         let payload = json!({
@@ -591,7 +622,7 @@ impl NvdaServer {
     /// Build MCP content from a successful bridge response.
     /// Includes protocol metadata (`request_id`, `action`, `duration_ms`, `bridge`,
     /// `nvda_status_snapshot`) for downstream AI agent observability and traceability.
-    fn success_content(payload: &BridgeActionEnvelope) -> Vec<Content> {
+    fn success_content(payload: &BridgeActionEnvelope) -> Vec<ContentBlock> {
         let mut envelope = json!({
             "success": true,
         });
@@ -623,13 +654,13 @@ impl NvdaServer {
             }
         }
 
-        vec![Content::text(serde_json::to_string_pretty(&envelope).unwrap_or_default())]
+        vec![ContentBlock::text(serde_json::to_string_pretty(&envelope).unwrap_or_default())]
     }
 
     /// Build MCP content from a failed bridge response.
     /// Includes protocol metadata (`request_id`, `action`, `duration_ms`, `bridge`,
     /// `nvda_status_snapshot`) for downstream AI agent observability and traceability.
-    fn error_content(payload: &BridgeActionEnvelope) -> Vec<Content> {
+    fn error_content(payload: &BridgeActionEnvelope) -> Vec<ContentBlock> {
         let err = payload.error.clone().unwrap_or(BridgeError {
             code: ErrorCode("BRIDGE_ERROR".into()),
             message: "Unknown bridge error".into(),
@@ -694,36 +725,39 @@ impl NvdaServer {
         }
 
         vec![
-            Content::text(summary),
-            Content::text(serde_json::to_string_pretty(&detail).unwrap_or_default()),
+            ContentBlock::text(summary),
+            ContentBlock::text(serde_json::to_string_pretty(&detail).unwrap_or_default()),
         ]
     }
 }
 
 impl ServerHandler for NvdaServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            server_info: Implementation {
-                name: "nvda-mcp-server-rust".into(),
-                version: env!("CARGO_PKG_VERSION").into(),
-            },
-            instructions: Some(format!(
-                "Bridge-backed tools discovered from /tools. protocol={} api_level={} bridge_version={}",
-                PROTOCOL_NAME, API_LEVEL, self.tool_catalog.bridge_version
-            )),
-            capabilities: ServerCapabilities {
-                tools: Some(ToolsCapability {
-                    list_changed: Some(false),
-                }),
-                ..Default::default()
-            },
-            ..Default::default()
-        }
+    fn get_info(&self) -> ServerConfig {
+        // Advertise resources and subscriptions as well as tools: the bridge
+        // exposes live NVDA state as resources, and clients that support
+        // `subscriptions/listen` can be notified when it changes.
+        ServerConfig::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_resources()
+                // `subscribe: true` is what lets the SDK accept a
+                // resourceSubscriptions filter on subscriptions/listen.
+                .enable_resources_subscribe()
+                .build(),
+        )
+        .with_server_info(Implementation::new(
+            "nvda-mcp-server-rust",
+            env!("CARGO_PKG_VERSION"),
+        ))
+        .with_instructions(format!(
+            "Bridge-backed tools discovered from /tools. protocol={} api_level={} bridge_version={}",
+            PROTOCOL_NAME, API_LEVEL, self.tool_catalog.bridge_version
+        ))
     }
 
     fn list_tools(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = std::result::Result<ListToolsResult, ErrorData>> + Send + '_ {
         future::ready(Ok(ListToolsResult::with_all_items(
@@ -731,11 +765,105 @@ impl ServerHandler for NvdaServer {
         )))
     }
 
+    fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = std::result::Result<ListResourcesResult, ErrorData>> + Send + '_ {
+        future::ready(Ok(ListResourcesResult::with_all_items(vec![
+            Resource::new(STATE_URI, "NVDA UI state")
+                .with_description(
+                    "Versioned snapshot of the focused element, foreground window and NVDA runtime state.",
+                )
+                .with_mime_type("application/json"),
+        ])))
+    }
+
+    fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = std::result::Result<ReadResourceResponse, ErrorData>> + Send + '_ {
+        async move {
+            if request.uri != STATE_URI {
+                return Err(ErrorData::resource_not_found(
+                    format!("Unknown resource: {}", request.uri),
+                    None,
+                ));
+            }
+
+            let state = self
+                .bridge_client
+                .get_json("/state")
+                .await
+                .map_err(|err| ErrorData::internal_error(err.to_string(), None))?;
+
+            Ok(ReadResourceResponse::Complete(ReadResourceResult::new(vec![
+                ResourceContents::text(serde_json::to_string_pretty(&state).unwrap_or_default(), STATE_URI)
+                    .with_mime_type("application/json"),
+            ])))
+        }
+    }
+
+    fn accepted_subscription_filter(&self, requested: &SubscriptionFilter) -> Option<SubscriptionFilter> {
+        // Accept only the state resource. Change notifications are emitted after
+        // the bridge journal advances, so this is the only URI we can serve.
+        let requested_uris = requested.resource_subscriptions.as_deref().unwrap_or(&[]);
+        let accepted_uris: Vec<String> = requested_uris
+            .iter()
+            .filter(|uri| uri.as_str() == STATE_URI)
+            .cloned()
+            .collect();
+
+        if accepted_uris.is_empty() {
+            return None;
+        }
+
+        Some(
+            SubscriptionFilter::builder()
+                .resource_subscriptions(accepted_uris)
+                .build(),
+        )
+    }
+
+    fn listen(
+        &self,
+        context: SubscriptionContext,
+    ) -> impl std::future::Future<Output = std::result::Result<(), ErrorData>> + Send + '_ {
+        async move {
+            let mut cursor = 0_i64;
+            loop {
+                let events_path = format!("/events?since={cursor}&timeout_ms=1000");
+                tokio::select! {
+                    _ = context.cancelled() => return Ok(()),
+                    // Long-poll the bridge journal. A non-zero timeout keeps the
+                    // cost of an idle subscription to one in-flight request.
+                    page = self.bridge_client.get_json(&events_path) => {
+                        let Ok(page) = page else { continue };
+                        let version = page.get("state_version").and_then(Value::as_i64).unwrap_or(cursor);
+                        if version <= cursor {
+                            continue;
+                        }
+                        cursor = version;
+                        let notification = ServerNotification::ResourceUpdatedNotification(
+                            ResourceUpdatedNotification::new(ResourceUpdatedNotificationParam::new(
+                                STATE_URI,
+                            )),
+                        );
+                        if context.sink().send(notification).await.is_err() {
+                            return Ok(());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fn call_tool(
         &self,
-        request: CallToolRequestParam,
+        request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = std::result::Result<CallToolResult, ErrorData>> + Send + '_ {
+    ) -> impl std::future::Future<Output = std::result::Result<CallToolResponse, ErrorData>> + Send + '_ {
         async move {
             let tool_name = request.name.to_string();
             let Some(runtime) = self.tool_catalog.runtime_by_name.get(&tool_name) else {
@@ -761,7 +889,9 @@ impl ServerHandler for NvdaServer {
             let params = request.arguments.unwrap_or_default();
 
             if let Err(err) = Self::validate_input(runtime, &params) {
-                return Ok(CallToolResult::error(vec![Content::text(err.to_string())]));
+                return Ok(CallToolResponse::Complete(CallToolResult::error(vec![
+                    ContentBlock::text(err.to_string()),
+                ])));
             }
 
             let bridge_result = match self.bridge_client.execute_action(&tool_name, params).await {
@@ -786,19 +916,27 @@ impl ServerHandler for NvdaServer {
                             details: None,
                         }),
                     };
-                    return Ok(CallToolResult::error(Self::error_content(&error_envelope)));
+                    return Ok(CallToolResponse::Complete(CallToolResult::error(
+                        Self::error_content(&error_envelope),
+                    )));
                 }
             };
 
             if let Err(err) = Self::validate_output(runtime, &bridge_result) {
                 error!(tool = %tool_name, error = %err, "Bridge output schema mismatch");
-                return Ok(CallToolResult::error(vec![Content::text(err.to_string())]));
+                return Ok(CallToolResponse::Complete(CallToolResult::error(vec![
+                    ContentBlock::text(err.to_string()),
+                ])));
             }
 
             if bridge_result.success {
-                Ok(CallToolResult::success(Self::success_content(&bridge_result)))
+                Ok(CallToolResponse::Complete(CallToolResult::success(
+                    Self::success_content(&bridge_result),
+                )))
             } else {
-                Ok(CallToolResult::error(Self::error_content(&bridge_result)))
+                Ok(CallToolResponse::Complete(CallToolResult::error(
+                    Self::error_content(&bridge_result),
+                )))
             }
         }
     }
@@ -1212,6 +1350,17 @@ mod tests {
         let info = server.get_info();
 
         let tools_cap = info.capabilities.tools.expect("tools capability must be present");
-        assert_eq!(tools_cap.list_changed, Some(false));
+        // The catalog is fetched once at startup, so the server must not promise
+        // `notifications/tools/list_changed`. Absence of the flag means exactly
+        // that; `Some(true)` would be a lie.
+        assert_ne!(tools_cap.list_changed, Some(true));
+
+        // Resources back the live NVDA state surface, and subscriptions are
+        // how clients learn that state changed.
+        let resources_cap = info
+            .capabilities
+            .resources
+            .expect("resources capability must be present");
+        assert_ne!(resources_cap.subscribe, Some(false));
     }
 }
