@@ -30,11 +30,13 @@ ToolExecutor = core.ToolExecutor
 
 @dataclass(frozen=True)
 class TestInput:
+    __test__ = False
     text: str
 
 
 @dataclass(frozen=True)
 class TestOutput:
+    __test__ = False
     value: str
 
 

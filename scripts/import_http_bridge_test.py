@@ -3,7 +3,7 @@ import sys
 import types
 from pathlib import Path
 
-root = Path(r'D:\nvda-addons\nvda-mcp\addon\globalPlugins\nvdaMcp-bridge')
+root = Path(__file__).resolve().parent.parent / "addon" / "globalPlugins" / "nvdaMcp-bridge"
 name = 'bridge_root'
 root_mod = types.ModuleType(name)
 root_mod.__path__ = [str(root)]
