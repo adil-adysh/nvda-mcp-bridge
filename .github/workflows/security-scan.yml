@@ -36,9 +36,9 @@ jobs:
           python -m pip install --upgrade pip wheel
           pip install pre-commit scons markdown
 
-      - name: Run Rust validation
+      - name: Run Rust tests
         run: |
-          cargo check --manifest-path rust_mcp_bridge/Cargo.toml
+          cargo test --manifest-path rust_mcp_bridge/Cargo.toml
 
       - name: Build add-on package
         run: |

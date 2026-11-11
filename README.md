@@ -65,13 +65,16 @@ Create `.vscode/mcp.json`:
       "type": "stdio",
       "command": "nvda-mcp-server",
       "env": {
-        "NVDA_BRIDGE_URL": "http://127.0.0.1:8765",
-        "NVDA_BRIDGE_TOKEN": "nvda-bridge-secret-change-me"
+        "NVDA_BRIDGE_URL": "http://127.0.0.1:8765"
       }
     }
   }
 }
 ```
+
+> **Note on Authentication:** The NVDA bridge generates a secure random token at `%APPDATA%\nvda\nvda-mcp-bridge\token.key` upon first start. `nvda-mcp-server` automatically detects this file when running under the same Windows user. If running across user accounts or containers, set `NVDA_BRIDGE_TOKEN` to your token value.
+
+> **Note on Developer Mode:** By default, arbitrary code execution via `execute_python` is disabled for safety. Use standard tools (`speak_text`, `get_current_focus`, `send_keyboard`, etc.) out of the box, or enable developer mode via `POST /admin/developer-mode` with `{"enabled": true}`.
 
 Then in VS Code:
 
@@ -81,17 +84,14 @@ Then in VS Code:
 
 ---
 
-### 5. Execute Python in NVDA (first win)
+### 5. Verify Speech and Focus Inspection (first win)
 
-In the **VS Code chat interface with MCP enabled**, send:
+In the **VS Code chat interface with MCP enabled**, invoke:
 
-Use the NVDA MCP tool `execute_python` to run:
+Use the NVDA MCP tool `speak_text` to say: "Hello from NVDA MCP Bridge".
 
-import tones
-
-tones.beep(440, 200)
-tones.beep(660, 200)
-tones.beep(880, 400)
+Or test tone generation interactively:
+Use the tool `send_keyboard` with `gesture="windows+d"` to toggle the desktop.
 
 ---
 
@@ -180,7 +180,8 @@ http://127.0.0.1:8765
 ## Example (direct HTTP)
 
 ```powershell
-$headers = @{ 'X-NVDA-Bridge-Token' = 'nvda-bridge-secret-change-me' }
+$token = (Get-Content "$env:APPDATA\nvda\nvda-mcp-bridge\token.key").Trim()
+$headers = @{ 'X-NVDA-Bridge-Token' = $token }
 
 $body = '{
   "request_id": "demo-1",

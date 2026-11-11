@@ -2,6 +2,8 @@ name: build-and-release-addon
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
   pull_request:
@@ -33,11 +35,23 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip wheel
-          pip install pre-commit scons markdown
+          pip install pre-commit scons markdown pytest pydantic jsonschema
 
-      - name: Run Rust validation
+      - name: Verify canonical protocol consistency
         run: |
-          cargo check --manifest-path rust_mcp_bridge/Cargo.toml
+          python scripts/generate_protocol.py --check
+
+      - name: Run Python unit tests
+        run: |
+          pytest -v
+
+      - name: Run Rust unit tests
+        run: |
+          cargo test --manifest-path rust_mcp_bridge/Cargo.toml
+
+      - name: Build Rust MCP release binary
+        run: |
+          cargo build --release --manifest-path rust_mcp_bridge/Cargo.toml
 
       - name: Install gettext tools
         run: |
@@ -56,13 +70,22 @@ jobs:
           scons
           scons pot
 
+      - name: Stage release artifacts & generate SHA-256 checksums
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -Path "*.nvda-addon" -Destination dist\
+          Copy-Item -Path "*.pot" -Destination dist\
+          $exe = Get-ChildItem -Path rust_mcp_bridge/target -Recurse -Filter "nvda-mcp-server.exe" | Where-Object { $_.DirectoryName -like "*release*" } | Select-Object -First 1
+          if (-not $exe) { throw 'nvda-mcp-server.exe release binary not found' }
+          Copy-Item -Path $exe.FullName -Destination dist\
+          Get-FileHash -Path dist\* -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" } | Out-File -FilePath dist\SHA256SUMS.txt -Encoding ascii
+          Get-Content dist\SHA256SUMS.txt
+
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: packaged_addon
-          path: |
-            ./*.nvda-addon
-            ./*.pot
+          path: dist/*
 
   release:
     runs-on: ubuntu-latest
@@ -79,10 +102,9 @@ jobs:
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
-
-      - name: Move artifacts to root
-        run: |
-          cp -r packaged_addon/* .
+        with:
+          name: packaged_addon
+          path: release_artifacts
 
       - name: Extract version
         id: version
@@ -101,8 +123,9 @@ jobs:
       - name: Generate release notes
         run: |
           git-cliff --config cliff.toml --current --output RELEASE_NOTES.md
-          printf '\n### SHA256\n' >> RELEASE_NOTES.md
-          sha256sum *.nvda-addon >> RELEASE_NOTES.md
+          printf '\n### SHA256 Checksums\n```\n' >> RELEASE_NOTES.md
+          cat release_artifacts/SHA256SUMS.txt >> RELEASE_NOTES.md
+          printf '```\n' >> RELEASE_NOTES.md
 
       - name: Debug release notes
         run: cat RELEASE_NOTES.md
@@ -111,8 +134,10 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: |
-            *.nvda-addon
-            *.pot
+            release_artifacts/*.nvda-addon
+            release_artifacts/*.pot
+            release_artifacts/nvda-mcp-server.exe
+            release_artifacts/SHA256SUMS.txt
           body_path: RELEASE_NOTES.md
           fail_on_unmatched_files: true
           prerelease: ${{ contains(steps.version.outputs.version, '-') }}

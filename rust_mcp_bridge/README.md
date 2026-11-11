@@ -18,20 +18,24 @@ Model Context Protocol (MCP) server for NVDA automation, built in Rust. Allows A
 
 - **Windows x64** (Windows 10/11 or later)
 - **NVDA** with nvda-mcp-bridge addon installed
-- **NVDA_BRIDGE_TOKEN** environment variable configured
+- **Authentication**: Automatically detected from `%APPDATA%\nvda\nvda-mcp-bridge\token.key` or configured via `NVDA_BRIDGE_TOKEN`
 
 ## 🚀 Quick Start
 
 ### Installation
 
-1. Download the latest release from [GitHub Releases](https://github.com/adilhodge/nvda-mcp-server/releases)
+1. Download the latest release from [GitHub Releases](https://github.com/adil-adysh/nvda-mcp-bridge/releases)
 2. Extract `nvda-mcp-server.exe` to a convenient location (e.g., `C:\Users\<user>\bin\`)
-3. Set the `NVDA_BRIDGE_TOKEN` environment variable with your bridge token
+3. Ensure NVDA is running with the `nvdaMcpBridge` addon enabled (which automatically generates your secure token)
 
 ### Running Standalone
 
 ```powershell
-$env:NVDA_BRIDGE_TOKEN = "your_bridge_token_here"
+# Auto-discovers token from %APPDATA%\nvda\nvda-mcp-bridge\token.key
+& "C:\Users\<user>\bin\nvda-mcp-server.exe"
+
+# Or explicitly pass token if running under a different user or container
+$env:NVDA_BRIDGE_TOKEN = (Get-Content "$env:APPDATA\nvda\nvda-mcp-bridge\token.key").Trim()
 & "C:\Users\<user>\bin\nvda-mcp-server.exe"
 ```
 
@@ -43,10 +47,7 @@ Add to `%APPDATA%\Claude\claude_desktop_config.json`:
 {
   "mcpServers": {
     "nvda": {
-      "command": "C:\\Users\\<user>\\bin\\nvda-mcp-server.exe",
-      "env": {
-        "NVDA_BRIDGE_TOKEN": "your_bridge_token_here"
-      }
+      "command": "C:\\Users\\<user>\\bin\\nvda-mcp-server.exe"
     }
   }
 }
@@ -56,8 +57,9 @@ Add to `%APPDATA%\Claude\claude_desktop_config.json`:
 
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
-| `NVDA_BRIDGE_TOKEN` | — | ✅ Yes | Authentication token for NVDA bridge |
+| `NVDA_BRIDGE_TOKEN` | Auto-discovered from `%APPDATA%` | ❌ No | Authentication token for NVDA bridge |
 | `NVDA_BRIDGE_URL` | `http://127.0.0.1:8765` | ❌ No | Bridge server URL |
+| `NVDA_BRIDGE_TIMEOUT_SECS` | `15` | ❌ No | HTTP bridge client timeout in seconds |
 | `LOG_LEVEL` | `INFO` | ❌ No | Log level (TRACE, DEBUG, INFO, WARN, ERROR) |
 
 ## 🏗️ Architecture

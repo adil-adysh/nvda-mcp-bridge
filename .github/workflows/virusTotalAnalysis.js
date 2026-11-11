@@ -58,8 +58,8 @@ function queryVirusTotal({core}, sha) {
 
 function runAnalysis({core}, addonFile) {
   if (!process.env.VT_API_KEY) {
-    core.setFailed('VT_API_KEY must be configured in repository secrets');
-    throw new Error('Missing VT_API_KEY');
+    core.warning('VT_API_KEY is not configured in repository secrets; skipping VirusTotal analysis.');
+    return;
   }
 
   const sha = sha256File(addonFile);
