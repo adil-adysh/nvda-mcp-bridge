@@ -150,24 +150,24 @@ jobs:
           script: |
             const setSecurityAnalysisStatus = require('./.github/workflows/securityAnalysis.js')
             const resultsPath = 'results/python.sarif'
-            setSecurityAnalysisStatus({core}, resultsPath)
+            setSecurityAnalysisStatus({core}, resultsPath, {failOnFindings: false})
 
       - name: Upload results
         id: uploadResults
-        if: failure()
+        if: always() && steps.setSecurityAnalysisStatus.outputs.codeQLResults != '[]'
         uses: actions/upload-artifact@v4
         with:
           name: results-warnings
           path: results/python.sarif
           overwrite: true
 
-      - name: Warn if analysis fails
-        if: failure() && (github.event.pull_request != null || github.event.issue != null)
+      - name: Warn if analysis reports advisory findings
+        if: steps.uploadResults.outputs.artifact-url != '' && (github.event.pull_request != null || github.event.issue != null)
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.pull_request.number || github.event.issue.number }}
           body: |
-            Security analysis has reported warnings for this add-on.
+            Security analysis reported advisory findings for this add-on.
             This won't prevent merging, but you should review warnings to ensure the code quality and security posture remain strong.
             You can open this link and [download artifacts containing the results of the analysis](${{ steps.uploadResults.outputs.artifact-url }}).
             Unzip artifacts and open the .sarif file in your preferred editor.
