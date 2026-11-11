@@ -186,12 +186,25 @@ class ToolExecutor:
 						details = collected
 				except Exception:
 					details = {}
+			# A bad argument the schema could not express is the caller's error
+			# (4103), not a bridge fault (5303): reporting "the bridge is broken"
+			# for "this tool was called wrongly" sends an agent down the wrong path.
+			error_code = ErrorCode.HANDLER_EXECUTION_FAILED
+			if isinstance(e, (ValueError, TypeError)):
+				error_code = ErrorCode.INVALID_INPUT_TYPE
+			# A domain error already names its condition on the wire ("TARGET_
+			# UNAVAILABLE", 4205); prefixing the exception class only leaks an
+			# implementation detail into a sentence the caller has to read.
+			message = str(e)
+			if getattr(e, "protocol_code", None) is None:
+				message = f"{type(e).__name__}: {message}"
 			error = HandlerError(
 				tool_name=metadata.name,
 				version=metadata.version,
-				message=f"{type(e).__name__}: {str(e)}",
+				message=message,
 				root_cause=e,
 				details=details,
+				error_code=error_code,
 			)
 			return ExecutionResult(success=False, error=error)
 

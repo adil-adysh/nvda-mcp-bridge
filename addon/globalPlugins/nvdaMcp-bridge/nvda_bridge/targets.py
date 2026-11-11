@@ -35,11 +35,11 @@ def set_focus(target: Any) -> dict[str, Any]:
 	return actions.set_focus(target)
 
 
-def set_value(target: Any, value: str) -> dict[str, Any]:
+def set_value(target: Any, value: str, force_keyboard: bool = False) -> dict[str, Any]:
 	"""Assign a value, preferring a platform write over keystrokes."""
 	if uia.is_element(target):
 		return uia.set_value(target, value)
-	return actions.set_value(target, value)
+	return actions.set_value(target, value, force_keyboard=force_keyboard)
 
 
 def read_text(target: Any, scope: str = "line", max_chars: int = 4000) -> dict[str, Any]:
@@ -47,6 +47,28 @@ def read_text(target: Any, scope: str = "line", max_chars: int = 4000) -> dict[s
 	if uia.is_element(target):
 		return uia.read(target, scope=scope, max_chars=max_chars)
 	return actions.read_text(target, scope=scope, max_chars=max_chars)
+
+
+def read_value(target: Any) -> dict[str, Any]:
+	"""Read a control's current value, for verifying a write.
+
+	Deliberately reads the *live object* rather than a cached projection: the
+	point is to find out whether the write reached the control, and a projection
+	taken before the action would answer a different question.
+
+	``source`` says which view answered: ``uia-value`` (the platform value
+	pattern), ``value`` (the object's own value attribute) or ``text`` (a text
+	range, used when a control has a value attribute that is not a string).
+	"""
+	if uia.is_element(target):
+		return {"value": uia.current_value(target), "source": "uia-value"}
+
+	value = getattr(target, "value", None)
+	if isinstance(value, str):
+		return {"value": value, "source": "value"}
+
+	text = actions.read_text(target, scope="document", max_chars=0)
+	return {"value": str(text.get("text", "") or ""), "source": "text"}
 
 
 def scroll(target: Any, direction: str, amount: str = "page") -> dict[str, Any]:

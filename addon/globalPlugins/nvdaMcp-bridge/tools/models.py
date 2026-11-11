@@ -174,6 +174,16 @@ class FocusInput:
 
 
 @dataclass(frozen=True)
+class ActivateWindowInput:
+	"""Bring a top-level window to the foreground."""
+
+	title: str = ""
+	handle: int = 0
+	exact: bool = False
+	expect: Expectation = None
+
+
+@dataclass(frozen=True)
 class PressInput:
 	"""Send keyboard keys."""
 
@@ -516,17 +526,48 @@ class InvokeResult:
 
 @dataclass(frozen=True)
 class SetValueResult:
-	"""How a value was set.
+	"""How a value was set, and whether the control agrees.
 
 	``mode`` is ``platform`` for a UIA ``ValuePattern`` assignment, and
 	``keyboard`` for focus + select-all + type. They are not equivalent, and a
 	caller that needs atomicity should know which one it got.
+
+	``verified`` is the read-back: the value was read from the control afterwards
+	and matched. When it did not match, ``observed`` carries what the control
+	actually contains, and the response's ``uncertain`` flag is set — a keyboard
+	write can be dispatched successfully and still not reach the field.
 	"""
 
 	ref: str
 	mode: str
 	value: str
 	units: int = 0
+	verified: bool = True
+	observed: str = ""
+	value_source: str = ""
+
+
+@dataclass(frozen=True)
+class ActivateWindowResult:
+	"""The window that ended up in front, and how it got there.
+
+	``method`` is ``foreground`` (this call raised it), ``already-foreground``
+	(nothing to do) or ``refused`` (Windows said no — reported as an error, this
+	value is only reachable if the check is ever relaxed).
+
+	``matches`` counts the windows whose title matched, so a caller that passed a
+	loose title can tell whether the choice was ambiguous.
+	"""
+
+	activated: bool
+	handle: int
+	title: str
+	ref: str = ""
+	previous_title: str = ""
+	method: str = "foreground"
+	restored: bool = False
+	waited_ms: float = 0.0
+	matches: int = 1
 
 
 @dataclass(frozen=True)

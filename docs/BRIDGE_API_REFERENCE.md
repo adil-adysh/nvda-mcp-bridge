@@ -170,12 +170,27 @@ still present, is:
 
 The observation and action surface added with api level 2:
 
-* `observe`, `locate`, `invoke`, `set_value`, `focus`, `press`, `read`,
-  `navigate`, `scroll`, `dismiss`, `click_at`, `wait_for_events`
+* `observe`, `locate`, `invoke`, `set_value`, `focus`, `activate_window`, `press`,
+  `read`, `navigate`, `scroll`, `dismiss`, `click_at`, `wait_for_events`
 
 `observe` returns a projection with a `ref` on every node; `locate` searches for
 controls by role and name and returns refs too. References are locators, not
 indices, and a stale one is reported as `4206` rather than resolved by guessing.
+
+`set_value(ref, value)` writes the control, then reads it back: `verified` says
+the value landed, `observed` carries what the control actually contains when it
+did not (and the envelope's `uncertain` is set), and `value_source` says which
+view answered. An empty `value` clears the control. When a platform write
+changes nothing, the tool retries once with keystrokes — some editors accept
+`ValuePattern.SetValue` and ignore it.
+
+`activate_window(title?, handle?, exact=false)` brings a top-level window to the
+foreground, restoring it if minimised, and reports `method` (`foreground`,
+`already-foreground`), `previous_title` and whether it was `restored`. The
+returned `ref` points at the window, so it can be used as `within` for `locate`.
+Titles are matched case- and whitespace-insensitively, ignoring zero-width
+characters; a title with no match is `4205 TARGET_UNAVAILABLE` with the available
+titles in `details`.
 
 Use `GET /tools` as the source of truth for parameter schemas and output types.
 
@@ -201,3 +216,10 @@ Additive only. A client that asks for api level 1 sees the v1 payloads above.
   expired. Call `observe` or `locate` for fresh references.
 * **`GET /events?raw=1`** returns the raw event journal instead of coalesced
   transitions, for debugging.
+* **`4103` for a handler-level bad argument.** A `ValueError`/`TypeError` raised
+  inside a tool is the caller's error, not a bridge fault (`5303`). Domain errors
+  keep their own code and are not prefixed with an exception class name.
+* **Tool surface changes are announced.** The companion advertises
+  `tools.listChanged` and sends `notifications/tools/list_changed` when the
+  bridge's `schema_hash` changes, so a connected client re-lists instead of
+  keeping the tool set it saw at connect time.

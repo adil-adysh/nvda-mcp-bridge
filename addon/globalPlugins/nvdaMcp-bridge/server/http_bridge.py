@@ -1262,6 +1262,15 @@ class NVDAHTTPBridge:
 			error_code = protocol_code_for_serialized(inner_error)
 			if error_code not in ERROR_CODES:
 				error_code = 5303
+			# Flatten one level: the tool's own details belong beside the tool
+			# metadata, not nested under a second "details" key that a caller has
+			# to know about to find them.
+			domain_details = inner_error.get("details")
+			envelope_details = {
+				key: value for key, value in inner_error.items() if key != "details"
+			}
+			if isinstance(domain_details, dict):
+				envelope_details.update(domain_details)
 			logHandler.log.info(
 				f"bridge.action.failed action={action_name} code={error_code} "
 				f"error_code={inner_error.get('error_code')} duration_ms={duration_ms:.1f}"
@@ -1280,7 +1289,7 @@ class NVDAHTTPBridge:
 					"message": inner_message,
 					"category": ERROR_CODES[error_code]["category"],
 					"retry_policy": ERROR_CODES[error_code]["retry_policy"],
-					"details": inner_error,
+					"details": envelope_details,
 				},
 			}
 

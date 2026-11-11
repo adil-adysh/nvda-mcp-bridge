@@ -4,6 +4,74 @@
   "bridge_version": "1.0.0",
   "api_level": 2,
   "types": {
+    "ActivateWindowResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "activated": {
+              "type": "boolean"
+            },
+            "handle": {
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "previous_title": {
+              "type": "string"
+            },
+            "method": {
+              "type": "string"
+            },
+            "restored": {
+              "type": "boolean"
+            },
+            "waited_ms": {
+              "type": "number"
+            },
+            "matches": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "activated",
+            "handle",
+            "title"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
     "ClickAtResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
@@ -1616,6 +1684,15 @@
             },
             "units": {
               "type": "integer"
+            },
+            "verified": {
+              "type": "boolean"
+            },
+            "observed": {
+              "type": "string"
+            },
+            "value_source": {
+              "type": "string"
             }
           },
           "additionalProperties": false,
@@ -1853,6 +1930,96 @@
     }
   },
   "tools": [
+    {
+      "name": "activate_window",
+      "version": "1.0.0",
+      "description": "Bring a top-level window to the foreground by title (or handle), and verify it took. Raises the window itself; the returned ref points at the window so it can be searched with 'within'.",
+      "category": "action",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "handle": {
+            "type": "integer"
+          },
+          "exact": {
+            "type": "boolean"
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "ActivateWindowResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "activated": {
+            "type": "boolean"
+          },
+          "handle": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "previous_title": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "restored": {
+            "type": "boolean"
+          },
+          "waited_ms": {
+            "type": "number"
+          },
+          "matches": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "activated",
+          "handle",
+          "title"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": true,
+      "requiredPermission": "input_control",
+      "cancellationSupported": false,
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
+    },
     {
       "name": "click_at",
       "version": "1.0.0",
@@ -4025,7 +4192,7 @@
     {
       "name": "set_value",
       "version": "1.0.0",
-      "description": "Set a control's value by ref. Uses the platform value pattern when the control exposes one, otherwise focus + select-all + type; 'mode' says which.",
+      "description": "Set a control's value by ref; an empty string clears it. Uses the platform value pattern when the control exposes one, otherwise focus + select-all + type; 'mode' says which. Reads the control back afterwards: 'verified' says the write landed, 'observed' carries what the control actually contains when it did not.",
       "category": "action",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -4071,6 +4238,15 @@
           },
           "units": {
             "type": "integer"
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "observed": {
+            "type": "string"
+          },
+          "value_source": {
+            "type": "string"
           }
         },
         "additionalProperties": false,
@@ -4356,5 +4532,5 @@
       "supersededBy": null
     }
   ],
-  "count": 31
+  "count": 32
 }

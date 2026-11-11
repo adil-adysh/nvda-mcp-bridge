@@ -269,23 +269,161 @@ def invoke(ref: str, action: str | None, expect: dict[str, Any] | None, context:
 
 
 def set_value(ref: str, value: str, expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
+	"""Write a value, read the control back, and retry once when the write did not stick.
+
+	The write used to stop at "the input was dispatched": a keyboard-mode write
+	reported ``units: 17`` while the field stayed empty, and an agent that trusts
+	``success`` would go on to read a screen that never changed. The read-back is
+	the difference between "I asked" and "it happened", so it is reported on
+	every call — ``verified`` when it matched, ``observed`` when it did not, and
+	``uncertain`` on the result block so the caller cannot miss it.
+
+	The retry exists because a control can accept a platform write without
+	applying it: a browser's contenteditable exposes ``ValuePattern`` and
+	ignores ``SetValue``, which reads as success right up until the value is read
+	back. One keyboard attempt is cheap, and it is the only thing that moves
+	such a control; if it also fails, that is reported rather than papered over.
+	"""
 	from ..nvda_bridge import targets
 
 	captured: dict[str, Any] = {}
 
-	def perform() -> dict[str, Any]:
+	def perform(force_keyboard: bool = False) -> dict[str, Any]:
 		def act() -> dict[str, Any]:
-			return targets.set_value(context.resolve(ref), value)
+			return targets.set_value(context.resolve(ref), value, force_keyboard=force_keyboard)
 
 		captured.update(context.dispatch(act))
 		return captured
 
-	context.settle(perform, expect=expect)
+	def read_observed() -> tuple[bool, str, str]:
+		try:
+			read_back = context.dispatch(lambda: targets.read_value(context.resolve(ref)))
+		except Exception:  # noqa: BLE001 — a vanished control is "unverified", not a failure
+			return False, "", "unavailable"
+		seen_value = read_back.get("value")
+		seen = "" if seen_value is None else str(seen_value)
+		# Browsers keep the placeholder in the value pattern on an empty field, and
+		# an emptied contenteditable holds "\n"; compare the text, not the framing.
+		return seen.strip() == value.strip(), seen, str(read_back.get("source", ""))
+
+	# What the control holds now, so a platform write that changes nothing can be
+	# told apart from one that landed.
+	_before_verified, before, _before_source = read_observed()
+
+	outcome = context.settle(perform, expect=expect)
+	verified, observed, value_source = read_observed()
+
+	# Retry once with keystrokes only when the platform write changed nothing: a
+	# control can expose ValuePattern and ignore SetValue, and typing is the only
+	# thing that moves it. A write that *did* change something is reported as-is
+	# rather than typed over.
+	if not verified and str(captured.get("mode", "")) == "platform" and observed.strip() == before.strip():
+		captured.clear()
+		outcome = context.settle(lambda: perform(force_keyboard=True), expect=expect)
+		verified, observed, value_source = read_observed()
+
+	if not verified:
+		setattr(outcome, "uncertain", True)
+
 	return {
 		"ref": ref,
 		"mode": str(captured.get("mode", "keyboard")),
 		"value": value,
 		"units": int(captured.get("units", 0)),
+		"verified": verified,
+		"observed": "" if verified else observed,
+		"value_source": value_source,
+	}
+
+
+def activate_window(
+	title: str,
+	handle: int,
+	exact: bool,
+	expect: dict[str, Any] | None,
+	context: Any,
+) -> dict[str, Any]:
+	"""Bring a top-level window to the foreground, then settle on it.
+
+	This is the verb the tool surface was missing: without it, every task that
+	did not start in the foreground window needed a script outside the protocol.
+	The window object is registered as a reference, so the caller can search
+	inside it (`within`) or observe it without a second lookup.
+	"""
+	from ..nvda_bridge import windows
+
+	if not title and not handle:
+		raise ValueError("'activate_window' needs a title or a handle")
+	if handle and (not isinstance(handle, int) or isinstance(handle, bool) or handle <= 0):
+		raise ValueError("'handle' must be a positive integer window handle")
+
+	# Fast path: if the window is already in front there is nothing to wait for.
+	# Going through settle would spend its first-activity window (about 800 ms)
+	# learning that a no-op was a no-op.
+	if not handle:
+		current_handle = windows.foreground_handle()
+		current_title = windows.foreground_title()
+		# A minimised window can still be the one Windows calls foreground, and
+		# calling that "already in front" would leave it hidden.
+		if windows.title_matches(current_title, title, exact) and not windows.is_minimized(
+			current_handle,
+		):
+			ref = ""
+			window_object = None
+			try:
+				window_object = context.dispatch(
+					lambda: windows.object_for_handle(current_handle),
+				)
+			except Exception:  # noqa: BLE001 — a ref is a bonus, not the answer
+				window_object = None
+			if window_object is not None:
+				try:
+					ref = context.register(window_object)
+				except Exception:  # noqa: BLE001
+					ref = ""
+			return {
+				"activated": True,
+				"handle": current_handle,
+				"title": current_title,
+				"ref": ref,
+				"previous_title": current_title,
+				"method": "already-foreground",
+				"restored": False,
+				"waited_ms": 0.0,
+				"matches": 1,
+			}
+
+	captured: dict[str, Any] = {}
+
+	def perform() -> dict[str, Any]:
+		def act() -> dict[str, Any]:
+			result = windows.activate(title=title or "", handle=handle, exact=exact)
+			captured.update(result)
+			return {key: value for key, value in result.items() if key != "object"}
+
+		context.dispatch(act)
+		return {key: value for key, value in captured.items() if key != "object"}
+
+	outcome = context.settle(perform, expect=expect)
+
+	window_object = captured.get("object")
+	ref = ""
+	if window_object is not None:
+		try:
+			ref = context.register(window_object)
+		except Exception:  # noqa: BLE001 — a window without a ref is still activated
+			ref = ""
+
+	return {
+		"activated": bool(captured.get("activated", False)),
+		"handle": int(captured.get("handle", 0)),
+		"title": str(captured.get("title", "")),
+		"ref": ref,
+		"previous_title": str(captured.get("previous_title", "")),
+		"method": str(captured.get("method", "foreground")),
+		"restored": bool(captured.get("restored", False)),
+		"waited_ms": float(captured.get("waited_ms", 0.0)),
+		"matches": int(captured.get("matches", 1)),
 	}
 
 

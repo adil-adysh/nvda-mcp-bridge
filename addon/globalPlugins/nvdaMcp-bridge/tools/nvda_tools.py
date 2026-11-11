@@ -519,8 +519,11 @@ ALL_NVDA_TOOLS = [
             name="set_value",
             version="1.0.0",
             description=(
-                "Set a control's value by ref. Uses the platform value pattern when the "
-                "control exposes one, otherwise focus + select-all + type; 'mode' says which."
+                "Set a control's value by ref; an empty string clears it. Uses the platform "
+                "value pattern when the control exposes one, otherwise focus + select-all + "
+                "type; 'mode' says which. Reads the control back afterwards: 'verified' says "
+                "the write landed, 'observed' carries what the control actually contains when "
+                "it did not."
             ),
             category="action",
             read_only=False,
@@ -562,6 +565,36 @@ ALL_NVDA_TOOLS = [
         models.FocusResult,
         lambda input_obj, context: tool_handlers.focus_object(
             ref=input_obj.ref,
+            expect=input_obj.expect,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="activate_window",
+            version="1.0.0",
+            description=(
+                "Bring a top-level window to the foreground by title (or handle), and verify "
+                "it took. Raises the window itself; the returned ref points at the window so "
+                "it can be searched with 'within'."
+            ),
+            category="action",
+            read_only=False,
+            destructive=False,
+            idempotent=True,
+            side_effects=True,
+            required_permission="input_control",
+            allowed_nvda_states=("normal",),
+            expected_duration_ms=400,
+            retry_safe=True,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.ActivateWindowInput,
+        models.ActivateWindowResult,
+        lambda input_obj, context: tool_handlers.activate_window(
+            title=input_obj.title,
+            handle=input_obj.handle,
+            exact=input_obj.exact,
             expect=input_obj.expect,
             context=context,
         ),

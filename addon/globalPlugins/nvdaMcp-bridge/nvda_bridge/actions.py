@@ -161,16 +161,27 @@ def _uia_set_value(obj: Any, value: str) -> bool:
 		return False
 
 
-def set_value(obj: Any, value: str) -> dict[str, Any]:
-	"""Set an object's value by platform call when possible, keyboard otherwise."""
+def set_value(obj: Any, value: str, force_keyboard: bool = False) -> dict[str, Any]:
+	"""Set an object's value by platform call when possible, keyboard otherwise.
+
+	``force_keyboard`` skips the platform attempt. Callers use it for the retry
+	after a platform write that the control accepted without applying: some
+	editors expose ``ValuePattern`` but ignore ``SetValue``, and keystrokes are
+	the only thing that actually moves them.
+	"""
 	_invalidate(obj)
-	if _uia_set_value(obj, value):
+	if not force_keyboard and _uia_set_value(obj, value):
 		return {"mode": "platform", "value": value}
 
 	# Keyboard path. Documented as such on the wire: it is focus + select-all +
 	# type, not an atomic assignment, and it can be observed in progress.
 	set_focus(obj)
 	nvda_ui.send_single_gesture("control+a")
+	if value == "":
+		# Clearing a field is a normal write, not a typing accident: send_text
+		# refuses the empty string, so the selection is deleted instead.
+		nvda_ui.send_single_gesture("delete")
+		return {"mode": "keyboard", "value": "", "units": 0}
 	typed = win_input.send_text(value)
 	return {"mode": "keyboard", "value": value, "units": typed}
 

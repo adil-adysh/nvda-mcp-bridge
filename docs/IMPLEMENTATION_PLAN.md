@@ -308,8 +308,9 @@ New in this plan:
 | `observe` | `(include: ["focus","ancestors","value","selection","dialog"], max_text: 200)` | returns `state_version` |
 | `locate` | `(role?, name?, exact=false, within?, limit=10, max_nodes=400, timeout_ms=500)` — searches with UIA, falls back to a bounded walk | returns refs |
 | `invoke` | `(ref, action: null \| name)` | yes |
-| `set_value` | `(ref, value)` — platform `SetValue` when the object exposes it, keyboard otherwise | yes |
+| `set_value` | `(ref, value)` — platform `SetValue` when the object exposes it, keyboard otherwise; an empty value clears the control; the control is read back and `verified`/`observed` say whether the write landed | yes |
 | `focus` | `(ref)` | yes |
+| `activate_window` | `(title?, handle?, exact=false)` — raises a top-level window, restores it when minimised, and verifies the foreground changed | yes |
 | `press` | `(keys, repeat=1, delay_ms=0, expect=null)` | yes, default `quiet` |
 | `read` | `(ref = null, scope="line" \| "selection" \| "document" \| "subtree", max_chars=4000)` | no |
 | `navigate` | `(direction="next" \| "previous" \| "first" \| "last" \| "parent" \| "child", ref = null)` | yes |
@@ -465,8 +466,9 @@ reason, because a plan that quietly changes is worse than one that is updated.
 | P1 | `server/events.py` (transitions + raw debug journal, 40 ms coalescer), `server/state.py` (projection, diff, three counters), `nvda_bridge/observation.py`, `/state` from the projector, 18 event hooks | Ancestor depth raised 5 → 8: a dialog's chain runs through its own window to the application frame (Notepad's Replace box is at depth 4, its frame at depth 8), so a 5-deep chain cannot tell a dialog from the main window. |
 | P2 | `refs.py`, `settle.py`, `nvda_bridge/actions.py`, `win_input.py`, 11 tools, `dialog_control` | `get_navigator_object` is deprecated rather than retired, and `move_focus`/`read_current_line`/`get_current_focus`/`send_keyboard` are kept as deprecated aliases: deleting working diagnostics would throw away the surface that produced this document. Dialog detection is structural (a named window nested in another window), because the dialog itself reports `WINDOW`, not `DIALOG`. |
 | P3 | `wait_for_events`, one bridge event pump + `tokio::sync::broadcast` in the companion, 10 s sink timeout | — |
-| P4 | `api_level: 2` with `supported_api_levels: [1, 2]`, `result` block, `outputSchema`, `schema_hash`, `deprecated`/`supersededBy`, companion catalog refresh | The companion cannot send `tools/list_changed` (its catalog capability is static), so it swaps the catalog under a lock and the next `tools/list` sees it. |
+| P4 | `api_level: 2` with `supported_api_levels: [1, 2]`, `result` block, `outputSchema`, `schema_hash`, `deprecated`/`supersededBy`, companion catalog refresh | The companion's catalog capability was static, so for a while a swap was silent and a connected client kept the surface it saw at connect time — an add-on update could leave a session offering the old tool set. Fixed: it now advertises `tools.listChanged` and sends `notifications/tools/list_changed`, which is what makes a client re-list. |
 | P5 | `server/locate.py` (match rules), `nvda_bridge/locate.py` (UIA search + bounded walk), `nvda_bridge/uia.py` (Invoke/Value/Toggle/SelectionItem/ExpandCollapse), `nvda_bridge/targets.py` (one dispatch seam), `locate` tool | A located target is an `IUIAutomationElement`, not an NVDA object: `NVDAObjects.UIA.UIA(UIAElement=…)` rejects a live element with `E_INVALIDARG`, and hit-testing only works while the element is on screen. So references now record their `target_kind` and the action layer routes by it; `navigate` refuses a located target and says so. The default search root is the foreground window, because a top-level dialog (Notepad's Save As) is not an ancestor of the focus. |
+| P5.1 | `nvda_bridge/windows.py`, `activate_window`, verified `set_value` (`verified`/`observed`/`value_source`), empty-string writes, `4103` for handler `ValueError`s | `set_value` used to stop at "the input was dispatched": a keyboard write could report `units: 17` while the field stayed empty. It now reads the control back and sets `uncertain` when the value did not land, retrying once with keystrokes only when the platform write changed nothing. `activate_window` exists because Windows refuses `SetForegroundWindow` from an external process: raising a covered window was the one common task the tool surface could not start, so every such job needed a script. |
 
 Live observations from `scripts/live_acceptance.py` (44/44 checks, 1
 environmental skip) and `scripts/bridge_acceptance.py` (69/70 behavioural,
@@ -502,6 +504,23 @@ environmental skip) and `scripts/bridge_acceptance.py` (69/70 behavioural,
 | Top-level dialog (Notepad Save As) | scope `DIALOG 'Save as'`, Cancel found with `automationId: "2"`, `invoke` closes it, `changed: true` |
 | Located ref after its window closes | `4206` |
 | `automationId` on located controls | present (`"2"` for Cancel, `"1"` for Save) — the best replay selector so far |
+
+The two contract fixes of P5.1, from `scripts/bridge_acceptance.py` (70/70
+behavioural, 8/8 security, 0/16 type leaks, 16/16 concurrency),
+`scripts/actions_acceptance.py` (19/19) and the probes:
+
+| Check | Observed |
+| --- | --- |
+| `set_value` into Notepad | `mode: platform`, `verified: true`, `value_source: "value"`, 149 ms; the window title tracked the new text (`*validated end to end - Notepad`) |
+| `set_value` on a browser contenteditable | platform `SetValue` accepted and ignored: read-back empty, so `changed` was the only signal — hence the read-back |
+| Platform write that changes nothing | retried once with keystrokes, then verified: clearing the composer ended `verified: true`, `mode: keyboard` |
+| Write that neither path applies | `verified: false`, `observed` carries the control's real text, `uncertain: true` |
+| `activate_window` on a covered window | `method: "foreground"`, `waited_ms` 15-62, delta names the old and new window, 277-442 ms round trip |
+| `activate_window` on the window already in front | `method: "already-foreground"`, no settle round, 105-134 ms |
+| `activate_window` on a minimised window | raised and `restored: true` (a minimised window can still be the OS foreground, so it is never treated as "already in front") |
+| `activate_window` with a title that matches nothing | `4205 TARGET_UNAVAILABLE`, message names the title, `details.available` lists nearby windows |
+| Zero-width characters in a title | Edge titles carry one inside "Microsoft Edge"; titles are compared with invisibles stripped, so `"Microsoft Edge"` matches |
+| Handler `ValueError` | `4103`, not `5303`: a bad argument is the caller's error, not a bridge fault |
 
 Still true and worth keeping in view: a settle that observes no change costs
 about 800 ms (two rounds of the 250 ms first-activity wait), which is the price

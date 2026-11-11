@@ -333,6 +333,23 @@ def set_value(element: Any, value: str) -> dict[str, Any]:
 	)
 
 
+def current_value(element: Any) -> str:
+	"""The element's value, read back through the same pattern ``set_value`` writes.
+
+	Reading back is not a formality: a browser exposes the *placeholder* through
+	``ValuePattern.CurrentValue`` on an empty field, so a write that silently did
+	nothing can look, at a glance, like a write that produced the hint text. The
+	caller compares this against what it asked for and decides.
+	"""
+	pattern = _pattern(element, "Value")
+	if pattern is not None:
+		return str(_safe(lambda: pattern.CurrentValue, "") or "")
+	legacy = _pattern(element, "LegacyIAccessible")
+	if legacy is not None:
+		return str(_safe(lambda: legacy.CurrentValue, "") or "")
+	return ""
+
+
 def read(element: Any, scope: str = "line", max_chars: int = 4000) -> dict[str, Any]:
 	"""Read text from a located element.
 

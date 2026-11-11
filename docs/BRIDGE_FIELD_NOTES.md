@@ -117,3 +117,22 @@ passed and the value was still readable. That is defensible, but it means
 3. Document `within` as a search-root hint, or make widening an error.
 4. Add `activate_window` — the missing verb for anything that does not start in
    the foreground window.
+
+## What has since been fixed
+
+1. **Done.** `set_value` now reads the control back and returns `verified`,
+   `observed` and `value_source`; when the value did not land the envelope's
+   `uncertain` is set. An empty value clears the control, and a platform write
+   that changes nothing is retried once with keystrokes.
+2. **Done.** `value_source` says which view answered (`uia-value`, `value`,
+   `text`), so a placeholder is no longer indistinguishable from content.
+3. **Partly.** `within` still widens when the ref has no UIA element of its own;
+   `method: "uia-window"` and the `scope` string are the only warning. It is
+   documented in `BRIDGE_API_REFERENCE.md`, not prevented.
+4. **Done.** `activate_window(title?, handle?, exact=false)` raises a top-level
+   window, restores it when minimised, verifies the foreground changed, and
+   returns a ref for the window. A title with no match is `4205` with the
+   available titles listed.
+
+The DSH GUI finding (a reasoning disclosure named after its whole paragraph)
+stands and is still worth an `aria-label`.

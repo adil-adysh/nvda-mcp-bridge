@@ -53,9 +53,13 @@ class _FakeActions:
 		return {"index": 1, "actionName": "Press", "available": ["Press", "Focus"]}
 
 	@staticmethod
-	def set_value(obj, value):
-		ACTION_CALLS.append(("set_value", value))
-		return {"mode": "platform", "value": value}
+	def set_value(obj, value, force_keyboard=False):
+		ACTION_CALLS.append(("set_value", value, force_keyboard))
+		mode = "keyboard" if force_keyboard else "platform"
+		sticks = KEYBOARD_WRITE_STICKS if force_keyboard else PLATFORM_WRITE_STICKS
+		if sticks:
+			VALUE_AFTER_WRITE["value"] = value
+		return {"mode": mode, "value": value, "units": 0 if mode == "platform" else len(value)}
 
 	@staticmethod
 	def set_focus(obj):
@@ -86,6 +90,31 @@ class _FakeActions:
 	@staticmethod
 	def default_dialog_button(dialog):
 		return "button"
+
+
+#: What the fake control contains when `set_value` is read back afterwards.
+#: Tests flip this to model a write that never landed.
+VALUE_AFTER_WRITE = {"value": None}
+
+#: Whether each write path actually applies. A browser's contenteditable accepts
+#: the platform write and ignores it, so the default is "platform lies".
+PLATFORM_WRITE_STICKS = False
+KEYBOARD_WRITE_STICKS = True
+
+
+def _fake_activate_window(title="", handle=0, exact=False):
+	ACTION_CALLS.append(("activate_window", title, handle, exact))
+	return {
+		"activated": True,
+		"handle": 4242,
+		"title": title or "Notepad",
+		"previous_title": "DeepSeek Harness",
+		"method": "foreground",
+		"restored": False,
+		"waited_ms": 18.0,
+		"matches": 1,
+		"object": "window-object",
+	}
 
 
 def _fake_send_keyboard(gesture, repeat=1, delay_ms=0, **kwargs):
@@ -124,8 +153,21 @@ class _FakeTargets:
 	navigate = staticmethod(_FakeActions.navigate)
 	scroll = staticmethod(_FakeActions.scroll)
 
+	@staticmethod
+	def read_value(obj):
+		return {"value": VALUE_AFTER_WRITE["value"], "source": "value"}
+
 
 _fake_bridge.targets = _FakeTargets
+_fake_bridge.windows = types.SimpleNamespace(
+	activate=_fake_activate_window,
+	# The fast path only triggers when the foreground window already matches;
+	# these tests exercise the path that actually raises something.
+	foreground_title=lambda: "DeepSeek Harness",
+	foreground_handle=lambda: 99,
+	title_matches=lambda candidate, wanted, exact=False: False,
+	object_for_handle=lambda handle: "window-object",
+)
 
 _BRIDGE_KEY = f"{_PACKAGE_NAME}.nvda_bridge"
 _original_bridge = sys.modules.get(_BRIDGE_KEY)
@@ -160,6 +202,7 @@ NEW_TOOLS = {
 	"invoke",
 	"set_value",
 	"focus",
+	"activate_window",
 	"press",
 	"read",
 	"navigate",
@@ -297,6 +340,10 @@ class SurfaceTests(unittest.TestCase):
 class HandlerTests(unittest.TestCase):
 	def setUp(self):
 		ACTION_CALLS.clear()
+		VALUE_AFTER_WRITE["value"] = None
+		global PLATFORM_WRITE_STICKS, KEYBOARD_WRITE_STICKS
+		PLATFORM_WRITE_STICKS = False
+		KEYBOARD_WRITE_STICKS = True
 
 	def test_observe_dispatches_the_capture(self):
 		context = FakeContext()
@@ -338,10 +385,90 @@ class HandlerTests(unittest.TestCase):
 		self.assertTrue(result["focused"])
 
 	def test_set_value_reports_which_mechanism_was_used(self):
+		globals()["PLATFORM_WRITE_STICKS"] = True
 		context = FakeContext()
 		result = handlers.set_value(ref="f", value="abc", expect=None, context=context)
 		self.assertEqual(result["mode"], "platform")
 		self.assertEqual(result["value"], "abc")
+		self.assertTrue(result["verified"])
+		self.assertEqual(result["observed"], "")
+		self.assertFalse(context.result.settle.uncertain)
+		# The write landed first time, so no keyboard retry was attempted.
+		self.assertFalse(any(call == ("set_value", "abc", True) for call in ACTION_CALLS))
+
+	def test_set_value_retries_with_keystrokes_when_the_platform_write_does_not_stick(self):
+		context = FakeContext()
+		result = handlers.set_value(ref="f", value="abc", expect=None, context=context)
+		self.assertTrue(result["verified"])
+		self.assertEqual(result["mode"], "keyboard")
+		self.assertIn(("set_value", "abc", True), ACTION_CALLS)
+
+	def test_set_value_reports_a_write_that_did_not_land(self):
+		# Neither path applies: the handler must say so instead of claiming success.
+		globals()["KEYBOARD_WRITE_STICKS"] = False
+		context = FakeContext()
+		result = handlers.set_value(ref="f", value="bridge round-trip", expect=None, context=context)
+		self.assertFalse(result["verified"])
+		self.assertEqual(result["observed"], "")
+		self.assertTrue(context.result.settle.uncertain)
+
+	def test_set_value_reports_what_the_control_actually_contains(self):
+		globals()["KEYBOARD_WRITE_STICKS"] = False
+		VALUE_AFTER_WRITE["value"] = "previous text"
+		context = FakeContext()
+		result = handlers.set_value(ref="f", value="new", expect=None, context=context)
+		self.assertFalse(result["verified"])
+		self.assertEqual(result["observed"], "previous text")
+		self.assertTrue(context.result.settle.uncertain)
+
+	def test_activate_window_registers_the_window_it_raised(self):
+		context = FakeContext()
+		result = handlers.activate_window(
+			title="Notepad",
+			handle=0,
+			exact=False,
+			expect=None,
+			context=context,
+		)
+		self.assertIn(("activate_window", "Notepad", 0, False), ACTION_CALLS)
+		self.assertIn(("register", "window-object"), context.calls)
+		self.assertTrue(result["activated"])
+		self.assertEqual(result["ref"], "n1")
+		self.assertEqual(result["method"], "foreground")
+		self.assertEqual(result["matches"], 1)
+
+	def test_activate_window_needs_a_title_or_a_handle(self):
+		with self.assertRaises(ValueError):
+			handlers.activate_window(title="", handle=0, exact=False, expect=None, context=FakeContext())
+
+	def test_activate_window_short_circuits_when_already_in_front(self):
+		# No settle round: the answer is known before doing anything.
+		fake_windows = types.SimpleNamespace(
+			activate=_fake_activate_window,
+			foreground_title=lambda: "DeepSeek Harness — Microsoft Edge",
+			foreground_handle=lambda: 657444,
+			title_matches=lambda candidate, wanted, exact=False: "harness" in candidate.casefold(),
+			is_minimized=lambda handle: False,
+			object_for_handle=lambda handle: "window-object",
+		)
+		original = _fake_bridge.windows
+		_fake_bridge.windows = fake_windows
+		try:
+			context = FakeContext()
+			result = handlers.activate_window(
+				title="Harness",
+				handle=0,
+				exact=False,
+				expect=None,
+				context=context,
+			)
+		finally:
+			_fake_bridge.windows = original
+
+		self.assertEqual(result["method"], "already-foreground")
+		self.assertEqual(result["handle"], 657444)
+		self.assertEqual(result["ref"], "n1")
+		self.assertFalse(any(isinstance(call, tuple) and call[0] == "settle" for call in context.calls))
 
 	def test_dismiss_tries_escape_then_the_default_button(self):
 		# First settle leaves a dialog, second one removes it.

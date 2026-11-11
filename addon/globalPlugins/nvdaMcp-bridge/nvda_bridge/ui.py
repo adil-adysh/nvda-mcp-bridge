@@ -386,13 +386,15 @@ def get_window_title() -> Dict[str, Any]:
 	Returns:
 		Dictionary with window title and handle
 
-	Raises:
-		RuntimeError: If no foreground window is available
+	``handle`` is 0 with an empty title when Windows reports no foreground
+	window (for example between closing the last window and the desktop taking
+	focus). That is a real, reportable state — a caller asking "what is in front"
+	should get an answer, not a bridge fault (5303).
 	"""
 	# Get foreground window
 	hwnd = winUser.getForegroundWindow()
 	if not hwnd:
-		raise RuntimeError("No foreground window")
+		return {"title": "", "handle": 0, "className": ""}
 
 	# Get window text with error handling
 	try:

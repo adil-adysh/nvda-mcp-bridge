@@ -278,7 +278,12 @@ def window_title(bridge: Bridge) -> str:
 def activate(bridge: Bridge, fragment: str, attempts: int = 14) -> bool:
     """Bring a window with ``fragment`` in its title to the foreground.
 
-    Uses the task switcher, because a non-interactive session refuses
+    First choice is the bridge's own ``activate_window``: it runs inside NVDA,
+    which the foreground rules treat far better than a helper process, and it
+    verifies the switch itself. The older tricks below remain as fallbacks for a
+    bridge that does not have the tool yet.
+
+    Uses the task switcher last, because a non-interactive session refuses
     ``SetForegroundWindow`` outright (verified: the call succeeds and the
     foreground does not change). Alt+Tab is handled by the shell, so it works
     where the API does not. Each press is followed by a poll because NVDA
@@ -287,6 +292,11 @@ def activate(bridge: Bridge, fragment: str, attempts: int = 14) -> bool:
     fragment = fragment.lower()
     if fragment in window_title(bridge).lower():
         return True
+
+    response = bridge.call("activate_window", {"title": fragment})
+    if (response.get("body") or {}).get("success"):
+        if wait_for(lambda: fragment in window_title(bridge).lower(), timeout_s=1.5, interval_s=0.1):
+            return True
 
     # Raising the window with the topmost toggle is what works when
     # SetForegroundWindow is refused: it changes the Z order. Prefer the task
