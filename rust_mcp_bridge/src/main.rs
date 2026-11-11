@@ -1,9 +1,9 @@
 use anyhow::{Context, Result, anyhow, bail};
 use reqwest::{Client, Response};
 use rmcp::{
-    ServerHandler, ServiceExt,
+    Peer, ServerHandler, ServiceExt,
     model::*,
-    service::{RequestContext, RoleServer, SubscriptionContext},
+    service::{NotificationContext, RequestContext, RoleServer, SubscriptionContext},
 };
 use serde_json::{Map, Value, json};
 use std::{
@@ -562,6 +562,9 @@ fn annotation_for_tool(tool: &BridgeToolDef) -> ToolAnnotations {
 struct NvdaServer {
     bridge_client: BridgeClient,
     tool_catalog: Arc<RwLock<ToolCatalog>>,
+    /// Filled in by `on_initialized`: the refresh loop needs a handle on the
+    /// connected client to announce that the tool surface changed.
+    peer: Arc<RwLock<Option<Peer<RoleServer>>>>,
     subscription_tx: broadcast::Sender<i64>,
     shutdown: Arc<AtomicBool>,
 }
@@ -576,6 +579,7 @@ impl NvdaServer {
         Self {
             bridge_client,
             tool_catalog,
+            peer: Arc::new(RwLock::new(None)),
             subscription_tx,
             shutdown: Arc::new(AtomicBool::new(false)),
         }
@@ -790,6 +794,11 @@ impl ServerHandler for NvdaServer {
         ServerConfig::new(
             ServerCapabilities::builder()
                 .enable_tools()
+                // The catalog refresh loop swaps in a new surface when the
+                // add-on's `schema_hash` changes; promising list-changed is
+                // what makes a client re-list instead of keeping the tool set
+                // it saw at connect time.
+                .enable_tool_list_changed()
                 .enable_resources()
                 // `subscribe: true` is what lets the SDK accept a
                 // resourceSubscriptions filter on subscriptions/listen.
@@ -804,6 +813,21 @@ impl ServerHandler for NvdaServer {
             "Bridge-backed tools discovered from /tools. protocol={} api_level={} bridge_version={}",
             PROTOCOL_NAME, API_LEVEL, bridge_version
         ))
+    }
+
+    fn on_initialized(
+        &self,
+        context: NotificationContext<RoleServer>,
+    ) -> impl std::future::Future<Output = ()> + Send + '_ {
+        // Keep the peer so the refresh loop can tell this client that the tool
+        // surface changed. A client that has gone away is not a problem: the
+        // send fails and the loop logs it.
+        let mut slot = self
+            .peer
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *slot = Some(context.peer);
+        future::ready(())
     }
 
     fn list_tools(
@@ -1053,12 +1077,13 @@ fn spawn_event_pump(
 }
 
 /// Periodically re-fetch `/tools` and swap in the catalog when `schema_hash`
-/// changes. rmcp 3.9 advertises a static tool capability, so no
-/// `tools/list_changed` notification is emitted; the next `tools/list` simply
-/// sees the refreshed surface.
+/// changes. rmcp 3.9 keeps the tool capability static, so a swap on its own is
+/// invisible to the client: `notifications/tools/list_changed` is what makes it
+/// re-list, and the peer is only known after the handshake (see `on_initialized`).
 fn spawn_catalog_refresh(
     bridge_client: BridgeClient,
     tool_catalog: Arc<RwLock<ToolCatalog>>,
+    peer: Arc<RwLock<Option<Peer<RoleServer>>>>,
     shutdown: Arc<AtomicBool>,
     period: Duration,
 ) -> tokio::task::JoinHandle<()> {
@@ -1096,6 +1121,32 @@ fn spawn_catalog_refresh(
                             previous_hash = ?previous_hash,
                             "Bridge tool contract changed; swapped in refreshed catalog"
                         );
+                        let peer = peer
+                            .read()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .clone();
+                        match peer {
+                            Some(peer) => {
+                                let notification = ServerNotification::ToolListChangedNotification(
+                                    ToolListChangedNotification {
+                                        method: Default::default(),
+                                        extensions: Default::default(),
+                                    },
+                                );
+                                match peer.send_notification(notification).await {
+                                    Ok(()) => info!(
+                                        "Announced refreshed tool surface; client will re-list"
+                                    ),
+                                    Err(err) => warn!(
+                                        error = %err,
+                                        "Refresh happened but the client could not be notified"
+                                    ),
+                                }
+                            }
+                            None => info!(
+                                "Catalog refreshed before the client handshake; the next tools/list sees it"
+                            ),
+                        }
                     }
                 }
                 Err(err) => {
@@ -1195,6 +1246,7 @@ async fn main() -> Result<()> {
             Some(spawn_catalog_refresh(
                 bridge_client.clone(),
                 Arc::clone(&server.tool_catalog),
+                Arc::clone(&server.peer),
                 Arc::clone(&server.shutdown),
                 period,
             ))
@@ -1529,7 +1581,7 @@ mod tests {
     }
 
     #[test]
-    fn server_capabilities_advertise_static_tool_catalog() {
+    fn server_capabilities_advertise_refreshable_tool_catalog() {
         let dummy_catalog = ToolCatalog {
             tools_for_mcp: Vec::new(),
             runtime_by_name: HashMap::new(),
@@ -1541,10 +1593,11 @@ mod tests {
         let info = server.get_info();
 
         let tools_cap = info.capabilities.tools.expect("tools capability must be present");
-        // The catalog is fetched once at startup, so the server must not promise
-        // `notifications/tools/list_changed`. Absence of the flag means exactly
-        // that; `Some(true)` would be a lie.
-        assert_ne!(tools_cap.list_changed, Some(true));
+        // The refresh loop swaps in a new surface when the add-on's schema hash
+        // changes and then sends `notifications/tools/list_changed`. Clients only
+        // honour that notification when the capability is advertised, and a
+        // client that never re-lists keeps the tool set it saw at connect time.
+        assert_eq!(tools_cap.list_changed, Some(true));
 
         // Resources back the live NVDA state surface, and subscriptions are
         // how clients learn that state changed.

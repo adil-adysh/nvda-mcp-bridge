@@ -184,7 +184,9 @@ runtime faults, so a client cannot know whether to correct its arguments or retr
   `completed`/`uncertain` drift failed at runtime rather than at discovery.
 * **The companion caches `/tools` for its lifetime**, so an add-on upgrade that
   changes schemas requires killing `nvda-mcp-server.exe`. Nothing in `/health`
-  signals staleness.
+  signals staleness. *(Fixed in the companion: a `schema_hash` change now sends
+  `notifications/tools/list_changed`, which makes a connected client re-list.
+  Clients that ignore the notification still cache until reconnect.)*
 * **Oversized bodies abort the connection** (413 with no JSON envelope).
 * **Gesture modifier names are NVDA-internal and unaliased.** `ctrl+a` fails with
   `4103 Failed to resolve keyboard gesture 'ctrl+a': 'ctrl'`; only `control+a`
