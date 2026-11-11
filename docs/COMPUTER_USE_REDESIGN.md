@@ -461,6 +461,57 @@ tool for confirming a destructive action — the failure that restarted NVDA wit
 add-ons disabled would have been a confirmation, not a type error. Worth
 considering once the companion is dual-era.
 
+#### Validation status: implemented and proven
+
+The layered design above was implemented as a vertical slice and measured
+against a live NVDA. `scripts/mcp_subscription_spike.py` spawns the companion
+over stdio and speaks raw JSON-RPC, so the result does not depend on any client:
+
+```
+server/discover -> protocols=['2024-11-05', ..., '2026-07-28']
+                  modern protocol advertised: True
+resources/list -> ['nvda://ui/state']
+resources/read -> 752 bytes, focus='Add files or run commands'
+subscriptions/listen ack -> {"resourceSubscriptions": ["nvda://ui/state"]}
+notifications/resources/updated -> uri=nvda://ui/state subscriptionId=4 after 413ms
+result: PASS
+```
+
+What this establishes, and what it cost:
+
+* **The dependency upgrade is done and sufficient.** `rmcp` 0.3.2 → 3.9.0 (plus
+  reqwest 0.13, jsonschema 0.61, tokio 1.54). The SDK implements the 2026-07-28
+  model — `SubscriptionFilter`, `SubscriptionsListenRequest`, ack framing,
+  `resultType` — and its `ServerHandler` exposes exactly the four hooks the
+  design needs: `list_resources`, `read_resource`,
+  `accepted_subscription_filter`, `listen`. The protocol generation problem in
+  the section above is resolved: the companion now negotiates dual-era
+  (`supportedVersions` covers 2024-11-05 … 2026-07-28) without hand-rolled
+  framing.
+* **One resource is enough.** `nvda://ui/state` carries the observation; the
+  subscription filter mechanism only accepts resource URIs, which confirms the
+  "collapse events into state" argument empirically.
+* **The notification is cheap and fast.** A focus change produced
+  `notifications/resources/updated` 413 ms after the triggering keystroke, with
+  the client free to decide whether to re-read.
+* **`enable_resources_subscribe()` is load-bearing.** Advertising resources
+  without `subscribe: true` silently yields an empty acknowledged filter and an
+  immediately-completed stream — a failure mode worth knowing, because it looks
+  like "subscriptions don't work" rather than "you did not advertise them".
+* **Cancellation teardown is conditional.** The spike's `notifications/cancelled`
+  did not produce the graceful `SubscriptionsListenResult` within 3 s. rmcp gates
+  subscription cancellation on the peer's lifecycle
+  (`peer_cancels_subscriptions` → `uses_legacy_lifecycle(peer_info())`), so a
+  client that skips the handshake — which a stateless agent may well do — needs
+  its subscription reaped by transport close or by the server's own timeout.
+  Before relying on this in production, add an idle timeout in `listen` so a
+  dead client cannot hold a poll loop.
+
+The bridge side that made this possible is small: `server/events.py` (bounded
+journal with a waitable version counter), `GET /state`, and
+`GET /events?since=&timeout_ms=` — the cursor endpoint from the transport section
+below, which is also what the long-poll tool will use.
+
 ---
 
 ## 4. Redesign for add-on development
