@@ -6,20 +6,19 @@ This is a thin bridge layer - it does NOT implement MCP protocol.
 All MCP logic is handled by the separate nvda-mcp-server process.
 
 Architecture:
-- NVDA Bridge (this module): Simple HTTP bridge on 127.0.0.1:8765
-- nvda-mcp-server (standalone): MCP protocol implementation on 127.0.0.1:8000
-- VS Code client: Connects to nvda-mcp-server, not directly to NVDA
+- NVDA Bridge (this module): Hardened localhost HTTP bridge on 127.0.0.1:8765
+- nvda-mcp-server (standalone): MCP protocol implementation on stdio
+- AI Client (VS Code, Claude, etc.): Connects to nvda-mcp-server via MCP
 
-Protocol: Simple JSON over HTTP (NOT MCP)
-
-Thread Safety:
+Thread Safety & Responsiveness:
 - HTTP server runs in background daemon thread
-- All NVDA API calls are queued to main thread via queueHandler.queueFunction()
-- Requests block while waiting for main thread execution (with timeout)
-- This prevents NVDA freezing/crashes from background thread API access
+- All NVDA API calls are safely dispatched to NVDA's main thread
+- Main thread operations are non-blocking; repeated keystroke delays execute in background
+- Requests enforce socket deadlines, connection limits, and Host/Origin validation
 """
 
-import hmac
+from __future__ import annotations
+
 import json
 import threading
 import time
@@ -50,6 +49,12 @@ from .protocol import (
 	build_tools_payload,
 )
 from .response import build_action_error, build_error_envelope
+from .security import (
+	DeveloperModeManager,
+	check_action_permissions,
+	constant_time_compare,
+	get_or_create_bridge_token,
+)
 from ..validation.output_type_registry import build_output_type_registry, validate_output_type_registry
 
 
@@ -58,44 +63,57 @@ def _new_request_id() -> str:
 
 
 class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
-	"""HTTP request handler for NVDA bridge"""
+	"""HTTP request handler for NVDA bridge with security hardening."""
+
+	def setup(self):
+		"""Set up request socket with strict deadline to prevent hanging."""
+		super().setup()
+		try:
+			self.request.settimeout(15.0)
+		except Exception:
+			pass
 
 	def log_message(self, format, *args):
-		"""Suppress verbose HTTP server logging to avoid crashes"""
+		"""Suppress verbose HTTP server logging to avoid clutter and potential log crashes."""
 		pass
 
 	def _send_json_response(self, data: Dict[str, Any], status_code: int = 200):
-		"""Send JSON response with error handling"""
+		"""Send JSON response with error handling and secure headers."""
 		try:
 			self.send_response(status_code)
 			self.send_header("Content-Type", "application/json")
-			# Origin must include the scheme; bare IPs are not valid CORS origins.
 			self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1")
+			self.send_header("X-Content-Type-Options", "nosniff")
 			self.end_headers()
 			response_json = json.dumps(data, ensure_ascii=False, indent=2)
 			self.wfile.write(response_json.encode("utf-8"))
 		except Exception as e:
 			logHandler.log.error(f"Error sending response: {e}", exc_info=True)
-			# Don't crash - response already partially sent
+
+	def _validate_host_and_origin(self) -> bool:
+		"""Validate Host and Origin headers to prevent DNS rebinding and cross-site attacks."""
+		host_header = self.headers.get("Host", "").split(":")[0].strip().lower()
+		if host_header and host_header not in ("127.0.0.1", "localhost"):
+			logHandler.log.warning(f"Rejected request with unauthorized Host header: {host_header}")
+			return False
+
+		origin = self.headers.get("Origin", "")
+		if origin:
+			origin_clean = origin.rstrip("/").lower()
+			if not (origin_clean.startswith("http://127.0.0.1") or origin_clean.startswith("http://localhost")):
+				logHandler.log.warning(f"Rejected cross-origin request from unauthorized Origin: {origin}")
+				return False
+		return True
 
 	def _check_auth(self) -> bool:
-		"""Check bridge token authentication using a timing-safe comparison.
-
-		A plain ``==`` short-circuits on the first differing byte, leaking
-		information about the correct prefix through response latency.
-		``hmac.compare_digest`` runs in constant time regardless of where the
-		strings diverge, eliminating that timing oracle.
-		"""
-		token = self.headers.get(TOKEN_HEADER, "")
-		expected_token = getattr(self.server, "bridge_token", DEFAULT_BRIDGE_TOKEN)
-		try:
-			return hmac.compare_digest(
-				token.encode("utf-8"),
-				expected_token.encode("utf-8"),
-			)
-		except Exception:
-			# compare_digest requires bytes or str; fall back safely.
-			return False
+		"""Check bridge token authentication using constant-time comparison. Fails closed."""
+		token = self.headers.get(TOKEN_HEADER, "").strip()
+		if not token:
+			auth_header = self.headers.get("Authorization", "").strip()
+			if auth_header.startswith("Bearer "):
+				token = auth_header[7:].strip()
+		expected_token = getattr(self.server, "bridge_token", "")
+		return constant_time_compare(token, expected_token)
 
 	@staticmethod
 	def _validate_tools_discovery_payload(payload: Dict[str, Any]) -> None:
@@ -124,7 +142,12 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 		)
 
 	def do_OPTIONS(self):
-		"""Handle CORS preflight"""
+		"""Handle CORS preflight with localhost restriction."""
+		if not self._validate_host_and_origin():
+			self.send_response(403)
+			self.end_headers()
+			return
+
 		self.send_response(200)
 		self.send_header("Access-Control-Allow-Origin", "http://127.0.0.1")
 		self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -132,8 +155,18 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 		self.end_headers()
 
 	def do_GET(self):
-		"""Handle GET requests with error handling"""
+		"""Handle GET requests with error handling."""
 		try:
+			if not self._validate_host_and_origin():
+				envelope = self._build_error_envelope(
+					request_id=_new_request_id(),
+					action="http_get",
+					code=4001,
+					message="Forbidden Host/Origin header",
+				)
+				self._send_json_response(envelope, 403)
+				return
+
 			if self.path == "/health":
 				self._send_json_response(self.server.get_health_payload())
 				return
@@ -155,7 +188,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				)
 				self._send_json_response(envelope, 500)
 			except Exception:
-				pass  # Don't crash if response fails
+				pass
 
 	def _handle_tools_discovery(self):
 		if not self._check_auth():
@@ -164,7 +197,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				request_id=request_id,
 				action="tools_discovery",
 				code=4001,
-				message="Unauthorized (invalid token)",
+				message="Unauthorized (invalid or missing token)",
 			)
 			self._send_json_response(envelope, 401)
 			return
@@ -182,16 +215,26 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 		self._send_json_response(payload)
 
 	def do_POST(self):
-		"""Handle POST requests for bridge actions with comprehensive error handling"""
+		"""Handle POST requests for bridge actions with comprehensive error handling."""
 		try:
 			request_id = _new_request_id()
+
+			if not self._validate_host_and_origin():
+				envelope = self._build_error_envelope(
+					request_id=request_id,
+					action="unknown",
+					code=4001,
+					message="Forbidden Host/Origin header",
+				)
+				self._send_json_response(envelope, 403)
+				return
 
 			if not self._check_auth():
 				envelope = self._build_error_envelope(
 					request_id=request_id,
 					action="unknown",
 					code=4001,
-					message="Unauthorized (invalid token)",
+					message="Unauthorized (invalid or missing token)",
 				)
 				self._send_json_response(envelope, 401)
 				return
@@ -201,10 +244,14 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				return
 
 			if self.path in ("/action", "/execute"):
-				action, params, request_id = self._validate_action_request(request_data, request_id)
+				action, params, request_id, timeout_ms = self._validate_action_request(request_data, request_id)
 				if action is None:
 					return
-				self._handle_action(action, params, request_id)
+				self._handle_action(action, params or {}, request_id, timeout_ms=timeout_ms)
+				return
+
+			if self.path == "/admin/developer-mode":
+				self._handle_developer_mode(request_data, request_id)
 				return
 
 			envelope = self._build_error_envelope(
@@ -225,7 +272,42 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				)
 				self._send_json_response(envelope, 500)
 			except Exception:
-				pass  # Don't crash if response fails
+				pass
+
+	def _handle_developer_mode(self, request_data: Dict[str, Any], request_id: str):
+		"""Handle developer mode toggle requests."""
+		enabled = request_data.get("enabled")
+		if not isinstance(enabled, bool):
+			envelope = self._build_error_envelope(
+				request_id=request_id,
+				action="admin/developer-mode",
+				code=4101,
+				message="Missing or non-boolean 'enabled' field",
+			)
+			self._send_json_response(envelope, 400)
+			return
+
+		manager: DeveloperModeManager = getattr(self.server, "developer_mode_manager", None)
+		if not manager:
+			envelope = self._build_error_envelope(
+				request_id=request_id,
+				action="admin/developer-mode",
+				code=5303,
+				message="DeveloperModeManager not available",
+			)
+			self._send_json_response(envelope, 500)
+			return
+
+		if enabled:
+			manager.enable()
+		else:
+			manager.disable()
+
+		self._send_json_response({
+			"success": True,
+			"developer_mode": manager.is_enabled,
+			"message": "Developer mode updated successfully",
+		})
 
 	def _parse_request_body(self, request_id: str) -> Optional[Dict[str, Any]]:
 		try:
@@ -301,9 +383,23 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			self._send_json_response(envelope, 400)
 			return None
 
-	def _validate_action_request(self, request_data: Dict[str, Any], request_id: str) -> tuple[Optional[str], Optional[Dict[str, Any]], str]:
+	def _validate_action_request(
+		self, request_data: Dict[str, Any], request_id: str
+	) -> tuple[Optional[str], Optional[Dict[str, Any]], str, Optional[int]]:
 		action = request_data.get("action")
 		params = request_data.get("params")
+		timeout_ms = request_data.get("timeout_ms")
+
+		if timeout_ms is not None:
+			if not isinstance(timeout_ms, int) or timeout_ms < 100 or timeout_ms > 300000:
+				envelope = self._build_error_envelope(
+					request_id=request_id,
+					action="unknown",
+					code=4101,
+					message="'timeout_ms' must be an integer between 100 and 300000",
+				)
+				self._send_json_response(envelope, 400)
+				return None, None, request_id, None
 
 		if action is None:
 			envelope = self._build_error_envelope(
@@ -313,7 +409,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="Missing 'action' field",
 			)
 			self._send_json_response(envelope, 400)
-			return None, None, request_id
+			return None, None, request_id, None
 
 		if not isinstance(action, str):
 			envelope = self._build_error_envelope(
@@ -323,7 +419,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="'action' must be a string",
 			)
 			self._send_json_response(envelope, 400)
-			return None, None, request_id
+			return None, None, request_id, None
 
 		action = action.strip()
 		if not action:
@@ -334,7 +430,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="'action' cannot be empty",
 			)
 			self._send_json_response(envelope, 400)
-			return None, None, request_id
+			return None, None, request_id, None
 
 		if len(action) > MAX_REQUEST_ID_LENGTH:
 			envelope = self._build_error_envelope(
@@ -344,7 +440,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="'action' is too long (max 128 characters)",
 			)
 			self._send_json_response(envelope, 400)
-			return None, None, request_id
+			return None, None, request_id, None
 
 		if "params" not in request_data:
 			envelope = self._build_error_envelope(
@@ -354,7 +450,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="Missing 'params' field",
 			)
 			self._send_json_response(envelope, 400)
-			return None, None, request_id
+			return None, None, request_id, None
 
 		if not isinstance(params, dict):
 			envelope = self._build_error_envelope(
@@ -364,13 +460,17 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="'params' must be a JSON object",
 			)
 			self._send_json_response(envelope, 400)
-			return None, None, request_id
+			return None, None, request_id, None
 
-		return action, params, request_id
+		return action, params, request_id, timeout_ms
 
-	def _handle_action(self, action: str, params: Dict[str, Any], request_id: str):
-		"""Execute a validated bridge action request."""
-		envelope = self.server.execute_action(request_id=request_id, action_name=action, params=params)
+	def _handle_action(
+		self, action: str, params: Dict[str, Any], request_id: str, timeout_ms: Optional[int] = None
+	):
+		"""Execute a validated bridge action request with deadline and error mapping."""
+		envelope = self.server.execute_action(
+			request_id=request_id, action_name=action, params=params, timeout_ms=timeout_ms
+		)
 		if envelope.get("success"):
 			status = 200
 		else:
@@ -384,7 +484,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 
 
 class NVDAHTTPBridge:
-	"""Minimal HTTP bridge that runs inside NVDA process"""
+	"""Minimal HTTP bridge that runs inside NVDA process with hardened security."""
 
 	def __init__(
 		self,
@@ -393,74 +493,68 @@ class NVDAHTTPBridge:
 		shutdown_event: Optional[threading.Event] = None,
 		bridge_token: Optional[str] = None,
 		tool_registry: Optional[ToolRegistry] = None,
+		developer_mode: bool = False,
 	):
-		"""
-		Initialize HTTP bridge.
-
-		Args:
-			host: Host to bind to (should be 127.0.0.1)
-			port: Port to bind to (should be 8765)
-			shutdown_event: Event to signal shutdown
-			bridge_token: Authentication token for requests
-			tool_registry: Custom tool registry (uses default if None)
-		"""
 		self.host = host
 		self.port = port
 		self.shutdown_event = shutdown_event or threading.Event()
-		self.bridge_token = bridge_token or DEFAULT_BRIDGE_TOKEN
+		self.developer_mode_manager = DeveloperModeManager(initial_enabled=developer_mode)
+		self.bridge_token = bridge_token if bridge_token is not None else get_or_create_bridge_token()
 		self.server: Optional[HTTPServer] = None
 		self.main_thread_executor = MainThreadExecutor(default_timeout=10.0)
 		self.tool_executor = ToolExecutor()
 		self.started_at_monotonic = time.monotonic()
 
-		# Startup lifecycle:
-		# 1) load output registry
-		# 2) load immutable typed tool registry (NVDA_TOOLS_REGISTRY)
-		# 3) freeze wiring and start HTTP server
 		self.output_types = build_output_type_registry()
 		validate_output_type_registry(self.output_types)
 
-		# Use the new immutable typed registry built at module load time
 		self.registry = tool_registry or NVDA_TOOLS_REGISTRY
 		logHandler.log.info(f"bridge.tools.loaded count={len(self.registry)}")
 		logHandler.log.debug(f"bridge.registry.frozen tools={len(self.registry)}")
 
-		# Attach list_tools to server so the GET /tools handler can reach it
-		# without holding a reference to the full bridge object.
 		self._list_tools = self._build_tools_list
 		self._list_output_types = self._build_output_types
 
+	def enable_developer_mode(self) -> None:
+		self.developer_mode_manager.enable()
+
+	def disable_developer_mode(self) -> None:
+		self.developer_mode_manager.disable()
+
+	@property
+	def is_developer_mode_enabled(self) -> bool:
+		return self.developer_mode_manager.is_enabled
+
 	@staticmethod
 	def _compute_tool_constraints(meta: Any) -> Dict[str, Any]:
-		"""Compute bridge-level constraints for a tool based on its category and name.
-
-		These constraints are surfaced in the tool discovery payload so downstream
-		consumers (Rust MCP server, AI agents) know when a tool is expected to be
-		blocked by NVDA state without having to replicate NVDA state-check logic.
-		"""
-		category = meta.category
-		name = meta.name
+		"""Compute bridge-level constraints for a tool based on explicit metadata."""
 		constraints: Dict[str, Any] = {}
 
-		# NVDA state-based blocking hints (mirrors _check_action_allowed logic)
-		constraints["blocked_on_secure_screen"] = category not in SECURE_SCREEN_ALLOWED_CATEGORIES
-		constraints["blocked_on_modal"] = category in MODAL_BLOCKING_BLOCKED_CATEGORIES
-		constraints["blocked_on_menu"] = category in MENU_OPEN_BLOCKED_CATEGORIES
+		allowed_states = getattr(meta, "allowed_nvda_states", ("normal",))
+		constraints["blocked_on_secure_screen"] = "secure_desktop" not in allowed_states
+		constraints["blocked_on_modal"] = "modal" not in allowed_states
+		constraints["blocked_on_menu"] = "menu" not in allowed_states
 
-		# Dangerous / opt-in tools
-		constraints["dangerous"] = name in ("execute_python",)
-		constraints["requires_explicit_opt_in"] = name in ("execute_python",)
+		is_developer = getattr(meta, "required_permission", "") == "developer" or meta.name == "execute_python"
+		is_dangerous = getattr(meta, "destructive", False) or is_developer
+
+		constraints["dangerous"] = is_dangerous
+		constraints["requires_explicit_opt_in"] = is_developer or getattr(meta, "required_permission", "") == "nvda_lifecycle"
+		constraints["requires_developer_mode"] = is_developer
 
 		return constraints
 
 	def _build_tools_list(self) -> list[Dict[str, Any]]:
 		"""Build tools list for /tools endpoint in protocol v1 format.
 
-		Each tool entry includes metadata, JSON Schema input, named output type
-		reference, and computed constraints for downstream AI agents.
+		Omits developer-mode tools (like execute_python) when developer mode is disabled.
 		"""
 		tools = []
 		for meta in self.registry.list_tools():
+			# Exclude developer-only tools from discovery if developer mode is not active
+			if getattr(meta, "required_permission", "") == "developer" and not self.developer_mode_manager.is_enabled:
+				continue
+
 			input_schema_obj = self.registry.get_input_schema(meta.name, meta.version)
 			output_schema_obj = self.registry.get_output_schema(meta.name, meta.version)
 
@@ -473,52 +567,59 @@ class NVDAHTTPBridge:
 					"inputSchema": input_schema_obj.to_json_schema(),
 					"outputType": self._get_output_type_name(output_schema_obj),
 					"constraints": self._compute_tool_constraints(meta),
+					"readOnly": getattr(meta, "read_only", False),
+					"destructive": getattr(meta, "destructive", False),
+					"idempotent": getattr(meta, "idempotent", False),
+					"sideEffects": getattr(meta, "side_effects", False),
+					"requiredPermission": getattr(meta, "required_permission", "read_only"),
+					"cancellationSupported": getattr(meta, "cancellation_supported", False),
+					"retrySafe": getattr(meta, "retry_safe", False),
 				}
 			)
 		return tools
 
 	def _get_output_type_name(self, output_schema_obj: Any) -> str:
-		"""Resolve a schema's output type name for tool discovery."""
 		return output_schema_obj.model.__name__ if hasattr(output_schema_obj, "model") else "ToolResponse"
 
 	def _build_output_types(self) -> Dict[str, Any]:
-		"""Return the bridge output type registry."""
 		return dict(self.output_types)
 
 	def _bridge_metadata(self) -> Dict[str, Any]:
 		return {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL}
 
-	def _check_action_allowed(self, request_id: str, action_name: str, tool_category: str, status_snapshot: Dict[str, bool], duration_ms: float) -> Optional[Dict[str, Any]]:
-		if status_snapshot["secure_screen"] and tool_category not in SECURE_SCREEN_ALLOWED_CATEGORIES:
+	def _check_action_allowed(
+		self,
+		request_id: str,
+		action_name: str,
+		metadata: Any = None,
+		status_snapshot: Optional[Dict[str, bool]] = None,
+		duration_ms: float = 0.0,
+		tool_category: Optional[str] = None,
+	) -> Optional[Dict[str, Any]]:
+		"""Enforce explicit capabilities and NVDA state restrictions."""
+		if metadata is None:
+			try:
+				metadata = self.registry.get_metadata(action_name)
+			except Exception:
+				metadata = None
+		if status_snapshot is None:
+			status_snapshot = self.get_nvda_status_snapshot()
+		allowed, code, message = check_action_permissions(
+			action_name=action_name,
+			metadata=metadata,
+			nvda_status_snapshot=status_snapshot,
+			dev_mode_enabled=self.developer_mode_manager.is_enabled,
+			tool_category=tool_category,
+		)
+		if not allowed:
 			return build_action_error(
 				request_id=request_id,
 				action_name=action_name,
 				duration_ms=0.0,
-				code=4201,
-				message="Action blocked while NVDA is on secure desktop",
+				code=code,
+				message=message,
 				nvda_status_snapshot=self.get_nvda_status_snapshot(),
 			)
-
-		if status_snapshot["modal_blocking"] and tool_category in MODAL_BLOCKING_BLOCKED_CATEGORIES:
-			return build_action_error(
-				request_id=request_id,
-				action_name=action_name,
-				duration_ms=0.0,
-				code=4202,
-				message="Action blocked by modal NVDA dialog",
-				nvda_status_snapshot=self.get_nvda_status_snapshot(),
-			)
-
-		if status_snapshot["menu_open"] and tool_category in MENU_OPEN_BLOCKED_CATEGORIES:
-			return build_action_error(
-				request_id=request_id,
-				action_name=action_name,
-				duration_ms=0.0,
-				code=4203,
-				message="Action blocked while NVDA menu is open",
-				nvda_status_snapshot=self.get_nvda_status_snapshot(),
-			)
-
 		return None
 
 	def get_nvda_status(self) -> Dict[str, bool]:
@@ -598,37 +699,21 @@ class NVDAHTTPBridge:
 			"uptime_seconds": int(max(0.0, time.monotonic() - self.started_at_monotonic)),
 			"timestamp_utc": datetime.now(timezone.utc).isoformat(),
 			"nvda_status": self.get_nvda_status(),
+			"developer_mode": self.developer_mode_manager.is_enabled,
 		}
 
-	def execute_action(self, request_id: str, action_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
-		"""
-		Execute a bridge action with full error handling and threading.
-
-		This is the orchestration layer that:
-		1. Validates input
-		2. Gets tool from registry
-		3. Executes through ToolExecutor (validates input, executes, validates output)
-		4. Wraps result in HTTP-compatible envelope
-		5. Logs execution time for observability
-
-		Args:
-			request_id: Unique request identifier
-			action_name: Name of the action/tool to execute
-			params: Parameters to pass to the tool
-
-		Returns:
-			HTTP envelope with action metadata:
-			Success: {"success": True, "action": str, "duration_ms": float, "data": {...}}
-			Error: {"success": False, "action": str, "duration_ms": float, "error": {...}}
-		"""
+	def execute_action(
+		self,
+		request_id: str,
+		action_name: str,
+		params: Dict[str, Any],
+		timeout_ms: Optional[int] = None,
+	) -> Dict[str, Any]:
+		"""Execute a bridge action with full error handling, threading, and cancellation."""
 		start_time = time.perf_counter()
 		logHandler.log.debug(f"bridge.action.start action={action_name}")
 
 		try:
-			# NOTE: action_name and params are already fully validated by
-			# _handle_action before this method is called.
-
-			# Look up the tool in the immutable registry
 			tool = self.registry.get(action_name)
 			if not tool:
 				logHandler.log.warning(f"bridge.action.unknown action={action_name}")
@@ -648,27 +733,65 @@ class NVDAHTTPBridge:
 					},
 				}
 
-			# Check NVDA state constraints using centralized policy helpers
 			status_snapshot = self.get_nvda_status_snapshot()
 			duration_ms = (time.perf_counter() - start_time) * 1000
-			blocked = self._check_action_allowed(request_id, action_name, tool.get_metadata().category, status_snapshot, duration_ms)
+			blocked = self._check_action_allowed(
+				request_id, action_name, tool.get_metadata(), status_snapshot, duration_ms
+			)
 			if blocked is not None:
 				return blocked
 
-			# Execute tool through ToolExecutor pipeline:
-			# - Validates input against schema
-			# - Executes tool on main thread (via MainThreadExecutor)
-			# - Validates output
-			# - Serializes to JSON-compatible dict
 			resolved_params = params or {}
+			effective_timeout = (
+				(timeout_ms / 1000.0)
+				if (timeout_ms is not None and 100 <= timeout_ms <= 300000)
+				else self.main_thread_executor.default_timeout
+			)
 
-			def _execute_tool():
-				return self.tool_executor.execute_and_serialize(tool, resolved_params)
+			cancellation_event = threading.Event()
 
-			# Execute on main thread for thread safety
-			result = self.main_thread_executor.execute(_execute_tool)
+			# Special handling for repeated keyboard gestures:
+			# Execute pacing in the worker thread, dispatching each keystroke to main thread,
+			# so that NVDA main thread is NEVER slept on or blocked.
+			if (
+				action_name == "send_keyboard"
+				and int(resolved_params.get("repeat", 1)) > 1
+				and int(resolved_params.get("delay_ms", 0)) > 0
+			):
+				def _dispatch_keystroke():
+					single_params = dict(resolved_params)
+					single_params["repeat"] = 1
+					single_params["delay_ms"] = 0
+					return self.main_thread_executor.execute(
+						lambda: self.tool_executor.execute_and_serialize(tool, single_params),
+						timeout=effective_timeout,
+						cancellation_event=cancellation_event,
+					)
 
-			# Log execution time for performance monitoring
+				from .. import nvda_bridge
+
+				repeat = int(resolved_params.get("repeat", 1))
+				delay_ms = int(resolved_params.get("delay_ms", 0))
+				gesture = str(resolved_params.get("gesture", ""))
+
+				kb_result = nvda_bridge.send_keyboard(
+					gesture=gesture,
+					repeat=repeat,
+					delay_ms=delay_ms,
+					cancellation_event=cancellation_event,
+					main_thread_fn=_dispatch_keystroke,
+				)
+				result = {"success": True, "output": kb_result}
+			else:
+				def _execute_tool():
+					return self.tool_executor.execute_and_serialize(tool, resolved_params)
+
+				result = self.main_thread_executor.execute(
+					_execute_tool,
+					timeout=effective_timeout,
+					cancellation_event=cancellation_event,
+				)
+
 			duration_ms = (time.perf_counter() - start_time) * 1000
 
 			if duration_ms > 500:
@@ -680,8 +803,6 @@ class NVDAHTTPBridge:
 					f"bridge.action.success action={action_name} duration_ms={duration_ms:.1f}"
 				)
 
-			# Flatten ToolExecutor envelope to protocol envelope.
-			# ToolExecutor returns: {"success": bool, "output": ...} or {"success": False, "error": ...}
 			if bool(result.get("success")):
 				return {
 					"request_id": request_id,
@@ -726,16 +847,14 @@ class NVDAHTTPBridge:
 				"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
 				"nvda_status_snapshot": self.get_nvda_status_snapshot(),
 				"error": {
-					"code": 5001,
-					"name": ERROR_CODES[5001]["name"],
+					"code": 5004,
+					"name": ERROR_CODES[5004]["name"],
 					"message": f"Operation timed out: {str(e)}",
-					"category": ERROR_CODES[5001]["category"],
-					"retry_policy": ERROR_CODES[5001]["retry_policy"],
-					"retry_after_ms": ERROR_CODES[5001]["retry_after_ms"],
+					"category": ERROR_CODES[5004]["category"],
+					"retry_policy": ERROR_CODES[5004]["retry_policy"],
 				},
 			}
 		except ValueError as e:
-			# Input validation errors from ToolExecutor
 			duration_ms = (time.perf_counter() - start_time) * 1000
 			logHandler.log.warning(
 				f"bridge.action.validation_failed action={action_name} "
@@ -757,7 +876,6 @@ class NVDAHTTPBridge:
 				},
 			}
 		except Exception as e:
-			# Unexpected errors
 			duration_ms = (time.perf_counter() - start_time) * 1000
 			logHandler.log.error(
 				f"bridge.action.failed action={action_name} duration_ms={duration_ms:.1f} error={str(e)}",
@@ -776,19 +894,18 @@ class NVDAHTTPBridge:
 					"message": f"Execution failed: {str(e)}",
 					"category": ERROR_CODES[5003]["category"],
 					"retry_policy": ERROR_CODES[5003]["retry_policy"],
-					"retry_after_ms": ERROR_CODES[5003]["retry_after_ms"],
+					"retry_after_ms": ERROR_CODES[5003].get("retry_after_ms", 1000),
 				},
 			}
 
 	def start(self):
-		"""Start the HTTP bridge server (blocking) with robust error handling"""
+		"""Start the HTTP bridge server (blocking) with robust error handling."""
 		try:
-			# Create HTTP server with timeout
 			self.server = HTTPServer((self.host, self.port), NVDABridgeRequestHandler)
-			self.server.timeout = 1.0  # 1 second timeout for handle_request
+			self.server.timeout = 1.0
 
-			# Attach configuration to server
 			self.server.bridge_token = self.bridge_token
+			self.server.developer_mode_manager = self.developer_mode_manager
 			self.server.execute_action = self.execute_action
 			self.server.list_tools = self._list_tools
 			self.server.list_output_types = self._list_output_types
@@ -797,20 +914,16 @@ class NVDAHTTPBridge:
 			self.server.get_health_payload = self.get_health_payload
 
 			logHandler.log.info(f"NVDA HTTP Bridge listening on {self.host}:{self.port}")
-			logHandler.log.info(f"Bridge token required: {TOKEN_HEADER}")
+			logHandler.log.info(f"Bridge token authentication active on header {TOKEN_HEADER}")
 
-			# Serve requests until shutdown
 			while not self.shutdown_event.is_set():
 				try:
 					self.server.handle_request()
 				except OSError as e:
-					# Handle socket errors without crashing
 					logHandler.log.error(f"Socket error in bridge: {e}", exc_info=True)
 					if not self.shutdown_event.is_set():
-						# Brief pause before retry
 						self.shutdown_event.wait(0.1)
 				except Exception as e:
-					# Log but don't crash on individual request errors
 					logHandler.log.error(f"Error handling request: {e}", exc_info=True)
 
 			logHandler.log.info("NVDA HTTP Bridge stopped")
@@ -826,17 +939,14 @@ class NVDAHTTPBridge:
 			raise
 
 	def stop(self):
-		"""Stop the bridge server gracefully"""
+		"""Stop the bridge server gracefully and reset developer mode."""
 		try:
 			logHandler.log.info("Stopping NVDA HTTP Bridge...")
-
-			# Signal shutdown (should already be set by terminate(), but ensure it)
 			self.shutdown_event.set()
+			self.developer_mode_manager.reset()
 
-			# Close the server socket
 			if self.server:
 				try:
-					# Close server socket to interrupt any blocking operations
 					self.server.server_close()
 					logHandler.log.debug("Server socket closed")
 				except Exception as e:
