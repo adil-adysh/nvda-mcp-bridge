@@ -53,6 +53,10 @@ jobs:
         run: |
           cargo build --release --manifest-path rust_mcp_bridge/Cargo.toml
 
+      - name: Package bundled companion binary
+        run: |
+          python scripts/package_companion.py
+
       - name: Install gettext tools
         run: |
           choco install gettext -y
@@ -70,6 +74,10 @@ jobs:
           scons
           scons pot
 
+      - name: Validate packaged addon archive
+        run: |
+          python scripts/validate_addon_package.py
+
       - name: Stage release artifacts & generate SHA-256 checksums
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
@@ -78,7 +86,9 @@ jobs:
           $exe = Get-ChildItem -Path rust_mcp_bridge/target -Recurse -Filter "nvda-mcp-server.exe" | Where-Object { $_.DirectoryName -like "*release*" } | Select-Object -First 1
           if (-not $exe) { throw 'nvda-mcp-server.exe release binary not found' }
           Copy-Item -Path $exe.FullName -Destination dist\
-          Get-FileHash -Path dist\* -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" } | Out-File -FilePath dist\SHA256SUMS.txt -Encoding ascii
+          $files = Get-ChildItem -Path dist\* -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' }
+          $hashes = $files | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" }
+          $hashes | Out-File -FilePath dist\SHA256SUMS.txt -Encoding ascii
           Get-Content dist\SHA256SUMS.txt
 
       - name: Upload artifacts

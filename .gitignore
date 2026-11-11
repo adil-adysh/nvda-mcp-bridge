@@ -78,6 +78,7 @@ htmlcov/
 *.pdb
 *.lib
 *.exp
+addon/globalPlugins/nvdaMcp-bridge/companion/
 
 # =========================
 

@@ -40,9 +40,21 @@ jobs:
         run: |
           cargo test --manifest-path rust_mcp_bridge/Cargo.toml
 
+      - name: Build Rust MCP release binary
+        run: |
+          cargo build --release --manifest-path rust_mcp_bridge/Cargo.toml
+
+      - name: Package bundled companion binary
+        run: |
+          python scripts/package_companion.py
+
       - name: Build add-on package
         run: |
           scons
+
+      - name: Validate packaged addon archive
+        run: |
+          python scripts/validate_addon_package.py
 
       - name: Find packaged add-on
         id: findAddon

@@ -14,77 +14,137 @@ A thread-safe NVDA add-on that exposes NVDA internals as an MCP-compatible inter
 
 ---
 
-## Quick Start (VS Code + MCP)
+## Quick Start (Single-Package Experience)
 
-**Goal:** Execute Python inside NVDA from VS Code and verify it works.
-
----
-
-### 1. Install and build the bridge
-
-```powershell
-git clone https://github.com/adil-adysh/nvda-mcp-bridge.git
-cd nvda-mcp-bridge
-pip install scons markdown
-scons
-```
+**Goal:** Install the bridge, deploy the bundled MCP companion, and connect an MCP client (VS Code, Claude Desktop, Cursor) without manual binary builds or copying authentication tokens.
 
 ---
 
-### 2. Install the add-on in NVDA
+### 1. Install the Add-on in NVDA
 
-* Locate the generated file:
-
-  ```
-  nvdaMcpBridge-1.0.0.nvda-addon
-  ```
-* Open it to install in NVDA
-* Restart NVDA
-
----
-
-### 3. Build the MCP server
-
-```powershell
-cd rust_mcp_bridge
-cargo build --release
-```
-
-* Ensure the binary is available on your `PATH`
+1. Download the release package:
+   ```
+   nvdaMcpBridge-1.0.0.nvda-addon
+   ```
+2. Open the `.nvda-addon` file with NVDA to install it.
+3. Restart NVDA when prompted.
 
 ---
 
-### 4. Configure MCP in VS Code
+### 2. Install the Bundled MCP Companion
 
-Create `.vscode/mcp.json`:
+1. In NVDA, open **NVDA Menu (`NVDA+N`) → Tools → NVDA MCP Bridge → Install or Repair MCP Companion...** (or via NVDA Settings).
+2. When prompted, select **Yes**.
+3. The add-on safely extracts and verifies the bundled companion binary to:
+   ```
+   %LOCALAPPDATA%\Programs\NVDA MCP Bridge\bin\nvda-mcp-server.exe
+   ```
+   *(Per-user installation — no administrator privileges required).*
 
+---
+
+### 3. Configure Your MCP Client Automatically
+
+1. Open **NVDA Menu (`NVDA+N`) → Tools → NVDA MCP Bridge → Configure MCP Clients...**.
+2. The configurator automatically detects supported clients (Visual Studio Code, Claude Desktop, Cursor) and safely merges the `nvda` server entry.
+3. Existing settings and other MCP servers are completely preserved, and a timestamped backup (`.bak.<timestamp>`) is created before modifying any configuration.
+
+---
+
+### 4. Manual MCP Client Configuration (Alternative)
+
+If configuring an MCP client manually, add the following to your client's MCP configuration:
+
+#### Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`)
 ```json
 {
-  "servers": {
+  "mcpServers": {
     "nvda": {
-      "type": "stdio",
-      "command": "nvda-mcp-server",
-      "env": {
-        "NVDA_BRIDGE_URL": "http://127.0.0.1:8765"
-      }
+      "command": "%LOCALAPPDATA%\\Programs\\NVDA MCP Bridge\\bin\\nvda-mcp-server.exe",
+      "args": []
     }
   }
 }
 ```
 
-> **Note on Authentication:** The NVDA bridge generates a secure random token at `%APPDATA%\nvda\nvda-mcp-bridge\token.key` upon first start. `nvda-mcp-server` automatically detects this file when running under the same Windows user. If running across user accounts or containers, set `NVDA_BRIDGE_TOKEN` to your token value.
+#### Visual Studio Code (`%APPDATA%\Code\User\mcp.json` or `.vscode/mcp.json`)
+```json
+{
+  "servers": {
+    "nvda": {
+      "type": "stdio",
+      "command": "%LOCALAPPDATA%\\Programs\\NVDA MCP Bridge\\bin\\nvda-mcp-server.exe",
+      "args": []
+    }
+  }
+}
+```
 
-> **Note on Developer Mode:** By default, arbitrary code execution via `execute_python` is disabled for safety. Use standard tools (`speak_text`, `get_current_focus`, `send_keyboard`, etc.) out of the box. Elevation to developer mode cannot be authorized by remote HTTP callers using only the bridge token; it requires independent local user approval (via a time-limited local approval token in `%APPDATA%\nvda\nvda-mcp-bridge\dev_approval.key` or local approval API).
+#### Cursor (`%USERPROFILE%\.cursor\mcp.json`)
+```json
+{
+  "mcpServers": {
+    "nvda": {
+      "command": "%LOCALAPPDATA%\\Programs\\NVDA MCP Bridge\\bin\\nvda-mcp-server.exe",
+      "args": []
+    }
+  }
+}
+```
 
-Then in VS Code:
-
-* Run `MCP: Reset Cached Tools`
-* Run `MCP: List Servers`
-* Start the `nvda` server
+> **Note on Authentication:** You do **not** need to copy or paste authentication tokens into client configurations. The companion binary automatically discovers the bridge credential generated in `%APPDATA%\nvda\nvda-mcp-bridge\token.key` using Windows user security controls.
 
 ---
 
-### 5. Verify Speech and Focus Inspection (first win)
+### 5. Permission Controls and Developer Mode
+
+By default, the bridge enforces a conservative, safe permission policy:
+* **Safe defaults enabled:** `read_only` (focus/object inspection, window titles) and `speech_output` (`speak_text`, `cancel_speech`).
+* **Input control:** `send_keyboard` requires granting the `input_control` capability.
+* **NVDA Lifecycle:** `restart_nvda` and `reload_plugins` require `nvda_lifecycle`.
+* **Developer Mode:** Arbitrary Python execution (`execute_python`) is disabled by default.
+
+#### Managing Permissions in NVDA
+Open **NVDA Menu → Preferences → Settings (`NVDA+Control+G`) → NVDA MCP Bridge**:
+* Check/uncheck **Allow MCP Input Control**
+* Check/uncheck **Allow MCP Diagnostic Inspection**
+* Check/uncheck **Allow MCP NVDA Lifecycle actions**
+* Click **Enable Developer Mode (5 minutes)...** to approve Python execution. A screen-reader confirmation dialog will appear explaining the security risk. Approving grants the developer capability atomically with a 5-minute auto-expiration timer.
+* Click **Disable Developer Mode** to immediately revoke execution rights.
+* Click **Reset Permissions to Safe Defaults** to revoke all elevated permissions.
+* Developer operations are strictly blocked on the Windows secure desktop under all circumstances.
+
+---
+
+### 6. Development Guide (Building from Source)
+
+For contributors and developers building the add-on from source:
+
+#### Prerequisites
+* Python 3.11+
+* Rust 1.80+ with `x86_64-pc-windows-msvc` toolchain
+* SCons and Markdown (`pip install scons markdown`)
+* Gettext tools (optional, for localization)
+
+#### Build Steps
+```powershell
+# 1. Build Rust MCP release binary
+cargo build --release --manifest-path rust_mcp_bridge/Cargo.toml
+
+# 2. Package companion binary and generate manifest
+python scripts/package_companion.py
+
+# 3. Assemble .nvda-addon package
+scons
+scons pot
+
+# 4. Validate package contents
+python scripts/validate_addon_package.py
+```
+
+---
+
+## Verify Speech and Focus Inspection (First Win)
 
 In the **VS Code chat interface with MCP enabled**, invoke:
 
