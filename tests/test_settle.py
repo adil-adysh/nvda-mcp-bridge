@@ -153,6 +153,16 @@ class SettleTests(unittest.TestCase):
 			{"focus.name": {"expected": "Run", "actual": "Search"}},
 		)
 
+	def test_expect_satisfied_stops_the_extra_round(self):
+		"""A confirmed postcondition ends settle; it does not spend the budget."""
+		settler, projector = self.make([focus(), focus(), focus(name="Search")])
+		outcome = settler.run(lambda: None, expect={"focus.name": "field"})
+		self.assertTrue(outcome.completed)
+		self.assertFalse(outcome.changed)
+		# Baseline plus one round. Without the early exit a second round would run,
+		# observe the late name change, and report it long after the answer was true.
+		self.assertEqual(projector.refreshes, 2)
+
 	def test_no_expect_means_completed_is_absent(self):
 		settler, _ = self.make([focus()])
 		payload = settler.run(lambda: None).as_dict()

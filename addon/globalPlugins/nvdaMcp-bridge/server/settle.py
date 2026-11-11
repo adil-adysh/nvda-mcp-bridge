@@ -216,6 +216,12 @@ class Settler:
 			changed = bool(changes)
 			if changed:
 				break
+			# A satisfied postcondition is the other reason to stop. This round has
+			# already waited for the burst to go quiet, so the observation is as
+			# settled as the budget can make it; spending the next round would only
+			# delay an answer that is already correct.
+			if expect and evaluate_expect(projection, expect).satisfied:
+				break
 			if self._clock() >= deadline:
 				break
 
