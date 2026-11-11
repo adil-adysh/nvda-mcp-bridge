@@ -30,6 +30,7 @@ from .companion_manager import CompanionManager
 from .server.security import (
 	DEVELOPER_TTL_CHOICES_MINUTES,
 	PERMISSION_DEVELOPER,
+	PERMISSION_DIALOG_CONTROL,
 	PERMISSION_DIAGNOSTICS,
 	PERMISSION_INPUT_CONTROL,
 	PERMISSION_NVDA_LIFECYCLE,
@@ -565,6 +566,8 @@ if _GUI_AVAILABLE:
 					self.diagnosticsCheckbox.SetValue(policy.is_granted(PERMISSION_DIAGNOSTICS))
 				if hasattr(self, "lifecycleCheckbox"):
 					self.lifecycleCheckbox.SetValue(policy.is_granted(PERMISSION_NVDA_LIFECYCLE))
+				if hasattr(self, "dialogControlCheckbox"):
+					self.dialogControlCheckbox.SetValue(policy.is_granted(PERMISSION_DIALOG_CONTROL))
 			if hasattr(self, "devTtlChoice"):
 				configured = getattr(
 					getattr(self._bridge, "developer_mode_manager", None),
@@ -618,6 +621,16 @@ if _GUI_AVAILABLE:
 			if policy:
 				self.lifecycleCheckbox.SetValue(policy.is_granted(PERMISSION_NVDA_LIFECYCLE))
 			permSizer.Add(self.lifecycleCheckbox, 0, wx.ALL, 5)
+
+			# Deliberately narrow: only `dismiss` uses this, so an agent can leave
+			# a dialog it entered without being allowed to operate one.
+			self.dialogControlCheckbox = wx.CheckBox(
+				permGroup,
+				label="Allow MCP Dialog Control (dismiss dialogs: Escape, then the default button)",
+			)
+			if policy:
+				self.dialogControlCheckbox.SetValue(policy.is_granted(PERMISSION_DIALOG_CONTROL))
+			permSizer.Add(self.dialogControlCheckbox, 0, wx.ALL, 5)
 
 			settingsSizer.Add(permSizer, 0, wx.EXPAND | wx.ALL, 5)
 
@@ -711,6 +724,7 @@ if _GUI_AVAILABLE:
 				self.inputControlCheckbox.SetValue(policy.is_granted(PERMISSION_INPUT_CONTROL))
 				self.diagnosticsCheckbox.SetValue(policy.is_granted(PERMISSION_DIAGNOSTICS))
 				self.lifecycleCheckbox.SetValue(policy.is_granted(PERMISSION_NVDA_LIFECYCLE))
+				self.dialogControlCheckbox.SetValue(policy.is_granted(PERMISSION_DIALOG_CONTROL))
 				# Persist the reset too, otherwise the old grants come back on restart.
 				save_persisted_permissions(policy.get_granted())
 			self._refresh_status()
@@ -769,6 +783,11 @@ if _GUI_AVAILABLE:
 				policy.grant(PERMISSION_NVDA_LIFECYCLE)
 			else:
 				policy.revoke(PERMISSION_NVDA_LIFECYCLE)
+
+			if self.dialogControlCheckbox.IsChecked():
+				policy.grant(PERMISSION_DIALOG_CONTROL)
+			else:
+				policy.revoke(PERMISSION_DIALOG_CONTROL)
 
 			# Store the choice so it survives NVDA restarts and plugin reloads.
 			save_persisted_permissions(policy.get_granted())

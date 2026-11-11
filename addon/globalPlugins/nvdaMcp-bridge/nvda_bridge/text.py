@@ -37,8 +37,10 @@ def read_current_line() -> Dict[str, Any]:
 			"note": "ok",
 			"status": "ok",
 		}
-	except (NotImplementedError, AttributeError):
-		# Object doesn't support text info - return fallback
+	except Exception:  # noqa: BLE001
+		# Any object without a caret — a link, a list item, a container — reports
+		# "ok" from a text query it cannot answer. Fall back to the label rather
+		# than failing the call: this is a read, and a label is still an answer.
 		return {
 			"text": getattr(focus, "name", None) or getattr(focus, "value", None) or "",
 			"note": "fallback",

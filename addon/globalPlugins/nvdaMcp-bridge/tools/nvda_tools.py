@@ -21,7 +21,7 @@ ALL_NVDA_TOOLS = [
         ToolMetadata(
             name="get_current_focus",
             version="1.0.0",
-            description="Get information about the currently focused UI element.",
+            description="Deprecated: use observe. Get information about the currently focused UI element.",
             category="focus",
             read_only=True,
             destructive=False,
@@ -31,6 +31,8 @@ ALL_NVDA_TOOLS = [
             allowed_nvda_states=("normal", "modal", "menu"),
             expected_duration_ms=20,
             retry_safe=True,
+            deprecated=True,
+            superseded_by="observe",
         ),
         models.ObjectInfo,
         tool_handlers.get_current_focus,
@@ -39,7 +41,7 @@ ALL_NVDA_TOOLS = [
         ToolMetadata(
             name="move_focus",
             version="1.0.0",
-            description="Move focus to next or previous object.",
+            description="Deprecated: use navigate. Move focus to next or previous object.",
             category="focus",
             read_only=False,
             destructive=False,
@@ -49,6 +51,8 @@ ALL_NVDA_TOOLS = [
             allowed_nvda_states=("normal",),
             expected_duration_ms=50,
             retry_safe=False,
+            deprecated=True,
+            superseded_by="navigate",
         ),
         models.MoveFocusInput,
         models.MoveFocusResult,
@@ -58,7 +62,7 @@ ALL_NVDA_TOOLS = [
         ToolMetadata(
             name="get_navigator_object",
             version="1.0.0",
-            description="Get information about the current navigator object.",
+            description="Deprecated: use observe. Get information about the current navigator object.",
             category="navigation",
             read_only=True,
             destructive=False,
@@ -68,6 +72,8 @@ ALL_NVDA_TOOLS = [
             allowed_nvda_states=("normal", "modal", "menu"),
             expected_duration_ms=20,
             retry_safe=True,
+            deprecated=True,
+            superseded_by="observe",
         ),
         models.ObjectInfo,
         tool_handlers.get_navigator_object,
@@ -94,7 +100,7 @@ ALL_NVDA_TOOLS = [
         ToolMetadata(
             name="read_current_line",
             version="1.0.0",
-            description="Read the current line from the focused object.",
+            description="Deprecated: use read with scope='line'. Read the current line from the focused object.",
             category="text",
             read_only=True,
             destructive=False,
@@ -104,6 +110,8 @@ ALL_NVDA_TOOLS = [
             allowed_nvda_states=("normal", "modal", "menu"),
             expected_duration_ms=30,
             retry_safe=True,
+            deprecated=True,
+            superseded_by="read",
         ),
         models.TextLineInfo,
         tool_handlers.read_current_line,
@@ -150,7 +158,10 @@ ALL_NVDA_TOOLS = [
         ToolMetadata(
             name="send_keyboard",
             version="1.0.0",
-            description="Send a keyboard gesture through NVDA for app/addon automation.",
+            description=(
+                "Deprecated: use press, which waits for the UI to settle. "
+                "Send a keyboard gesture through NVDA for app/addon automation."
+            ),
             category="ui",
             read_only=False,
             destructive=False,
@@ -162,6 +173,8 @@ ALL_NVDA_TOOLS = [
             cancellation_supported=True,
             retry_safe=False,
             execution_mode=ExecutionMode.COORDINATOR,
+            deprecated=True,
+            superseded_by="press",
         ),
         models.SendKeyboardInput,
         models.KeyboardActionResult,
@@ -403,6 +416,316 @@ ALL_NVDA_TOOLS = [
             code=input_obj.code,
             snapshot_vars=input_obj.snapshot_vars,
             capture_vars=input_obj.capture_vars,
+        ),
+    ),
+    # ------------------------------------------------------------------
+    # Action surface (implementation plan §4, phase P2)
+    #
+    # All coordinator mode: the body runs on the bridge worker thread so it can
+    # wait for the UI to settle, and reaches NVDA's main thread per operation.
+    # ------------------------------------------------------------------
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="observe",
+            version="1.0.0",
+            description=(
+                "Capture the screen once: focus, ancestors, children, dialog and window, "
+                "each with a ref. References are locators for invoke/focus/read, valid until "
+                "the observation is superseded; state_version identifies this observation."
+            ),
+            category="observation",
+            read_only=True,
+            destructive=False,
+            idempotent=True,
+            side_effects=False,
+            required_permission="read_only",
+            allowed_nvda_states=("normal", "modal", "menu"),
+            expected_duration_ms=40,
+            retry_safe=True,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.ObserveInput,
+        models.ObserveResult,
+        lambda input_obj, context: tool_handlers.observe(
+            include=input_obj.include,
+            max_text=input_obj.max_text,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="invoke",
+            version="1.0.0",
+            description=(
+                "Invoke an object's default or named action (press it) by ref, then wait for "
+                "the UI to settle. Works on an unfocused control; returns changed/delta."
+            ),
+            category="action",
+            read_only=False,
+            destructive=False,
+            idempotent=False,
+            side_effects=True,
+            required_permission="input_control",
+            allowed_nvda_states=("normal",),
+            expected_duration_ms=300,
+            retry_safe=False,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.InvokeInput,
+        models.InvokeResult,
+        lambda input_obj, context: tool_handlers.invoke(
+            ref=input_obj.ref,
+            action=input_obj.action,
+            expect=input_obj.expect,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="set_value",
+            version="1.0.0",
+            description=(
+                "Set a control's value by ref. Uses the platform value pattern when the "
+                "control exposes one, otherwise focus + select-all + type; 'mode' says which."
+            ),
+            category="action",
+            read_only=False,
+            destructive=False,
+            idempotent=True,
+            side_effects=True,
+            required_permission="input_control",
+            allowed_nvda_states=("normal",),
+            expected_duration_ms=400,
+            retry_safe=False,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.SetValueInput,
+        models.SetValueResult,
+        lambda input_obj, context: tool_handlers.set_value(
+            ref=input_obj.ref,
+            value=input_obj.value,
+            expect=input_obj.expect,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="focus",
+            version="1.0.0",
+            description="Move keyboard focus to an object by ref, then wait for the UI to settle.",
+            category="action",
+            read_only=False,
+            destructive=False,
+            idempotent=True,
+            side_effects=True,
+            required_permission="input_control",
+            allowed_nvda_states=("normal",),
+            expected_duration_ms=300,
+            retry_safe=True,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.FocusInput,
+        models.FocusResult,
+        lambda input_obj, context: tool_handlers.focus_object(
+            ref=input_obj.ref,
+            expect=input_obj.expect,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="press",
+            version="1.0.0",
+            description=(
+                "Send keyboard keys (e.g. 'tab', 'control+a'), then wait for the UI to settle. "
+                "'dispatched' means the input was posted; changed/delta say what the UI did."
+            ),
+            category="input",
+            read_only=False,
+            destructive=False,
+            idempotent=False,
+            side_effects=True,
+            required_permission="input_control",
+            allowed_nvda_states=("normal",),
+            expected_duration_ms=300,
+            cancellation_supported=True,
+            retry_safe=False,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.PressInput,
+        models.PressResult,
+        lambda input_obj, context: tool_handlers.press(
+            keys=input_obj.keys,
+            repeat=input_obj.repeat,
+            delay_ms=input_obj.delay_ms,
+            expect=input_obj.expect,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="read",
+            version="1.0.0",
+            description=(
+                "Read text from an object by ref (or the focus) at a scope: line, selection, "
+                "document or subtree. Bounded by max_chars, reports truncation."
+            ),
+            category="observation",
+            read_only=True,
+            destructive=False,
+            idempotent=True,
+            side_effects=False,
+            required_permission="read_only",
+            allowed_nvda_states=("normal", "modal", "menu"),
+            expected_duration_ms=100,
+            retry_safe=True,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.ReadInput,
+        models.ReadResult,
+        lambda input_obj, context: tool_handlers.read(
+            ref=input_obj.ref,
+            scope=input_obj.scope,
+            max_chars=input_obj.max_chars,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="navigate",
+            version="1.0.0",
+            description=(
+                "Move through the accessibility tree (next/previous/first/last/parent/child) "
+                "from a ref or the focus, focus the result and return its ref."
+            ),
+            category="action",
+            read_only=False,
+            destructive=False,
+            idempotent=False,
+            side_effects=True,
+            required_permission="input_control",
+            allowed_nvda_states=("normal",),
+            expected_duration_ms=300,
+            retry_safe=False,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.NavigateInput,
+        models.NavigateResult,
+        lambda input_obj, context: tool_handlers.navigate(
+            direction=input_obj.direction,
+            ref=input_obj.ref,
+            expect=input_obj.expect,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="scroll",
+            version="1.0.0",
+            description="Scroll the focused container up/down/left/right by page or line, then settle.",
+            category="action",
+            read_only=False,
+            destructive=False,
+            idempotent=False,
+            side_effects=True,
+            required_permission="input_control",
+            allowed_nvda_states=("normal",),
+            expected_duration_ms=300,
+            retry_safe=False,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.ScrollInput,
+        models.ScrollResult,
+        lambda input_obj, context: tool_handlers.scroll(
+            direction=input_obj.direction,
+            amount=input_obj.amount,
+            ref=input_obj.ref,
+            expect=input_obj.expect,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="dismiss",
+            version="1.0.0",
+            description=(
+                "Leave a dialog: Escape first, then its default button. Allowed in modal and "
+                "menu states so an agent can get out of a dialog it entered."
+            ),
+            category="action",
+            read_only=False,
+            destructive=False,
+            idempotent=True,
+            side_effects=True,
+            required_permission="dialog_control",
+            allowed_nvda_states=("normal", "modal", "menu"),
+            expected_duration_ms=1200,
+            retry_safe=False,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.DismissInput,
+        models.DismissResult,
+        lambda input_obj, context: tool_handlers.dismiss(
+            expect=input_obj.expect,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="click_at",
+            version="1.0.0",
+            description=(
+                "Click absolute screen coordinates. Last resort when nothing is actionable; "
+                "reports the object that was under the point."
+            ),
+            category="action",
+            read_only=False,
+            destructive=False,
+            idempotent=False,
+            side_effects=True,
+            required_permission="input_control",
+            allowed_nvda_states=("normal",),
+            expected_duration_ms=300,
+            retry_safe=False,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.ClickAtInput,
+        models.ClickAtResult,
+        lambda input_obj, context: tool_handlers.click_at(
+            x=input_obj.x,
+            y=input_obj.y,
+            button=input_obj.button,
+            expect=input_obj.expect,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="wait_for_events",
+            version="1.0.0",
+            description=(
+                "Block until the next coalesced UI transition (or timeout) and return the "
+                "transition kinds. Use for idle waits instead of polling observe."
+            ),
+            category="observation",
+            read_only=True,
+            destructive=False,
+            idempotent=False,
+            side_effects=False,
+            required_permission="read_only",
+            allowed_nvda_states=("normal", "modal", "menu"),
+            expected_duration_ms=1000,
+            cancellation_supported=True,
+            retry_safe=True,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.WaitForEventsInput,
+        models.WaitEventsResult,
+        lambda input_obj, context: tool_handlers.wait_for_events(
+            since=input_obj.since,
+            timeout_ms=input_obj.timeout_ms,
+            kinds=input_obj.kinds,
+            context=context,
         ),
     ),
 ]

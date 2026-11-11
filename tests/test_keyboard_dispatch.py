@@ -153,7 +153,7 @@ class TestKeyboardDispatchSemantics(unittest.TestCase):
         result = send_keyboard("enter", repeat=1, main_thread_fn=dispatcher)
         self.assertEqual(result["sent_count"], 1)
         self.assertTrue(result["sent"])
-        self.assertTrue(result["completed"])
+        self.assertTrue(result["dispatched"])
         self.assertEqual(dispatched, ["enter"])
 
     def test_02_repeated_gestures(self):
@@ -165,7 +165,7 @@ class TestKeyboardDispatchSemantics(unittest.TestCase):
 
         result = send_keyboard("tab", repeat=4, delay_ms=10, main_thread_fn=dispatcher)
         self.assertEqual(result["sent_count"], 4)
-        self.assertTrue(result["completed"])
+        self.assertTrue(result["dispatched"])
         self.assertEqual(len(dispatched), 4)
 
     def test_03_queue_scheduling_failure(self):
@@ -231,7 +231,7 @@ class TestKeyboardDispatchSemantics(unittest.TestCase):
         result = send_keyboard("alt+f4", repeat=3, cancellation_event=cancel_evt, main_thread_fn=dispatched.append)
 
         self.assertTrue(result["cancelled"])
-        self.assertFalse(result["completed"])
+        self.assertFalse(result["dispatched"])
         self.assertEqual(result["sent_count"], 0)
         self.assertEqual(len(dispatched), 0)
 
@@ -267,7 +267,7 @@ class TestKeyboardDispatchSemantics(unittest.TestCase):
         self.assertTrue(res["cancelled"])
         self.assertEqual(res["sent_count"], 2)
         self.assertEqual(len(dispatched), 2)
-        self.assertFalse(res["completed"])
+        self.assertFalse(res["dispatched"])
 
     def test_08_timeout_before_execution_waiting_for_input_lock(self):
         """8. Verify timeout waiting for input lock raises KeyboardTimeoutError with sent_count == 0."""

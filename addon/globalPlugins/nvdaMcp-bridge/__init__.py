@@ -148,40 +148,96 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			logHandler.log.error(f"NVDA HTTP Bridge error: {e}", exc_info=True)
 
 	def _recordEvent(self, kind, obj):
-		"""Append to the bridge's event journal. Must stay cheap and safe."""
+		"""Append to the bridge's event pipeline. Must stay cheap and safe.
+
+		Two jobs, both non-blocking: bump the observation revision so a waiter
+		wakes, and hand the event to the coalescer so a burst becomes one
+		transition.
+		"""
 		bridge = getattr(self, "_bridge", None)
 		if bridge is None:
 			return
-		journal = getattr(bridge, "event_journal", None)
-		if journal is None:
+		recorder = getattr(bridge, "recorder", None)
+		if recorder is None:
 			return
 		try:
-			journal.record(kind, obj)
+			recorder.record(kind, obj)
 		except Exception:  # noqa: BLE001 — never break NVDA's event chain
 			pass
 
-	def event_gainFocus(self, obj, nextHandler):
-		self._recordEvent("focus", obj)
+	# The eighteen kinds in docs/IMPLEMENTATION_PLAN.md §3.5. `show`/`hide` are
+	# deliberately absent: NVDA drops them except for notification bars, tooltips
+	# and IME candidates, so they are a trap as a "UI appeared" signal.
+	def event_gainFocus(self, obj, nextHandler, **kwargs):
+		self._recordEvent("gainFocus", obj)
 		nextHandler()
 
-	def event_nameChange(self, obj, nextHandler):
-		self._recordEvent("name", obj)
+	def event_loseFocus(self, obj, nextHandler, **kwargs):
+		self._recordEvent("loseFocus", obj)
 		nextHandler()
 
-	def event_valueChange(self, obj, nextHandler):
-		self._recordEvent("value", obj)
-		nextHandler()
-
-	def event_stateChange(self, obj, nextHandler):
-		self._recordEvent("state", obj)
-		nextHandler()
-
-	def event_show(self, obj, nextHandler):
-		self._recordEvent("show", obj)
-		nextHandler()
-
-	def event_foreground(self, obj, nextHandler):
+	def event_foreground(self, obj, nextHandler, **kwargs):
 		self._recordEvent("foreground", obj)
+		nextHandler()
+
+	def event_focusEntered(self, obj, nextHandler, **kwargs):
+		self._recordEvent("focusEntered", obj)
+		nextHandler()
+
+	def event_focusExited(self, obj, nextHandler, **kwargs):
+		self._recordEvent("focusExited", obj)
+		nextHandler()
+
+	def event_nameChange(self, obj, nextHandler, **kwargs):
+		self._recordEvent("nameChange", obj)
+		nextHandler()
+
+	def event_valueChange(self, obj, nextHandler, **kwargs):
+		self._recordEvent("valueChange", obj)
+		nextHandler()
+
+	def event_stateChange(self, obj, nextHandler, **kwargs):
+		self._recordEvent("stateChange", obj)
+		nextHandler()
+
+	def event_caret(self, obj, nextHandler, **kwargs):
+		self._recordEvent("caret", obj)
+		nextHandler()
+
+	def event_selection(self, obj, nextHandler, **kwargs):
+		self._recordEvent("selection", obj)
+		nextHandler()
+
+	def event_liveRegionChange(self, obj, nextHandler, **kwargs):
+		self._recordEvent("liveRegionChange", obj)
+		nextHandler()
+
+	def event_alert(self, obj, nextHandler, **kwargs):
+		self._recordEvent("alert", obj)
+		nextHandler()
+
+	def event_menuStart(self, obj, nextHandler, **kwargs):
+		self._recordEvent("menuStart", obj)
+		nextHandler()
+
+	def event_menuEnd(self, obj, nextHandler, **kwargs):
+		self._recordEvent("menuEnd", obj)
+		nextHandler()
+
+	def event_documentLoadComplete(self, obj, nextHandler, **kwargs):
+		self._recordEvent("documentLoadComplete", obj)
+		nextHandler()
+
+	def event_typedCharacter(self, obj, nextHandler, ch="", **kwargs):
+		self._recordEvent("typedCharacter", obj)
+		nextHandler()
+
+	def event_UIA_notification(self, obj, nextHandler, **kwargs):
+		self._recordEvent("UIA_notification", obj)
+		nextHandler()
+
+	def event_textChange(self, obj, nextHandler, **kwargs):
+		self._recordEvent("textChange", obj)
 		nextHandler()
 
 	def terminate(self):

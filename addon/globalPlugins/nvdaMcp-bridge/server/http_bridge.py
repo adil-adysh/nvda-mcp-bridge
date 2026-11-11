@@ -19,6 +19,7 @@ Thread Safety & Responsiveness:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 import time
@@ -33,6 +34,7 @@ from ..core import (
 	ExecutionContext,
 	ExecutionMode,
 	RegistryError,
+	ResultMeta,
 	ToolExecutor,
 	ToolRegistry,
 	protocol_code_for_serialized,
@@ -47,13 +49,17 @@ from .protocol import (
 	MAX_REQUEST_ID_LENGTH,
 	PROTOCOL,
 	PROTOCOL_VERSION,
+	SUPPORTED_API_LEVELS,
 	TOKEN_HEADER,
 	http_status_from_error_code,
 	validate_tools_discovery_payload,
 	build_tools_payload,
 )
-from .events import EventJournal
+from .events import EventJournal, EventRecorder
+from .refs import ReferenceTable
 from .response import build_action_error, build_error_envelope
+from .settle import DEFAULT_BUDGET_MS, Settler
+from .state import StateProjector
 from .security import (
 	DeveloperModeManager,
 	PermissionPolicy,
@@ -113,6 +119,16 @@ class BoundedThreadingHTTPServer(ThreadingHTTPServer):
 
 def _new_request_id() -> str:
 	return str(uuid.uuid4())
+
+
+def _schema_hash(payload: Dict[str, Any]) -> str:
+	"""Return a stable digest of the tool contract a discovery response carries."""
+	contract = {
+		"tools": payload.get("tools"),
+		"types": payload.get("types"),
+	}
+	canonical = json.dumps(contract, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+	return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
@@ -188,7 +204,6 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 
 	def _build_tools_payload(self, tools: list[Dict[str, Any]], types: Dict[str, Any]) -> Dict[str, Any]:
 		return build_tools_payload(tools, types)
-
 	def _build_error_envelope(
 		self,
 		request_id: str,
@@ -330,12 +345,16 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 		limit = max(1, min(1000, _int_param("limit", 100)))
 		timeout_ms = max(0, min(_MAX_EVENT_WAIT_MS, _int_param("timeout_ms", 0)))
 		kinds = [kind for kind in ",".join(query.get("kinds", [""])).split(",") if kind]
+		# Raw per-event history is a debugging view; the default surface is the
+		# coalesced transition, because one user action produces many events.
+		raw = (query.get("raw", ["0"])[0] or "0").lower() in ("1", "true", "yes")
 
 		payload = self.server.event_journal.wait(
 			since=since,
 			timeout_ms=timeout_ms,
 			limit=limit,
 			kinds=kinds,
+			raw=raw,
 		)
 		self._send_json_response(payload)
 
@@ -360,6 +379,10 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			raise RuntimeError("Invalid or empty output type registry")
 
 		payload = build_tools_payload(tools, types)
+		# A single digest over the whole contract. The companion compares it
+		# across refreshes instead of diffing several hundred kilobytes of
+		# schema, and re-fetches the catalog only when it moves.
+		payload["schema_hash"] = _schema_hash(payload)
 		validate_tools_discovery_payload(payload)
 		self._send_json_response(payload)
 
@@ -740,8 +763,18 @@ class NVDAHTTPBridge:
 		self.shutdown_event = shutdown_event or threading.Event()
 		self.permission_policy = permission_policy or PermissionPolicy()
 		# Versioned UI event journal: backs /events (long-poll and history) and
-		# the MCP companion's resource-update notifications.
+		# the MCP companion's resource-update notifications. Raw per-event history
+		# is a debugging aid (`/events?raw=1`); the default surface is coalesced
+		# transitions, because one user action produces many events.
 		self.event_journal = EventJournal()
+		# Current observation and its two counters. The projector reads NVDA
+		# objects, so every refresh goes through the main-thread executor.
+		self.projector = StateProjector(self._project)
+		self.recorder = EventRecorder(self.event_journal, self.projector)
+		# References captured by `observe`. Bounded and expiring; never scanned.
+		self.refs = ReferenceTable()
+		self._ref_lock = threading.Lock()
+		self._ref_sequence = 0
 		if permission_policy is None:
 			# Restore the capability set the user saved through the settings panel.
 			# An unset value keeps the conservative in-memory defaults.
@@ -829,6 +862,7 @@ class NVDAHTTPBridge:
 					"category": meta.category,
 					"inputSchema": input_schema_obj.to_json_schema(),
 					"outputType": self._get_output_type_name(output_schema_obj),
+					"outputSchema": output_schema_obj.to_json_schema(),
 					"constraints": self._compute_tool_constraints(meta),
 					"readOnly": getattr(meta, "read_only", False),
 					"destructive": getattr(meta, "destructive", False),
@@ -837,6 +871,8 @@ class NVDAHTTPBridge:
 					"requiredPermission": getattr(meta, "required_permission", "read_only"),
 					"cancellationSupported": getattr(meta, "cancellation_supported", False),
 					"retrySafe": getattr(meta, "retry_safe", False),
+					"deprecated": bool(getattr(meta, "deprecated", False)),
+					"supersededBy": getattr(meta, "superseded_by", None),
 				}
 			)
 		return tools
@@ -850,31 +886,105 @@ class NVDAHTTPBridge:
 	def _bridge_metadata(self) -> Dict[str, Any]:
 		return {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL}
 
+	def _project(self) -> Dict[str, Any]:
+		"""Capture the current observation. Must run on NVDA's main thread.
+
+		The objects behind the projection are deliberately discarded here: only
+		``observe`` hands out references, because a reference must keep pointing at
+		the object the caller was shown. A projection refreshed by a settle round
+		must not silently re-point ``f`` at a new focus.
+		"""
+		from ..nvda_bridge import observation
+
+		projection, _objects = observation.capture()
+		return projection
+
+	def _observe(self, include: list[str], max_text: int) -> Dict[str, Any]:
+		"""Capture an observation and register its references. Main thread only."""
+		from ..nvda_bridge import actions, observation
+
+		wanted = {item for item in (include or ()) if item}
+		projection, objects = observation.capture(
+			max_text=max(0, int(max_text)),
+			include_children="children" in wanted,
+			include_selection="selection" in wanted,
+		)
+		projection, _changes, version = self.projector.adopt(projection)
+		self.refs.register(objects, version, actions.identity_of)
+
+		payload: Dict[str, Any] = {
+			"state_version": version,
+			"revision": self.projector.revision,
+			"focus": projection.get("focus"),
+			"ancestors": projection.get("ancestors") if "ancestors" in wanted else [],
+			"children": projection.get("children") if "children" in wanted else [],
+			"dialog": projection.get("dialog") if "dialog" in wanted else None,
+			"window": projection.get("window"),
+		}
+		if "selection" in wanted:
+			payload["selection"] = projection.get("selection")
+		return payload
+
+	def _resolve_ref(self, ref: str) -> Any:
+		"""Resolve a reference to its captured object. Main thread only."""
+		from ..nvda_bridge import actions
+
+		if not isinstance(ref, str) or not ref.strip():
+			raise ValueError("'ref' must be a non-empty string")
+		entry = self.refs.get(ref.strip(), identity_of=actions.identity_of)
+		return entry.obj
+
+	def _register_ref(self, obj: Any) -> str:
+		"""Capture an arbitrary object under a fresh ref. Main thread only."""
+		from ..nvda_bridge import actions
+
+		with self._ref_lock:
+			self._ref_sequence += 1
+			ref = f"n{self._ref_sequence}"
+		self.refs.register({ref: obj}, self.projector.state_version, actions.identity_of)
+		return ref
+
+	def _result_payload(self, context: ExecutionContext) -> Dict[str, Any]:
+		"""Build the uniform §4.1 result block for the response envelope.
+
+		The block lives beside ``data`` rather than inside it: the fields mean the
+		same thing for every tool, so putting them in each of the twenty-odd closed
+		output schemas would duplicate them and break every published schema for no
+		gain. ``data`` stays the tool's own typed payload.
+
+		``state_version`` is the version this answer is valid for, so a caller can
+		detect staleness without a second call. When a settle round ran, it is the
+		version that round observed; otherwise it is the last known projection.
+		"""
+		meta = context.result
+		settle = getattr(meta, "settle", None) if meta is not None else None
+		if settle is not None:
+			return settle.as_dict()
+		return {"ok": True, "state_version": self.projector.state_version}
+
 	def get_state_payload(self, timeout: float = 2.0) -> Dict[str, Any]:
 		"""Collect the current observation for the ``nvda://ui/state`` resource.
 
 		NVDA API calls must run on the main thread; the caller is an HTTP worker.
+		The projection is refreshed here rather than served from cache because a
+		resource read is a request for "now", not for "what the last action saw".
 		"""
-		from ..nvda_bridge import focus as nvda_focus
-		from ..nvda_bridge import ui as nvda_ui
 
 		def _collect() -> Dict[str, Any]:
-			try:
-				focus = nvda_focus.get_current_focus()
-			except Exception as e:  # noqa: BLE001
-				focus = {"error": str(e)}
-			try:
-				window = nvda_ui.get_window_title()
-			except Exception as e:  # noqa: BLE001
-				window = {"error": str(e)}
+			projection, _changes, version = self.projector.refresh()
 			return {
-				"state_version": self.event_journal.version,
-				"focus": focus,
-				"window": window,
-				"nvda": self.get_nvda_status(),
+				"state_version": version,
+				"revision": self.projector.revision,
+				"focus": projection.get("focus"),
+				"ancestors": projection.get("ancestors"),
+				"children": projection.get("children"),
+				"dialog": projection.get("dialog"),
+				"window": projection.get("window"),
 			}
 
-		return self.main_thread_executor.execute(_collect, timeout=timeout)
+		payload = self.main_thread_executor.execute(_collect, timeout=timeout)
+		payload["nvda"] = self.get_nvda_status()
+		return payload
 
 	def get_events_payload(
 		self,
@@ -995,7 +1105,7 @@ class NVDAHTTPBridge:
 			"protocol_version": PROTOCOL_VERSION,
 			"bridge_version": BRIDGE_VERSION,
 			"api_level": API_LEVEL,
-			"supported_api_levels": [API_LEVEL],
+			"supported_api_levels": list(SUPPORTED_API_LEVELS),
 			"uptime_seconds": int(max(0.0, time.monotonic() - self.started_at_monotonic)),
 			"timestamp_utc": datetime.now(timezone.utc).isoformat(),
 			"nvda_status": self.get_nvda_status(),
@@ -1053,18 +1163,49 @@ class NVDAHTTPBridge:
 
 			cancellation_event = threading.Event()
 
+			def _dispatch(operation: Any) -> Any:
+				return self.main_thread_executor.execute(
+					operation,
+					timeout=max(0.1, effective_timeout),
+					cancellation_event=cancellation_event,
+				)
+
+			result_meta = ResultMeta()
+			settler = Settler(
+				self.projector,
+				_dispatch,
+				budget_ms=min(DEFAULT_BUDGET_MS, max(100, int(effective_timeout * 1000))),
+			)
+
+			def _settle(
+				action_fn: Any,
+				expect: Dict[str, Any] | None = None,
+				budget_ms: int | None = None,
+			) -> Any:
+				"""Run one action and wait for its effect to be observable."""
+				outcome = settler.run(
+					action_fn,
+					expect=expect,
+					budget_ms=budget_ms,
+					cancellation_event=cancellation_event,
+				)
+				result_meta.settle = outcome
+				return outcome
+
 			# COORDINATOR tools own a sequence (pacing, waiting) and therefore run
 			# on this worker thread, reaching NVDA's main thread per operation
 			# through the execution context. Every other tool runs entirely on the
 			# main thread. Both paths share one validation pipeline.
 			execution_context = ExecutionContext(
-				dispatch=lambda operation: self.main_thread_executor.execute(
-					operation,
-					timeout=max(0.1, effective_timeout),
-					cancellation_event=cancellation_event,
-				),
+				dispatch=_dispatch,
 				cancellation_event=cancellation_event,
 				timeout=effective_timeout,
+				settle=_settle,
+				resolve=self._resolve_ref,
+				register=self._register_ref,
+				observe=self._observe,
+				wait_events=self.event_journal.wait,
+				result=result_meta,
 			)
 
 			def _execute_tool() -> Dict[str, Any]:
@@ -1098,6 +1239,7 @@ class NVDAHTTPBridge:
 					"duration_ms": round(duration_ms, 2),
 					"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
 					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
+					"result": self._result_payload(execution_context),
 					"data": result.get("output"),
 				}
 
@@ -1117,6 +1259,7 @@ class NVDAHTTPBridge:
 				"duration_ms": round(duration_ms, 2),
 				"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
 				"nvda_status_snapshot": self.get_nvda_status_snapshot(),
+				"result": {"ok": False, "state_version": self.projector.state_version},
 				"error": {
 					"code": error_code,
 					"name": ERROR_CODES[error_code]["name"],
@@ -1195,6 +1338,9 @@ class NVDAHTTPBridge:
 	def start(self):
 		"""Start the HTTP bridge server (blocking) with robust error handling."""
 		try:
+			# The coalescer turns event bursts into transitions; it must be running
+			# before the first event arrives, or a burst is flushed late.
+			self.recorder.start()
 			self.server = BoundedThreadingHTTPServer((self.host, self.port), NVDABridgeRequestHandler)
 			self.server.timeout = 1.0
 
@@ -1241,6 +1387,7 @@ class NVDAHTTPBridge:
 		try:
 			logHandler.log.info("Stopping NVDA HTTP Bridge...")
 			self.shutdown_event.set()
+			self.recorder.stop()
 			self.developer_mode_manager.reset()
 			self.permission_policy.reset()
 

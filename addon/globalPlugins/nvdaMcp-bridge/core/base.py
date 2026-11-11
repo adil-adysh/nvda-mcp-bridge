@@ -37,6 +37,21 @@ class ExecutionMode(str, Enum):
 	COORDINATOR = "coordinator"
 
 
+@dataclass
+class ResultMeta:
+	"""Mutable per-request result metadata, filled in by the coordinator handler.
+
+	Lives beside the typed output rather than inside it because the §4.1 result
+	block is uniform across every tool: making each of the twenty-odd output
+	dataclasses declare ``changed``/``delta``/``settled_ms`` would duplicate the
+	same fields, force every published output schema to change, and still leave
+	reads without anything to put in them.
+	"""
+
+	settle: Any = None
+	state_version: int | None = None
+
+
 @dataclass(frozen=True)
 class ExecutionContext:
 	"""Runtime services handed to COORDINATOR handlers.
@@ -54,6 +69,24 @@ class ExecutionContext:
 
 	timeout: float | None = None
 	"""Seconds remaining for the whole tool call, when a deadline is known."""
+
+	settle: Callable[..., Any] | None = None
+	"""Run a settle round around an action; see ``server/settle.py``."""
+
+	resolve: Callable[[str], Any] | None = None
+	"""Resolve a ``ref`` to an NVDA object. Main thread only."""
+
+	register: Callable[[Any], str] | None = None
+	"""Capture an NVDA object under a fresh ``ref``. Main thread only."""
+
+	observe: Callable[..., dict] | None = None
+	"""Capture a projection with references. Main thread only."""
+
+	wait_events: Callable[..., dict] | None = None
+	"""Block on the transition journal. Worker thread only."""
+
+	result: ResultMeta | None = None
+	"""Per-request result metadata; the bridge serialises it into the envelope."""
 
 
 @dataclass(frozen=True)
@@ -107,6 +140,12 @@ class ToolMetadata:
 
 	execution_mode: ExecutionMode = ExecutionMode.MAIN_THREAD
 	"""Where the handler body runs; see ExecutionMode."""
+
+	deprecated: bool = False
+	"""Whether the tool is superseded and kept only for compatibility."""
+
+	superseded_by: str | None = None
+	"""Name of the tool that replaces this one, when deprecated."""
 
 	def __post_init__(self) -> None:
 		"""Validate metadata."""

@@ -262,39 +262,45 @@ Invoke-WebRequest `
 
 ## Available tools
 
-Use `GET /tools` for the authoritative list.
+Use `GET /tools` for the authoritative list, including per-tool `outputSchema`
+and a `schema_hash` that changes whenever the contract does.
 
-### Inspection
+### Observation (start here)
 
-* `get_current_focus`
-* `get_navigator_object`
-* `inspect_object`
-* `inspect_app_module`
-* `get_focus_lineage`
+* `observe` — focus, ancestors, children and dialog in one call, each with a `ref`
+* `read` — text by scope (`line`, `selection`, `document`, `subtree`)
+* `wait_for_events` — block until the next coalesced UI transition
 
-### Interaction
+### Action (by `ref`, settled)
 
-* `speak_text`
-* `read_current_line`
-* `send_keyboard`
-* `show_message`
+* `invoke` — press an object's default or named action
+* `set_value` — platform value pattern when available, keyboard otherwise
+* `focus`, `navigate`, `scroll`
+* `press` — keyboard keys, with an optional `expect` postcondition
+* `click_at` — absolute pointer click, last resort
+* `dismiss` — leave a dialog (needs the `dialog_control` capability)
 
-### System / state
+Every action returns `result.changed`, `result.delta` and `result.settled_ms`, so
+"the call ran" is distinguishable from "the UI did what was meant".
 
-* `get_window_title`
-* `list_loaded_addons`
-* `health_snapshot`
-* `get_logs`
+### Inspection and diagnostics
 
-### Navigation
-
-* `move_focus`
-* `walk_object_tree`
-* `get_desktop_object`
+* `inspect_object`, `inspect_app_module`, `get_focus_lineage`
+* `walk_object_tree`, `get_desktop_object`
+* `get_window_title`, `list_loaded_addons`, `health_snapshot`, `get_logs`
+* `speak_text`, `show_message`
 
 ### Development
 
 * `execute_python`
+
+### Deprecated (kept for compatibility)
+
+* `get_current_focus` → `observe`
+* `get_navigator_object` → `observe`
+* `read_current_line` → `read`
+* `move_focus` → `navigate`
+* `send_keyboard` → `press`
 
 ---
 

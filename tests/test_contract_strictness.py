@@ -139,7 +139,7 @@ class OutputCoercionTests(unittest.TestCase):
 				"sent": True,
 				"sent_count": 1,
 				"cancelled": False,
-				"completed": True,
+				"dispatched": True,
 				"uncertain": False,
 			},
 		)
@@ -147,7 +147,7 @@ class OutputCoercionTests(unittest.TestCase):
 		result = _core.ToolExecutor().execute(tool, {})
 
 		self.assertTrue(result.success, msg=str(result.error))
-		self.assertTrue(result.output.completed)
+		self.assertTrue(result.output.dispatched)
 
 
 class CoordinatorTests(unittest.TestCase):

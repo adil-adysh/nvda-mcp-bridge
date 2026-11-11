@@ -24,7 +24,7 @@
       "$ref": "common.schema.json#/$defs/semver"
     },
     "api_level": {
-      "const": 1
+      "const": 2
     },
     "types": {
       "type": "object",
@@ -175,6 +175,18 @@
           },
           "retrySafe": {
             "type": "boolean"
+          },
+          "outputSchema": {
+            "type": "object"
+          },
+          "deprecated": {
+            "type": "boolean"
+          },
+          "supersededBy": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       }
@@ -182,6 +194,10 @@
     "count": {
       "type": "integer",
       "minimum": 0
+    },
+    "schema_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     }
   }
 }

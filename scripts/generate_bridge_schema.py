@@ -86,6 +86,7 @@ def generate_schema(addon_root: Path, package_name: str = PACKAGE_NAME) -> dict[
                 "category": meta.category,
                 "inputSchema": input_schema_json,
                 "outputType": output_type_name,
+                "outputSchema": output_schema.to_json_schema(),
                 "constraints": constraints,
                 "readOnly": getattr(meta, "read_only", False),
                 "destructive": getattr(meta, "destructive", False),
@@ -94,6 +95,8 @@ def generate_schema(addon_root: Path, package_name: str = PACKAGE_NAME) -> dict[
                 "requiredPermission": getattr(meta, "required_permission", "read_only"),
                 "cancellationSupported": getattr(meta, "cancellation_supported", False),
                 "retrySafe": getattr(meta, "retry_safe", False),
+                "deprecated": bool(getattr(meta, "deprecated", False)),
+                "supersededBy": getattr(meta, "superseded_by", None),
             }
         )
 

@@ -371,7 +371,11 @@ def send_keyboard(
 		"sent": sent_count > 0,
 		"sent_count": sent_count,
 		"cancelled": was_cancelled,
-		"completed": not was_cancelled and sent_count == repeat,
+		# ``dispatched`` means the input was posted. It deliberately does not say
+		# "completed": a keystroke is posted long before the UI has reacted, and
+		# claiming otherwise is what made this tool report success over a stale
+		# screen. Settling is the caller's (the coordinator's) job.
+		"dispatched": not was_cancelled and sent_count == repeat,
 		"uncertain": False,
 	}
 

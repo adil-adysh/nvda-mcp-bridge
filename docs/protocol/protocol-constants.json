@@ -1,12 +1,16 @@
 {
   "$schema": "https://nvda.local/schemas/protocol-constants.schema.json",
   "$id": "https://nvda.local/schemas/protocol-constants.json",
-  "title": "NVDA Bridge Protocol Constants \u2014 single source of truth for Python and Rust codegen",
+  "title": "NVDA Bridge Protocol Constants — single source of truth for Python and Rust codegen",
   "protocol": {
     "name": "nvda-bridge-protocol",
     "version": "1.0.0",
     "bridge_version": "1.0.0",
-    "api_level": 1,
+    "api_level": 2,
+    "supported_api_levels": [
+      1,
+      2
+    ],
     "default_bridge_token": "",
     "token_header": "X-NVDA-Bridge-Token",
     "max_request_body_size": 1048576,
@@ -62,6 +66,11 @@
     },
     "4205": {
       "name": "TARGET_UNAVAILABLE",
+      "category": "nvda_state",
+      "retry_policy": "after_state_change"
+    },
+    "4206": {
+      "name": "STALE_REFERENCE",
       "category": "nvda_state",
       "retry_policy": "after_state_change"
     },
@@ -301,6 +310,13 @@
           "serde_default": false,
           "python_type": "Optional[Dict[str, Any]]",
           "python_default": "None"
+        },
+        {
+          "name": "result",
+          "type": "Option<Value>",
+          "serde_default": true,
+          "python_type": "Optional[Dict[str, Any]]",
+          "python_default": "None"
         }
       ]
     },
@@ -465,6 +481,31 @@
           "python_type": "Optional[bool]",
           "python_default": "None",
           "python_serialize_name": "retrySafe"
+        },
+        {
+          "name": "output_schema",
+          "type": "Option<Map<String, Value>>",
+          "serde_rename": "outputSchema",
+          "serde_default": true,
+          "python_type": "Optional[Dict[str, Any]]",
+          "python_default": "None",
+          "python_serialize_name": "outputSchema"
+        },
+        {
+          "name": "deprecated",
+          "type": "Option<bool>",
+          "serde_default": true,
+          "python_type": "Optional[bool]",
+          "python_default": "None"
+        },
+        {
+          "name": "superseded_by",
+          "type": "Option<String>",
+          "serde_rename": "supersededBy",
+          "serde_default": true,
+          "python_type": "Optional[str]",
+          "python_default": "None",
+          "python_serialize_name": "supersededBy"
         }
       ]
     },
@@ -519,6 +560,13 @@
           "serde_default": false,
           "python_type": "int",
           "python_default": "0"
+        },
+        {
+          "name": "schema_hash",
+          "type": "Option<String>",
+          "serde_default": true,
+          "python_type": "Optional[str]",
+          "python_default": "None"
         }
       ]
     }

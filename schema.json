@@ -2,8 +2,129 @@
   "protocol": "nvda-bridge-protocol",
   "protocol_version": "1.0.0",
   "bridge_version": "1.0.0",
-  "api_level": 1,
+  "api_level": 2,
   "types": {
+    "ClickAtResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "integer"
+            },
+            "y": {
+              "type": "integer"
+            },
+            "button": {
+              "type": "string"
+            },
+            "hit": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "cursor": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            },
+            "onTarget": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "x",
+            "y",
+            "button"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "DismissResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "dismissed": {
+              "type": "boolean"
+            },
+            "steps": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "dialogName": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "dismissed"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
     "PythonExecutionResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
@@ -44,6 +165,52 @@
             }
           },
           "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "FocusResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "string"
+            },
+            "requested": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "ref",
+            "requested"
+          ]
         },
         "error": {
           "type": "object",
@@ -596,6 +763,66 @@
       ],
       "additionalProperties": false
     },
+    "InvokeResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "string"
+            },
+            "invoked": {
+              "type": "boolean"
+            },
+            "index": {
+              "type": "integer"
+            },
+            "actionName": {
+              "type": "string"
+            },
+            "available": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "ref",
+            "invoked",
+            "index",
+            "actionName"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
     "AddonMetadataList": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
@@ -685,6 +912,296 @@
             "direction",
             "pendingFocus",
             "newFocus"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "NavigateResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "direction": {
+              "type": "string"
+            },
+            "ref": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "focused": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "direction",
+            "focused"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "ObserveResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "state_version": {
+              "type": "integer"
+            },
+            "revision": {
+              "type": "integer"
+            },
+            "focus": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "ancestors": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            },
+            "children": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            },
+            "dialog": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "window": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "selection": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "state_version",
+            "revision"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "PressResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "gesture": {
+              "type": "string"
+            },
+            "repeat": {
+              "type": "integer"
+            },
+            "delay_ms": {
+              "type": "integer"
+            },
+            "sent": {
+              "type": "boolean"
+            },
+            "sent_count": {
+              "type": "integer"
+            },
+            "dispatched": {
+              "type": "boolean"
+            },
+            "cancelled": {
+              "type": "boolean"
+            },
+            "uncertain": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "gesture",
+            "repeat",
+            "delay_ms",
+            "sent",
+            "sent_count",
+            "dispatched"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "ReadResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "scope": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "ref": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "text",
+            "scope",
+            "source"
           ]
         },
         "error": {
@@ -854,6 +1371,60 @@
       ],
       "additionalProperties": false
     },
+    "ScrollResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "direction": {
+              "type": "string"
+            },
+            "amount": {
+              "type": "string"
+            },
+            "method": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "direction",
+            "amount",
+            "method",
+            "key"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
     "KeyboardActionResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
@@ -883,7 +1454,7 @@
             "cancelled": {
               "type": "boolean"
             },
-            "completed": {
+            "dispatched": {
               "type": "boolean"
             },
             "uncertain": {
@@ -896,6 +1467,59 @@
             "repeat",
             "delay_ms",
             "sent"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "SetValueResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "ref": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            },
+            "units": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "ref",
+            "mode",
+            "value"
           ]
         },
         "error": {
@@ -1010,6 +1634,65 @@
       ],
       "additionalProperties": false
     },
+    "WaitEventsResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "from_version": {
+              "type": "integer"
+            },
+            "to_version": {
+              "type": "integer"
+            },
+            "events": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            },
+            "truncated": {
+              "type": "boolean"
+            },
+            "timed_out": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "from_version",
+            "to_version"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
     "ObjectTreeSnapshot": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
@@ -1068,6 +1751,171 @@
   },
   "tools": [
     {
+      "name": "click_at",
+      "version": "1.0.0",
+      "description": "Click absolute screen coordinates. Last resort when nothing is actionable; reports the object that was under the point.",
+      "category": "action",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          },
+          "button": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "middle"
+            ]
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "x",
+          "y"
+        ]
+      },
+      "outputType": "ClickAtResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          },
+          "button": {
+            "type": "string"
+          },
+          "hit": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cursor": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          },
+          "onTarget": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "x",
+          "y",
+          "button"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": false,
+      "idempotent": false,
+      "sideEffects": true,
+      "requiredPermission": "input_control",
+      "cancellationSupported": false,
+      "retrySafe": false,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
+      "name": "dismiss",
+      "version": "1.0.0",
+      "description": "Leave a dialog: Escape first, then its default button. Allowed in modal and menu states so an agent can get out of a dialog it entered.",
+      "category": "action",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "expect": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "DismissResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "dismissed": {
+            "type": "boolean"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dialogName": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "dismissed"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": true,
+      "requiredPermission": "dialog_control",
+      "cancellationSupported": false,
+      "retrySafe": false,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
       "name": "execute_python",
       "version": "1.0.0",
       "description": "Execute Python source inside NVDA and return console output/result.",
@@ -1102,6 +1950,40 @@
         ]
       },
       "outputType": "PythonExecutionResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "stdout": {
+            "type": "string"
+          },
+          "stderr": {
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "captured_variables": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": true,
@@ -1116,12 +1998,79 @@
       "sideEffects": true,
       "requiredPermission": "developer",
       "cancellationSupported": false,
-      "retrySafe": false
+      "retrySafe": false,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
+      "name": "focus",
+      "version": "1.0.0",
+      "description": "Move keyboard focus to an object by ref, then wait for the UI to settle.",
+      "category": "action",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "ref"
+        ]
+      },
+      "outputType": "FocusResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "requested": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "requested"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": true,
+      "requiredPermission": "input_control",
+      "cancellationSupported": false,
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
     },
     {
       "name": "get_current_focus",
       "version": "1.0.0",
-      "description": "Get information about the currently focused UI element.",
+      "description": "Deprecated: use observe. Get information about the currently focused UI element.",
       "category": "focus",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -1130,6 +2079,51 @@
         "additionalProperties": false
       },
       "outputType": "ObjectInfo",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "roleText": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "states": {
+            "type": "string"
+          },
+          "windowClassName": {
+            "type": "string"
+          },
+          "windowControlID": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "roleText",
+          "value",
+          "description",
+          "states"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": false,
@@ -1144,7 +2138,9 @@
       "sideEffects": false,
       "requiredPermission": "read_only",
       "cancellationSupported": false,
-      "retrySafe": true
+      "retrySafe": true,
+      "deprecated": true,
+      "supersededBy": "observe"
     },
     {
       "name": "get_desktop_object",
@@ -1158,6 +2154,51 @@
         "additionalProperties": false
       },
       "outputType": "ObjectInfo",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "roleText": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "states": {
+            "type": "string"
+          },
+          "windowClassName": {
+            "type": "string"
+          },
+          "windowControlID": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "roleText",
+          "value",
+          "description",
+          "states"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": false,
@@ -1172,7 +2213,9 @@
       "sideEffects": false,
       "requiredPermission": "read_only",
       "cancellationSupported": false,
-      "retrySafe": true
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
     },
     {
       "name": "get_focus_lineage",
@@ -1190,6 +2233,36 @@
         "additionalProperties": false
       },
       "outputType": "FocusLineage",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "focus": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "ancestorCount": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "ancestors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "focus",
+          "ancestorCount",
+          "truncated",
+          "ancestors"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": false,
@@ -1204,7 +2277,9 @@
       "sideEffects": false,
       "requiredPermission": "diagnostics",
       "cancellationSupported": false,
-      "retrySafe": true
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
     },
     {
       "name": "get_logs",
@@ -1242,6 +2317,48 @@
         "additionalProperties": false
       },
       "outputType": "LogEntries",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "log_file": {
+            "type": "string"
+          },
+          "returned_lines": {
+            "type": "integer"
+          },
+          "max_lines": {
+            "type": "integer"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "file_size": {
+            "type": "integer"
+          },
+          "filter_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "log_file",
+          "returned_lines",
+          "max_lines",
+          "lines",
+          "file_size"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": false,
@@ -1256,12 +2373,14 @@
       "sideEffects": false,
       "requiredPermission": "diagnostics",
       "cancellationSupported": false,
-      "retrySafe": true
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
     },
     {
       "name": "get_navigator_object",
       "version": "1.0.0",
-      "description": "Get information about the current navigator object.",
+      "description": "Deprecated: use observe. Get information about the current navigator object.",
       "category": "navigation",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -1270,6 +2389,51 @@
         "additionalProperties": false
       },
       "outputType": "ObjectInfo",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "roleText": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "states": {
+            "type": "string"
+          },
+          "windowClassName": {
+            "type": "string"
+          },
+          "windowControlID": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "roleText",
+          "value",
+          "description",
+          "states"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": false,
@@ -1284,7 +2448,9 @@
       "sideEffects": false,
       "requiredPermission": "read_only",
       "cancellationSupported": false,
-      "retrySafe": true
+      "retrySafe": true,
+      "deprecated": true,
+      "supersededBy": "observe"
     },
     {
       "name": "get_window_title",
@@ -1298,6 +2464,27 @@
         "additionalProperties": false
       },
       "outputType": "WindowInfo",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "handle": {
+            "type": "integer"
+          },
+          "className": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "handle",
+          "className"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": false,
         "blocked_on_modal": false,
@@ -1312,7 +2499,9 @@
       "sideEffects": false,
       "requiredPermission": "read_only",
       "cancellationSupported": false,
-      "retrySafe": true
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
     },
     {
       "name": "health_snapshot",
@@ -1350,6 +2539,153 @@
         "additionalProperties": false
       },
       "outputType": "HealthSnapshot",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "integer"
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "include_logs": {
+                "type": "boolean"
+              },
+              "log_lines": {
+                "type": "integer"
+              },
+              "include_tree": {
+                "type": "boolean"
+              },
+              "tree_depth": {
+                "type": "integer"
+              },
+              "tree_max_children": {
+                "type": "integer"
+              },
+              "addon_scope": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "include_logs",
+              "log_lines",
+              "include_tree",
+              "tree_depth",
+              "tree_max_children",
+              "addon_scope"
+            ]
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "errorCount": {
+            "type": "integer"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "navigator": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "appModule": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "addons": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "focusLineage": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "focusTree": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "logs": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "timestamp",
+          "options",
+          "errors",
+          "ok",
+          "errorCount"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": false,
         "blocked_on_modal": false,
@@ -1364,7 +2700,9 @@
       "sideEffects": false,
       "requiredPermission": "diagnostics",
       "cancellationSupported": false,
-      "retrySafe": true
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
     },
     {
       "name": "inspect_app_module",
@@ -1387,6 +2725,29 @@
         "additionalProperties": false
       },
       "outputType": "AppModuleInfo",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "object": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "appModule": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "object",
+          "appModule"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": false,
@@ -1401,7 +2762,9 @@
       "sideEffects": false,
       "requiredPermission": "diagnostics",
       "cancellationSupported": false,
-      "retrySafe": true
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
     },
     {
       "name": "inspect_object",
@@ -1427,6 +2790,24 @@
         "additionalProperties": false
       },
       "outputType": "ObjectInspection",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string"
+          },
+          "object": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "target",
+          "object"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": false,
@@ -1441,7 +2822,98 @@
       "sideEffects": false,
       "requiredPermission": "diagnostics",
       "cancellationSupported": false,
-      "retrySafe": true
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
+      "name": "invoke",
+      "version": "1.0.0",
+      "description": "Invoke an object's default or named action (press it) by ref, then wait for the UI to settle. Works on an unfocused control; returns changed/delta.",
+      "category": "action",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "ref"
+        ]
+      },
+      "outputType": "InvokeResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "invoked": {
+            "type": "boolean"
+          },
+          "index": {
+            "type": "integer"
+          },
+          "actionName": {
+            "type": "string"
+          },
+          "available": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "invoked",
+          "index",
+          "actionName"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": false,
+      "idempotent": false,
+      "sideEffects": true,
+      "requiredPermission": "input_control",
+      "cancellationSupported": false,
+      "retrySafe": false,
+      "deprecated": false,
+      "supersededBy": null
     },
     {
       "name": "list_loaded_addons",
@@ -1464,6 +2936,39 @@
         "additionalProperties": false
       },
       "outputType": "AddonMetadataList",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "runningCount": {
+            "type": "integer"
+          },
+          "availableCount": {
+            "type": "integer"
+          },
+          "addons": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "scope",
+          "count",
+          "runningCount",
+          "availableCount",
+          "addons"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": false,
@@ -1478,12 +2983,14 @@
       "sideEffects": false,
       "requiredPermission": "diagnostics",
       "cancellationSupported": false,
-      "retrySafe": true
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
     },
     {
       "name": "move_focus",
       "version": "1.0.0",
-      "description": "Move focus to next or previous object.",
+      "description": "Deprecated: use navigate. Move focus to next or previous object.",
       "category": "focus",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -1503,6 +3010,28 @@
         ]
       },
       "outputType": "MoveFocusResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string"
+          },
+          "pendingFocus": {
+            "type": "boolean"
+          },
+          "newFocus": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "direction",
+          "pendingFocus",
+          "newFocus"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": true,
@@ -1517,20 +3046,206 @@
       "sideEffects": true,
       "requiredPermission": "input_control",
       "cancellationSupported": false,
-      "retrySafe": false
+      "retrySafe": false,
+      "deprecated": true,
+      "supersededBy": "navigate"
     },
     {
-      "name": "read_current_line",
+      "name": "navigate",
       "version": "1.0.0",
-      "description": "Read the current line from the focused object.",
-      "category": "text",
+      "description": "Move through the accessibility tree (next/previous/first/last/parent/child) from a ref or the focus, focus the result and return its ref.",
+      "category": "action",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
-        "properties": {},
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": [
+              "next",
+              "previous",
+              "first",
+              "last",
+              "parent",
+              "child"
+            ]
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "direction"
+        ]
+      },
+      "outputType": "NavigateResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "focused": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "direction",
+          "focused"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": false,
+      "idempotent": false,
+      "sideEffects": true,
+      "requiredPermission": "input_control",
+      "cancellationSupported": false,
+      "retrySafe": false,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
+      "name": "observe",
+      "version": "1.0.0",
+      "description": "Capture the screen once: focus, ancestors, children, dialog and window, each with a ref. References are locators for invoke/focus/read, valid until the observation is superseded; state_version identifies this observation.",
+      "category": "observation",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "include": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "focus",
+                "ancestors",
+                "children",
+                "selection",
+                "dialog"
+              ]
+            }
+          },
+          "max_text": {
+            "type": "integer"
+          }
+        },
         "additionalProperties": false
       },
-      "outputType": "TextLineInfo",
+      "outputType": "ObserveResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "state_version": {
+            "type": "integer"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ancestors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "dialog": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "window": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "state_version",
+          "revision"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": false,
@@ -1545,7 +3260,248 @@
       "sideEffects": false,
       "requiredPermission": "read_only",
       "cancellationSupported": false,
-      "retrySafe": true
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
+      "name": "press",
+      "version": "1.0.0",
+      "description": "Send keyboard keys (e.g. 'tab', 'control+a'), then wait for the UI to settle. 'dispatched' means the input was posted; changed/delta say what the UI did.",
+      "category": "input",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "keys": {
+            "type": "string"
+          },
+          "repeat": {
+            "type": "integer"
+          },
+          "delay_ms": {
+            "type": "integer"
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "keys"
+        ]
+      },
+      "outputType": "PressResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "gesture": {
+            "type": "string"
+          },
+          "repeat": {
+            "type": "integer"
+          },
+          "delay_ms": {
+            "type": "integer"
+          },
+          "sent": {
+            "type": "boolean"
+          },
+          "sent_count": {
+            "type": "integer"
+          },
+          "dispatched": {
+            "type": "boolean"
+          },
+          "cancelled": {
+            "type": "boolean"
+          },
+          "uncertain": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "gesture",
+          "repeat",
+          "delay_ms",
+          "sent",
+          "sent_count",
+          "dispatched"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": false,
+      "idempotent": false,
+      "sideEffects": true,
+      "requiredPermission": "input_control",
+      "cancellationSupported": true,
+      "retrySafe": false,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
+      "name": "read",
+      "version": "1.0.0",
+      "description": "Read text from an object by ref (or the focus) at a scope: line, selection, document or subtree. Bounded by max_chars, reports truncation.",
+      "category": "observation",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "line",
+              "selection",
+              "document",
+              "subtree"
+            ]
+          },
+          "max_chars": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "ReadResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "scope",
+          "source"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "read_only",
+      "cancellationSupported": false,
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
+      "name": "read_current_line",
+      "version": "1.0.0",
+      "description": "Deprecated: use read with scope='line'. Read the current line from the focused object.",
+      "category": "text",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputType": "TextLineInfo",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "lineNumber": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "read_only",
+      "cancellationSupported": false,
+      "retrySafe": true,
+      "deprecated": true,
+      "supersededBy": "read"
     },
     {
       "name": "reload_plugins",
@@ -1559,6 +3515,22 @@
         "additionalProperties": false
       },
       "outputType": "ReloadResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "status"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": true,
@@ -1573,7 +3545,9 @@
       "sideEffects": true,
       "requiredPermission": "nvda_lifecycle",
       "cancellationSupported": false,
-      "retrySafe": false
+      "retrySafe": false,
+      "deprecated": false,
+      "supersededBy": null
     },
     {
       "name": "restart_nvda",
@@ -1594,6 +3568,19 @@
         "additionalProperties": false
       },
       "outputType": "NvdaRestartResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "status"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": true,
@@ -1608,12 +3595,107 @@
       "sideEffects": true,
       "requiredPermission": "nvda_lifecycle",
       "cancellationSupported": false,
-      "retrySafe": false
+      "retrySafe": false,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
+      "name": "scroll",
+      "version": "1.0.0",
+      "description": "Scroll the focused container up/down/left/right by page or line, then settle.",
+      "category": "action",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down",
+              "left",
+              "right"
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "enum": [
+              "page",
+              "line"
+            ]
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "ScrollResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "direction",
+          "amount",
+          "method",
+          "key"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": false,
+      "idempotent": false,
+      "sideEffects": true,
+      "requiredPermission": "input_control",
+      "cancellationSupported": false,
+      "retrySafe": false,
+      "deprecated": false,
+      "supersededBy": null
     },
     {
       "name": "send_keyboard",
       "version": "1.0.0",
-      "description": "Send a keyboard gesture through NVDA for app/addon automation.",
+      "description": "Deprecated: use press, which waits for the UI to settle. Send a keyboard gesture through NVDA for app/addon automation.",
       "category": "ui",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -1635,6 +3717,43 @@
         ]
       },
       "outputType": "KeyboardActionResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "gesture": {
+            "type": "string"
+          },
+          "repeat": {
+            "type": "integer"
+          },
+          "delay_ms": {
+            "type": "integer"
+          },
+          "sent": {
+            "type": "boolean"
+          },
+          "sent_count": {
+            "type": "integer"
+          },
+          "cancelled": {
+            "type": "boolean"
+          },
+          "dispatched": {
+            "type": "boolean"
+          },
+          "uncertain": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "gesture",
+          "repeat",
+          "delay_ms",
+          "sent"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": true,
@@ -1649,7 +3768,85 @@
       "sideEffects": true,
       "requiredPermission": "input_control",
       "cancellationSupported": true,
-      "retrySafe": false
+      "retrySafe": false,
+      "deprecated": true,
+      "supersededBy": "press"
+    },
+    {
+      "name": "set_value",
+      "version": "1.0.0",
+      "description": "Set a control's value by ref. Uses the platform value pattern when the control exposes one, otherwise focus + select-all + type; 'mode' says which.",
+      "category": "action",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "value"
+        ]
+      },
+      "outputType": "SetValueResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "units": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "ref",
+          "mode",
+          "value"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": true,
+      "requiredPermission": "input_control",
+      "cancellationSupported": false,
+      "retrySafe": false,
+      "deprecated": false,
+      "supersededBy": null
     },
     {
       "name": "show_message",
@@ -1670,6 +3867,22 @@
         ]
       },
       "outputType": "MessageResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "message"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": false,
@@ -1684,7 +3897,9 @@
       "sideEffects": true,
       "requiredPermission": "speech_output",
       "cancellationSupported": false,
-      "retrySafe": false
+      "retrySafe": false,
+      "deprecated": false,
+      "supersededBy": null
     },
     {
       "name": "speak_text",
@@ -1705,6 +3920,22 @@
         ]
       },
       "outputType": "SpeechResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "spoken": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "spoken"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": false,
@@ -1719,7 +3950,89 @@
       "sideEffects": true,
       "requiredPermission": "speech_output",
       "cancellationSupported": false,
-      "retrySafe": false
+      "retrySafe": false,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
+      "name": "wait_for_events",
+      "version": "1.0.0",
+      "description": "Block until the next coalesced UI transition (or timeout) and return the transition kinds. Use for idle waits instead of polling observe.",
+      "category": "observation",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "since": {
+            "type": "integer"
+          },
+          "timeout_ms": {
+            "type": "integer"
+          },
+          "kinds": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "WaitEventsResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "from_version": {
+            "type": "integer"
+          },
+          "to_version": {
+            "type": "integer"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "timed_out": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "from_version",
+          "to_version"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": false,
+      "sideEffects": false,
+      "requiredPermission": "read_only",
+      "cancellationSupported": true,
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
     },
     {
       "name": "walk_object_tree",
@@ -1748,6 +4061,32 @@
         "additionalProperties": false
       },
       "outputType": "ObjectTreeSnapshot",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string"
+          },
+          "max_depth": {
+            "type": "integer"
+          },
+          "max_children": {
+            "type": "integer"
+          },
+          "tree": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "target",
+          "max_depth",
+          "max_children",
+          "tree"
+        ]
+      },
       "constraints": {
         "blocked_on_secure_screen": true,
         "blocked_on_modal": false,
@@ -1762,8 +4101,10 @@
       "sideEffects": false,
       "requiredPermission": "diagnostics",
       "cancellationSupported": true,
-      "retrySafe": true
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
     }
   ],
-  "count": 19
+  "count": 30
 }

@@ -17,7 +17,8 @@ TOKEN_HEADER = "X-NVDA-Bridge-Token"
 BRIDGE_VERSION = "1.0.0"
 PROTOCOL = "nvda-bridge-protocol"
 PROTOCOL_VERSION = "1.0.0"
-API_LEVEL = 1
+API_LEVEL = 2
+SUPPORTED_API_LEVELS = (1, 2)
 MAX_REQUEST_BODY_SIZE = 1048576
 MAX_REQUEST_ID_LENGTH = 128
 
@@ -35,6 +36,7 @@ ERROR_CODES: Dict[int, Dict[str, Any]] = {
     4203: {"name": "MENU_OPEN_BLOCKING", "category": "nvda_state", "retry_policy": "after_delay", "retry_after_ms": 500},
     4204: {"name": "ACTION_CANCELLED", "category": "runtime", "retry_policy": "never"},
     4205: {"name": "TARGET_UNAVAILABLE", "category": "nvda_state", "retry_policy": "after_state_change"},
+    4206: {"name": "STALE_REFERENCE", "category": "nvda_state", "retry_policy": "after_state_change"},
     5001: {"name": "NVDA_COM_TIMEOUT", "category": "runtime", "retry_policy": "after_delay", "retry_after_ms": 1000},
     5003: {"name": "TOOL_EXECUTION_EXCEPTION", "category": "runtime", "retry_policy": "after_delay", "retry_after_ms": 1000},
     5004: {"name": "EXECUTION_TIMEOUT", "category": "runtime", "retry_policy": "never"},
@@ -85,6 +87,7 @@ class BridgeActionEnvelope:
     nvda_status_snapshot: Optional[Dict[str, Any]] = field(default=None)
     data: Optional[Dict[str, Any]] = field(default=None)
     error: Optional[Dict[str, Any]] = field(default=None)
+    result: Optional[Dict[str, Any]] = field(default=None)
 
 @dataclass
 class BridgeToolConstraints:
@@ -113,6 +116,9 @@ class BridgeToolDef:
     required_permission: Optional[str] = field(default=None)
     cancellation_supported: Optional[bool] = field(default=None)
     retry_safe: Optional[bool] = field(default=None)
+    output_schema: Optional[Dict[str, Any]] = field(default=None)
+    deprecated: Optional[bool] = field(default=None)
+    superseded_by: Optional[str] = field(default=None)
 
 @dataclass
 class BridgeToolsResponse:
@@ -124,6 +130,7 @@ class BridgeToolsResponse:
     types: Dict[str, Any] = field(default_factory=dict)
     tools: list[Dict[str, Any]] = field(default_factory=list)
     count: int = field(default=0)
+    schema_hash: Optional[str] = field(default=None)
 
 
 # ── HTTP status mapping ──
@@ -193,8 +200,12 @@ def validate_tools_discovery_payload(payload: Dict[str, Any]) -> None:
         for key in ("name", "description", "inputSchema", "outputType", "version", "category"):
             if key not in tool:
                 raise RuntimeError(f"tool entry missing required field: {key}")
-        if "outputSchema" in tool:
-            raise RuntimeError("outputSchema is forbidden in protocol v1")
+        if "outputSchema" in tool and not isinstance(tool["outputSchema"], dict):
+            raise RuntimeError("tool outputSchema must be an object")
+        if "deprecated" in tool and not isinstance(tool["deprecated"], bool):
+            raise RuntimeError("tool deprecated must be a boolean")
+        if "supersededBy" in tool and not (tool["supersededBy"] is None or isinstance(tool["supersededBy"], str)):
+            raise RuntimeError("tool supersededBy must be a string or null")
 
         output_type = tool.get("outputType")
         if not isinstance(output_type, str) or not output_type:
@@ -206,6 +217,10 @@ def validate_tools_discovery_payload(payload: Dict[str, Any]) -> None:
     unused_types = set(types.keys()) - used_types
     if unused_types:
         raise RuntimeError("unused output types are not allowed")
+
+    schema_hash = payload.get("schema_hash")
+    if schema_hash is not None and (not isinstance(schema_hash, str) or len(schema_hash) != 64):
+        raise RuntimeError("tools payload schema_hash must be a 64 character hex digest")
 
 
 def build_tools_payload(tools: list[Dict[str, Any]], types: Dict[str, Any]) -> Dict[str, Any]:

@@ -31,6 +31,41 @@
       "$ref": "common.schema.json#/$defs/nvdaStatusSnapshot"
     },
     "data": {},
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ok"
+      ],
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "state_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "delta": {
+          "type": "object"
+        },
+        "settled_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "uncertain": {
+          "type": "boolean"
+        },
+        "completed": {
+          "type": "boolean"
+        },
+        "expect_mismatch": {
+          "type": "object"
+        }
+      }
+    },
     "error": {
       "$ref": "common.schema.json#/$defs/actionError"
     }

@@ -28,6 +28,9 @@ PERMISSION_SPEECH_OUTPUT = "speech_output"
 PERMISSION_DIAGNOSTICS = "diagnostics"
 PERMISSION_NVDA_LIFECYCLE = "nvda_lifecycle"
 PERMISSION_DEVELOPER = "developer"
+#: Narrow capability to leave a dialog. Without it, a rule that forbids input
+#: inside modals only traps an agent that has already entered one.
+PERMISSION_DIALOG_CONTROL = "dialog_control"
 
 ALL_PERMISSIONS = frozenset({
 	PERMISSION_READ_ONLY,
@@ -36,6 +39,7 @@ ALL_PERMISSIONS = frozenset({
 	PERMISSION_DIAGNOSTICS,
 	PERMISSION_NVDA_LIFECYCLE,
 	PERMISSION_DEVELOPER,
+	PERMISSION_DIALOG_CONTROL,
 })
 
 DEFAULT_PERMISSIONS = frozenset({
@@ -292,6 +296,7 @@ PERSISTABLE_PERMISSIONS = frozenset({
 	PERMISSION_INPUT_CONTROL,
 	PERMISSION_DIAGNOSTICS,
 	PERMISSION_NVDA_LIFECYCLE,
+	PERMISSION_DIALOG_CONTROL,
 })
 
 CONFIG_SECTION = "nvdaMcpBridge"
@@ -600,6 +605,9 @@ def check_action_permissions(
 		elif action_name == "send_keyboard" or category == "input":
 			required_permission = PERMISSION_INPUT_CONTROL
 			allowed_states = ("normal",)
+		elif action_name == "dismiss":
+			required_permission = PERMISSION_DIALOG_CONTROL
+			allowed_states = ("normal", "modal", "menu")
 		elif action_name in ("speak_text", "cancel_speech") or category == "speech":
 			required_permission = PERMISSION_SPEECH_OUTPUT
 			allowed_states = ("normal", "secure_desktop")

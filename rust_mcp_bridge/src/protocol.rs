@@ -14,7 +14,8 @@ pub const PROTOCOL_NAME: &str = "nvda-bridge-protocol";
 pub const PROTOCOL_VERSION: &str = "1.0.0";
 #[allow(dead_code)]
 pub const BRIDGE_VERSION: &str = "1.0.0";
-pub const API_LEVEL: u32 = 1;
+pub const API_LEVEL: u32 = 2;
+pub const SUPPORTED_API_LEVELS: &[u32] = &[1, 2];
 pub const TOKEN_HEADER: &str = "X-NVDA-Bridge-Token";
 #[allow(dead_code)]
 pub const MAX_REQUEST_ID_LENGTH: usize = 128;
@@ -100,6 +101,8 @@ pub struct BridgeActionEnvelope {
     pub nvda_status_snapshot: Option<NvdaStatusSnapshot>,
     pub data: Option<Value>,
     pub error: Option<BridgeError>,
+    #[serde(default)]
+    pub result: Option<Value>,
 }
 
 /// Per-tool execution constraints from bridge discovery.
@@ -146,6 +149,12 @@ pub struct BridgeToolDef {
     pub cancellation_supported: Option<bool>,
     #[serde(rename = "retrySafe", default)]
     pub retry_safe: Option<bool>,
+    #[serde(rename = "outputSchema", default)]
+    pub output_schema: Option<Map<String, Value>>,
+    #[serde(default)]
+    pub deprecated: Option<bool>,
+    #[serde(rename = "supersededBy", default)]
+    pub superseded_by: Option<String>,
 }
 
 /// Full response from bridge /tools discovery endpoint.
@@ -158,6 +167,8 @@ pub struct BridgeToolsResponse {
     pub types: Map<String, Value>,
     pub tools: Vec<BridgeToolDef>,
     pub count: usize,
+    #[serde(default)]
+    pub schema_hash: Option<String>,
 }
 
 // ── Validation ──

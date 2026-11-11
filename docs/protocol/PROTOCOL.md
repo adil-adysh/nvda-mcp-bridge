@@ -106,8 +106,25 @@ Response envelope (always):
 - `duration_ms`: elapsed bridge execution time
 - `bridge`: `{ bridge_version, api_level }`
 - `nvda_status_snapshot`: `{ secure_screen, modal_blocking, menu_open }`
-- `data`: present on success
+- `result`: the uniform result block (see below); present on success, and with
+  `ok: false` on tool failure
+- `data`: the tool's own typed payload, present on success
 - `error`: present on failure
+
+The result block is the same for every tool, read or action:
+
+- `ok`: bool — the call ran; says nothing about the UI
+- `state_version`: integer — the observation version this answer is valid for
+- `changed` (actions): whether the projection actually differed
+- `delta` (actions): what differed, field by field (`{from, to}` per field)
+- `settled_ms` (actions): how long until the observation was stable
+- `uncertain` (actions): delivery could not be confirmed
+- `completed` (actions, only with an `expect` request): whether the stated
+  postcondition was observed
+- `expect_mismatch` (actions, only when `expect` failed): expected vs actual
+
+It lives beside `data` rather than inside it: the fields mean the same thing for
+every tool, and v1 output schemas are closed.
 
 ## 4) Error Model
 
@@ -140,7 +157,9 @@ Error object:
 - `4201` `SECURE_SCREEN_ACTIVE`
 - `4202` `MODAL_DIALOG_BLOCKING`
 - `4203` `MENU_OPEN_BLOCKING`
-- `4204` `FOCUS_UNAVAILABLE`
+- `4204` `ACTION_CANCELLED`
+- `4205` `TARGET_UNAVAILABLE`
+- `4206` `STALE_REFERENCE` — re-observe; references are never re-resolved by name
 
 ### 500x Execution / Runtime
 

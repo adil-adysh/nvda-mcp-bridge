@@ -7,7 +7,7 @@ Zero-dependency models using stdlib dataclasses.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, Optional
 
 
@@ -130,6 +130,114 @@ class ExecutePythonInput:
 
 
 # ============================================================================
+# ACTION INPUT MODELS (implementation plan P2)
+# ============================================================================
+
+#: A postcondition an action can be asked to confirm, e.g. ``{"focus.name": "Search"}``.
+Expectation = Optional[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class ObserveInput:
+	"""What to capture in one observation."""
+
+	include: list[Literal["focus", "ancestors", "children", "selection", "dialog"]] = field(
+		default_factory=lambda: ["focus", "ancestors", "children", "dialog"]
+	)
+	max_text: int = 200
+
+
+@dataclass(frozen=True)
+class InvokeInput:
+	"""Invoke an object's default action, or a named one."""
+
+	ref: str
+	action: Optional[str] = None
+	expect: Expectation = None
+
+
+@dataclass(frozen=True)
+class SetValueInput:
+	"""Set the value of a control."""
+
+	ref: str
+	value: str
+	expect: Expectation = None
+
+
+@dataclass(frozen=True)
+class FocusInput:
+	"""Move focus to a referenced object."""
+
+	ref: str
+	expect: Expectation = None
+
+
+@dataclass(frozen=True)
+class PressInput:
+	"""Send keyboard keys."""
+
+	keys: str
+	repeat: int = 1
+	delay_ms: int = 0
+	expect: Expectation = None
+
+
+@dataclass(frozen=True)
+class ReadInput:
+	"""Read text from a referenced object, or the focus."""
+
+	ref: Optional[str] = None
+	scope: Literal["line", "selection", "document", "subtree"] = "line"
+	max_chars: int = 4000
+
+
+@dataclass(frozen=True)
+class NavigateInput:
+	"""Move through the accessibility tree."""
+
+	direction: Literal["next", "previous", "first", "last", "parent", "child"]
+	ref: Optional[str] = None
+	expect: Expectation = None
+
+
+@dataclass(frozen=True)
+class ScrollInput:
+	"""Scroll the focused container."""
+
+	direction: Literal["up", "down", "left", "right"] = "down"
+	amount: Literal["page", "line"] = "page"
+	ref: Optional[str] = None
+	expect: Expectation = None
+
+
+@dataclass(frozen=True)
+class DismissInput:
+	"""Dismiss the current dialog."""
+
+	expect: Expectation = None
+
+
+@dataclass(frozen=True)
+class ClickAtInput:
+	"""Click absolute screen coordinates."""
+
+	x: int
+	y: int
+	button: Literal["left", "right", "middle"] = "left"
+	expect: Expectation = None
+
+
+@dataclass(frozen=True)
+class WaitForEventsInput:
+	"""Wait for the next coalesced transition."""
+
+	since: int = 0
+	timeout_ms: int = 1000
+	kinds: Optional[list[str]] = None
+
+
+# ============================================================================
 # OUTPUT MODELS
 # ============================================================================
 
@@ -190,6 +298,10 @@ class KeyboardActionResult:
 	Mirrors the dictionary returned by ``nvda_bridge.ui.send_keyboard`` exactly.
 	The bridge validates responses against this schema with extra fields
 	rejected, so every key the dispatch code reports must be declared here.
+
+	``dispatched`` means "the input was posted", which is all a keystroke can ever
+	mean. It used to be called ``completed``, and that word is why a call could
+	report success while the focus it moved was still stale.
 	"""
 
 	gesture: str
@@ -198,7 +310,7 @@ class KeyboardActionResult:
 	sent: bool
 	sent_count: int = 1
 	cancelled: bool = False
-	completed: bool = True
+	dispatched: bool = True
 	uncertain: bool = False
 
 
@@ -335,3 +447,142 @@ class ReloadResult:
 
 	status: str
 	message: str = ""
+
+
+# ============================================================================
+# ACTION OUTPUT MODELS (implementation plan P2)
+# ============================================================================
+
+
+@dataclass(frozen=True)
+class ObserveResult:
+	"""One observation of the screen.
+
+	Every entry carries a ``ref``. References are locators captured in this
+	observation, not indices: they are resolved by re-reading the object they were
+	taken from, never by scanning the tree.
+	"""
+
+	state_version: int
+	revision: int
+	focus: Optional[dict[str, Any]] = None
+	ancestors: list[dict[str, Any]] = field(default_factory=list)
+	children: list[dict[str, Any]] = field(default_factory=list)
+	dialog: Optional[dict[str, Any]] = None
+	window: Optional[dict[str, Any]] = None
+	selection: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ReadResult:
+	"""Text read from a scope."""
+
+	text: str
+	scope: str
+	source: str
+	ref: Optional[str] = None
+	truncated: bool = False
+
+
+@dataclass(frozen=True)
+class InvokeResult:
+	"""Result of invoking an object action."""
+
+	ref: str
+	invoked: bool
+	index: int
+	actionName: str
+	available: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class SetValueResult:
+	"""How a value was set.
+
+	``mode`` is ``platform`` for a UIA ``ValuePattern`` assignment, and
+	``keyboard`` for focus + select-all + type. They are not equivalent, and a
+	caller that needs atomicity should know which one it got.
+	"""
+
+	ref: str
+	mode: str
+	value: str
+	units: int = 0
+
+
+@dataclass(frozen=True)
+class FocusResult:
+	"""Result of a focus request."""
+
+	ref: str
+	requested: bool
+
+
+@dataclass(frozen=True)
+class PressResult:
+	"""Result of a keyboard dispatch."""
+
+	gesture: str
+	repeat: int
+	delay_ms: int
+	sent: bool
+	sent_count: int
+	dispatched: bool
+	cancelled: bool = False
+	uncertain: bool = False
+
+
+@dataclass(frozen=True)
+class NavigateResult:
+	"""Result of moving through the tree."""
+
+	direction: str
+	ref: Optional[str]
+	focused: bool
+
+
+@dataclass(frozen=True)
+class ScrollResult:
+	"""How a scroll was performed."""
+
+	direction: str
+	amount: str
+	method: str
+	key: str
+
+
+@dataclass(frozen=True)
+class DismissResult:
+	"""What dismiss tried, and whether a dialog remained."""
+
+	dismissed: bool
+	steps: list[str] = field(default_factory=list)
+	dialogName: str = ""
+
+
+@dataclass(frozen=True)
+class ClickAtResult:
+	"""Result of a raw pointer click.
+
+	``onTarget`` is read back from the pointer after the click: ``SendInput`` only
+	says the events were accepted, and a click that landed somewhere else must not
+	look successful.
+	"""
+
+	x: int
+	y: int
+	button: str
+	hit: Optional[dict[str, Any]] = None
+	cursor: list[int] = field(default_factory=list)
+	onTarget: bool = True
+
+
+@dataclass(frozen=True)
+class WaitEventsResult:
+	"""Coalesced transitions observed while waiting."""
+
+	from_version: int
+	to_version: int
+	events: list[dict[str, Any]] = field(default_factory=list)
+	truncated: bool = False
+	timed_out: bool = False

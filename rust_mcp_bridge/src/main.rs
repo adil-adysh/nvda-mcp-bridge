@@ -10,9 +10,13 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     future,
-    sync::atomic::{AtomicU64, Ordering},
-    time::{SystemTime, UNIX_EPOCH},
+    sync::{
+        Arc, RwLock,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 use tracing_subscriber::{EnvFilter, fmt};
 
@@ -150,11 +154,12 @@ struct ToolRuntime {
 #[derive(Debug)]
 struct ToolCatalog {
     bridge_version: String,
+    schema_hash: Option<String>,
     tools_for_mcp: Vec<Tool>,
     runtime_by_name: HashMap<String, ToolRuntime>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct BridgeClient {
     client: Client,
     base_url: String,
@@ -271,17 +276,20 @@ impl BridgeClient {
                     Some(schema) => {
                         Some(schema.clone())
                     }
-                    None => {
-                        warn!(
-                            tool = %def.name,
-                            output_type = %output_type_name,
-                            "Tool outputType not found in bridge types map"
-                        );
-                        None
-                    }
+                    None => match &def.output_schema {
+                        Some(schema) => Some(Value::Object(schema.clone())),
+                        None => {
+                            warn!(
+                                tool = %def.name,
+                                output_type = %output_type_name,
+                                "Tool outputType not found in bridge types map and no outputSchema was provided"
+                            );
+                            None
+                        }
+                    },
                 }
             } else {
-                None
+                def.output_schema.clone().map(Value::Object)
             };
 
             let mcp_tool = Tool::new(
@@ -312,6 +320,7 @@ impl BridgeClient {
 
         Ok(ToolCatalog {
             bridge_version: payload.bridge_version,
+            schema_hash: payload.schema_hash,
             tools_for_mcp,
             runtime_by_name,
         })
@@ -409,6 +418,7 @@ impl BridgeClient {
         let nvda_status_snapshot: Option<NvdaStatusSnapshot> = obj
             .get("nvda_status_snapshot")
             .and_then(|v| serde_json::from_value(v.clone()).ok());
+        let result = obj.get("result").cloned();
 
         if success {
             let data = obj
@@ -425,6 +435,7 @@ impl BridgeClient {
                 nvda_status_snapshot,
                 data,
                 error: None,
+                result,
             });
         }
 
@@ -450,6 +461,7 @@ impl BridgeClient {
             nvda_status_snapshot,
             data: obj.get("data").cloned(),
             error: Some(parsed_error),
+            result,
         })
     }
 
@@ -549,15 +561,37 @@ fn annotation_for_tool(tool: &BridgeToolDef) -> ToolAnnotations {
 
 struct NvdaServer {
     bridge_client: BridgeClient,
-    tool_catalog: ToolCatalog,
+    tool_catalog: Arc<RwLock<ToolCatalog>>,
+    subscription_tx: broadcast::Sender<i64>,
+    shutdown: Arc<AtomicBool>,
 }
 
 impl NvdaServer {
     fn new(bridge_client: BridgeClient, tool_catalog: ToolCatalog) -> Self {
+        Self::with_catalog(bridge_client, Arc::new(RwLock::new(tool_catalog)))
+    }
+
+    fn with_catalog(bridge_client: BridgeClient, tool_catalog: Arc<RwLock<ToolCatalog>>) -> Self {
+        let (subscription_tx, _) = broadcast::channel(64);
         Self {
             bridge_client,
             tool_catalog,
+            subscription_tx,
+            shutdown: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// Clone the current tool runtime so callers can drop the catalog read lock
+    /// before any `.await`.
+    fn tool_runtime(&self, name: &str) -> Option<ToolRuntime> {
+        let catalog = self.catalog_read();
+        catalog.runtime_by_name.get(name).cloned()
+    }
+
+    fn catalog_read(&self) -> std::sync::RwLockReadGuard<'_, ToolCatalog> {
+        self.tool_catalog
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn validate_input(runtime: &ToolRuntime, params: &Map<String, Value>) -> Result<()> {
@@ -633,6 +667,11 @@ impl NvdaServer {
             envelope["data"] = Value::Object(Map::new());
         }
 
+        // The uniform result block (§4.1) is additive: keep it alongside `data`.
+        if let Some(ref result) = payload.result {
+            envelope["result"] = result.clone();
+        }
+
         // Attach protocol metadata for AI agents
         if let Some(ref rid) = payload.request_id {
             envelope["request_id"] = json!(rid);
@@ -704,6 +743,9 @@ impl NvdaServer {
         if let Some(ref d) = payload.data {
             detail["data"] = d.clone();
         }
+        if let Some(ref result) = payload.result {
+            detail["result"] = result.clone();
+        }
         if let Some(ref rid) = payload.request_id {
             detail["request_id"] = json!(rid);
         }
@@ -731,8 +773,17 @@ impl NvdaServer {
     }
 }
 
+impl Drop for NvdaServer {
+    fn drop(&mut self) {
+        // Signal the background event pump to exit. It holds only a clone of the
+        // broadcast sender and the HTTP client, not the server itself.
+        self.shutdown.store(true, Ordering::SeqCst);
+    }
+}
+
 impl ServerHandler for NvdaServer {
     fn get_info(&self) -> ServerConfig {
+        let bridge_version = self.catalog_read().bridge_version.clone();
         // Advertise resources and subscriptions as well as tools: the bridge
         // exposes live NVDA state as resources, and clients that support
         // `subscriptions/listen` can be notified when it changes.
@@ -751,7 +802,7 @@ impl ServerHandler for NvdaServer {
         ))
         .with_instructions(format!(
             "Bridge-backed tools discovered from /tools. protocol={} api_level={} bridge_version={}",
-            PROTOCOL_NAME, API_LEVEL, self.tool_catalog.bridge_version
+            PROTOCOL_NAME, API_LEVEL, bridge_version
         ))
     }
 
@@ -760,9 +811,8 @@ impl ServerHandler for NvdaServer {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = std::result::Result<ListToolsResult, ErrorData>> + Send + '_ {
-        future::ready(Ok(ListToolsResult::with_all_items(
-            self.tool_catalog.tools_for_mcp.clone(),
-        )))
+        let tools = self.catalog_read().tools_for_mcp.clone();
+        future::ready(Ok(ListToolsResult::with_all_items(tools)))
     }
 
     fn list_resources(
@@ -831,27 +881,31 @@ impl ServerHandler for NvdaServer {
         context: SubscriptionContext,
     ) -> impl std::future::Future<Output = std::result::Result<(), ErrorData>> + Send + '_ {
         async move {
-            let mut cursor = 0_i64;
+            // All subscribers share the single `/events` pump started in `main()`;
+            // a subscription only waits on its broadcast receiver.
+            let mut updates = self.subscription_tx.subscribe();
             loop {
-                let events_path = format!("/events?since={cursor}&timeout_ms=1000");
                 tokio::select! {
                     _ = context.cancelled() => return Ok(()),
-                    // Long-poll the bridge journal. A non-zero timeout keeps the
-                    // cost of an idle subscription to one in-flight request.
-                    page = self.bridge_client.get_json(&events_path) => {
-                        let Ok(page) = page else { continue };
-                        let version = page.get("state_version").and_then(Value::as_i64).unwrap_or(cursor);
-                        if version <= cursor {
-                            continue;
-                        }
-                        cursor = version;
-                        let notification = ServerNotification::ResourceUpdatedNotification(
-                            ResourceUpdatedNotification::new(ResourceUpdatedNotificationParam::new(
-                                STATE_URI,
-                            )),
-                        );
-                        if context.sink().send(notification).await.is_err() {
-                            return Ok(());
+                    received = updates.recv() => {
+                        match received {
+                            Ok(_version) => {
+                                let notification = ServerNotification::ResourceUpdatedNotification(
+                                    ResourceUpdatedNotification::new(ResourceUpdatedNotificationParam::new(
+                                        STATE_URI,
+                                    )),
+                                );
+                                // A dead or stuck client must not hold the loop forever.
+                                match tokio::time::timeout(
+                                    Duration::from_secs(10),
+                                    context.sink().send(notification),
+                                ).await {
+                                    Ok(Ok(())) => {}
+                                    Ok(Err(_)) | Err(_) => return Ok(()),
+                                }
+                            }
+                            Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(broadcast::error::RecvError::Closed) => return Ok(()),
                         }
                     }
                 }
@@ -866,7 +920,8 @@ impl ServerHandler for NvdaServer {
     ) -> impl std::future::Future<Output = std::result::Result<CallToolResponse, ErrorData>> + Send + '_ {
         async move {
             let tool_name = request.name.to_string();
-            let Some(runtime) = self.tool_catalog.runtime_by_name.get(&tool_name) else {
+            // Clone the runtime and release the catalog lock before any `.await`.
+            let Some(runtime) = self.tool_runtime(&tool_name) else {
                 return Err(ErrorData::invalid_params(
                     format!("Unknown tool: {}", tool_name),
                     None,
@@ -888,7 +943,7 @@ impl ServerHandler for NvdaServer {
 
             let params = request.arguments.unwrap_or_default();
 
-            if let Err(err) = Self::validate_input(runtime, &params) {
+            if let Err(err) = Self::validate_input(&runtime, &params) {
                 return Ok(CallToolResponse::Complete(CallToolResult::error(vec![
                     ContentBlock::text(err.to_string()),
                 ])));
@@ -915,6 +970,7 @@ impl ServerHandler for NvdaServer {
                             retry_after_ms: None,
                             details: None,
                         }),
+                        result: None,
                     };
                     return Ok(CallToolResponse::Complete(CallToolResult::error(
                         Self::error_content(&error_envelope),
@@ -922,7 +978,7 @@ impl ServerHandler for NvdaServer {
                 }
             };
 
-            if let Err(err) = Self::validate_output(runtime, &bridge_result) {
+            if let Err(err) = Self::validate_output(&runtime, &bridge_result) {
                 error!(tool = %tool_name, error = %err, "Bridge output schema mismatch");
                 return Ok(CallToolResponse::Complete(CallToolResult::error(vec![
                     ContentBlock::text(err.to_string()),
@@ -940,6 +996,114 @@ impl ServerHandler for NvdaServer {
             }
         }
     }
+}
+
+/// Whether a freshly fetched catalog represents a new contract.
+///
+/// A hash appearing or disappearing is treated as a change; two absent hashes
+/// cannot prove anything, so they never trigger a swap.
+fn schema_hash_changed(current: Option<&str>, incoming: Option<&str>) -> bool {
+    match (current, incoming) {
+        (Some(current), Some(incoming)) => current != incoming,
+        (None, None) => false,
+        _ => true,
+    }
+}
+
+/// Resolve the catalog refresh period from `NVDA_BRIDGE_CATALOG_REFRESH_SECS`.
+/// `0` disables periodic refreshes.
+fn catalog_refresh_period() -> Option<Duration> {
+    let secs = env::var("NVDA_BRIDGE_CATALOG_REFRESH_SECS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .unwrap_or(15);
+    (secs > 0).then(|| Duration::from_secs(secs))
+}
+
+/// One shared `/events` long-poll loop feeding every `listen()` subscriber.
+fn spawn_event_pump(
+    bridge_client: BridgeClient,
+    subscription_tx: broadcast::Sender<i64>,
+    shutdown: Arc<AtomicBool>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut cursor = 0_i64;
+        while !shutdown.load(Ordering::SeqCst) {
+            let events_path = format!("/events?since={cursor}&timeout_ms=1000");
+            match bridge_client.get_json(&events_path).await {
+                Ok(page) => {
+                    let version = page
+                        .get("state_version")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(cursor);
+                    if version > cursor {
+                        // The bridge persists the journal, so advancing the cursor
+                        // is the store; the broadcast is just fan-out.
+                        cursor = version;
+                        let _ = subscription_tx.send(version);
+                    }
+                }
+                Err(err) => {
+                    warn!(error = %err, "Bridge event poll failed; retrying in 1s");
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+            }
+        }
+    })
+}
+
+/// Periodically re-fetch `/tools` and swap in the catalog when `schema_hash`
+/// changes. rmcp 3.9 advertises a static tool capability, so no
+/// `tools/list_changed` notification is emitted; the next `tools/list` simply
+/// sees the refreshed surface.
+fn spawn_catalog_refresh(
+    bridge_client: BridgeClient,
+    tool_catalog: Arc<RwLock<ToolCatalog>>,
+    shutdown: Arc<AtomicBool>,
+    period: Duration,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(period);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        // The catalog was just fetched at startup; wait one full period first.
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            if shutdown.load(Ordering::SeqCst) {
+                break;
+            }
+            match bridge_client.fetch_tool_catalog().await {
+                Ok(new_catalog) => {
+                    let changed = {
+                        let current = tool_catalog
+                            .read()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        schema_hash_changed(
+                            current.schema_hash.as_deref(),
+                            new_catalog.schema_hash.as_deref(),
+                        )
+                    };
+                    if changed {
+                        let previous_hash = {
+                            let mut current = tool_catalog
+                                .write()
+                                .unwrap_or_else(|poisoned| poisoned.into_inner());
+                            let previous = current.schema_hash.clone();
+                            *current = new_catalog;
+                            previous
+                        };
+                        info!(
+                            previous_hash = ?previous_hash,
+                            "Bridge tool contract changed; swapped in refreshed catalog"
+                        );
+                    }
+                }
+                Err(err) => {
+                    warn!(error = %err, "Bridge catalog refresh failed; keeping current catalog");
+                }
+            }
+        }
+    })
 }
 
 fn lower_process_priority() {
@@ -1013,11 +1177,36 @@ async fn main() -> Result<()> {
     info!(
         tool_count = tool_catalog.tools_for_mcp.len(),
         bridge_version = %tool_catalog.bridge_version,
+        schema_hash = ?tool_catalog.schema_hash,
         "Discovered tools from bridge"
     );
 
+    let server = NvdaServer::new(bridge_client.clone(), tool_catalog);
+
+    let _event_pump = spawn_event_pump(
+        bridge_client.clone(),
+        server.subscription_tx.clone(),
+        Arc::clone(&server.shutdown),
+    );
+
+    let _catalog_refresh = match catalog_refresh_period() {
+        Some(period) => {
+            info!(period_secs = period.as_secs(), "Catalog refresh enabled");
+            Some(spawn_catalog_refresh(
+                bridge_client.clone(),
+                Arc::clone(&server.tool_catalog),
+                Arc::clone(&server.shutdown),
+                period,
+            ))
+        }
+        None => {
+            info!("Catalog refresh disabled by NVDA_BRIDGE_CATALOG_REFRESH_SECS=0");
+            None
+        }
+    };
+
     let transport = (tokio::io::stdin(), tokio::io::stdout());
-    let service = NvdaServer::new(bridge_client, tool_catalog)
+    let service = server
         .serve(transport)
         .await
         .map_err(|err| anyhow!("Failed to start MCP stdio service: {err}"))?;
@@ -1257,6 +1446,7 @@ mod tests {
             }),
             data: Some(json!({"title":"Notepad"})),
             error: None,
+            result: None,
         };
 
         assert!(
@@ -1344,6 +1534,7 @@ mod tests {
             tools_for_mcp: Vec::new(),
             runtime_by_name: HashMap::new(),
             bridge_version: "1.0.0".into(),
+            schema_hash: None,
         };
         let dummy_client = BridgeClient::new("http://127.0.0.1:8765".into(), "dummy".into()).unwrap();
         let server = NvdaServer::new(dummy_client, dummy_catalog);
@@ -1362,5 +1553,73 @@ mod tests {
             .resources
             .expect("resources capability must be present");
         assert_ne!(resources_cap.subscribe, Some(false));
+    }
+
+    #[test]
+    fn build_catalog_falls_back_to_per_tool_output_schema() {
+        let output_schema: Map<String, Value> = serde_json::from_value(json!({
+            "type": "object",
+            "properties": {
+                "data": {"type": "object", "properties": {"ok": {"type": "boolean"}}}
+            }
+        }))
+        .unwrap();
+
+        let payload = BridgeToolsResponse {
+            protocol: PROTOCOL_NAME.to_string(),
+            protocol_version: "1.0.0".to_string(),
+            bridge_version: "1.0.0".to_string(),
+            api_level: API_LEVEL,
+            // Deliberately empty: the output type is not in the types map.
+            types: Map::new(),
+            tools: vec![BridgeToolDef {
+                name: "probe".to_string(),
+                description: "probe".to_string(),
+                input_schema: serde_json::from_value(json!({"type": "object"})).unwrap(),
+                output_type: Some("MissingType".to_string()),
+                output_schema: Some(output_schema),
+                version: "1.0.0".to_string(),
+                category: "diagnostics".to_string(),
+                ..Default::default()
+            }],
+            count: 1,
+            schema_hash: Some("hash-1".to_string()),
+        };
+
+        let catalog = BridgeClient::build_catalog(payload).expect("build_catalog failed");
+        let runtime = catalog.runtime_by_name.get("probe").expect("probe missing");
+        assert!(
+            runtime.output_schema_value.is_some(),
+            "output_schema must be used when the types map lacks outputType"
+        );
+        assert_eq!(catalog.schema_hash.as_deref(), Some("hash-1"));
+    }
+
+    #[test]
+    fn schema_hash_change_detection() {
+        assert!(!schema_hash_changed(None, None));
+        assert!(!schema_hash_changed(Some("a"), Some("a")));
+        assert!(schema_hash_changed(Some("a"), Some("b")));
+        assert!(schema_hash_changed(None, Some("a")));
+        assert!(schema_hash_changed(Some("a"), None));
+    }
+
+    #[test]
+    fn success_content_includes_result_block() {
+        let payload = BridgeActionEnvelope {
+            success: true,
+            data: Some(json!({"sent": true})),
+            result: Some(json!({"ok": true, "state_version": 7, "changed": true})),
+            ..Default::default()
+        };
+
+        let blocks = NvdaServer::success_content(&payload);
+        let text = match &blocks[0] {
+            ContentBlock::Text(text) => text.text.clone(),
+            _ => panic!("expected text content"),
+        };
+        let envelope: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(envelope["result"]["state_version"], 7);
+        assert_eq!(envelope["data"]["sent"], true);
     }
 }

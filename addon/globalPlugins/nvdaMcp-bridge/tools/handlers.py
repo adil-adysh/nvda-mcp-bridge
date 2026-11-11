@@ -173,3 +173,303 @@ def execute_python(
 	from .. import nvda_bridge
 
 	return nvda_bridge.execute_python(code=code, snapshot_vars=snapshot_vars, capture_vars=capture_vars)
+
+
+# ---------------------------------------------------------------------------
+# Action handlers (implementation plan P2)
+#
+# Every handler here is COORDINATOR mode: the body runs on the bridge worker
+# thread so it can wait for the UI to settle, and each individual NVDA call is
+# dispatched onto the main thread. Nothing in this section blocks the main
+# thread, which is what keeps NVDA responsive while an action settles.
+# ---------------------------------------------------------------------------
+
+
+def _dispatch(context: Any, operation: Any) -> Any:
+	"""Run ``operation`` on NVDA's main thread."""
+	if context is None or getattr(context, "dispatch", None) is None:
+		return operation()
+	return context.dispatch(operation)
+
+
+def observe(include: list[str], max_text: int, context: Any) -> dict[str, Any]:
+	"""Capture the screen, with references to what was seen."""
+	return _dispatch(context, lambda: context.observe(include, max_text))
+
+
+def invoke(ref: str, action: str | None, expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
+	from ..nvda_bridge import actions
+
+	captured: dict[str, Any] = {}
+
+	def perform() -> dict[str, Any]:
+		def act() -> dict[str, Any]:
+			return actions.do_action(context.resolve(ref), action)
+
+		captured.update(context.dispatch(act))
+		return captured
+
+	context.settle(perform, expect=expect)
+	return {
+		"ref": ref,
+		"invoked": True,
+		"index": int(captured.get("index", -1)),
+		"actionName": str(captured.get("actionName", "")),
+		"available": list(captured.get("available", [])),
+	}
+
+
+def set_value(ref: str, value: str, expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
+	from ..nvda_bridge import actions
+
+	captured: dict[str, Any] = {}
+
+	def perform() -> dict[str, Any]:
+		def act() -> dict[str, Any]:
+			return actions.set_value(context.resolve(ref), value)
+
+		captured.update(context.dispatch(act))
+		return captured
+
+	context.settle(perform, expect=expect)
+	return {
+		"ref": ref,
+		"mode": str(captured.get("mode", "keyboard")),
+		"value": value,
+		"units": int(captured.get("units", 0)),
+	}
+
+
+def focus_object(ref: str, expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
+	from ..nvda_bridge import actions
+
+	def perform() -> dict[str, Any]:
+		return context.dispatch(lambda: actions.set_focus(context.resolve(ref)))
+
+	context.settle(perform, expect=expect)
+	return {"ref": ref, "requested": True}
+
+
+def press(
+	keys: str,
+	repeat: int,
+	delay_ms: int,
+	expect: dict[str, Any] | None,
+	context: Any,
+) -> dict[str, Any]:
+	"""Send keys, then wait for the UI to settle.
+
+	The keystroke is still the same primitive it always was; what changed is that
+	the call no longer returns before its effect is visible.
+	"""
+	from .. import nvda_bridge
+	from ..nvda_bridge import ui as nvda_ui
+
+	captured: dict[str, Any] = {}
+
+	def perform() -> dict[str, Any]:
+		result = nvda_bridge.send_keyboard(
+			gesture=keys,
+			repeat=repeat,
+			delay_ms=delay_ms,
+			cancellation_event=getattr(context, "cancellation_event", None),
+			main_thread_fn=lambda gesture: context.dispatch(
+				lambda: nvda_ui.send_single_gesture(gesture)
+			),
+			timeout=getattr(context, "timeout", None) or 10.0,
+		)
+		captured.update(result)
+		return result
+
+	context.settle(perform, expect=expect)
+	return {
+		"gesture": captured.get("gesture", keys),
+		"repeat": int(captured.get("repeat", repeat)),
+		"delay_ms": int(captured.get("delay_ms", delay_ms)),
+		"sent": bool(captured.get("sent", False)),
+		"sent_count": int(captured.get("sent_count", 0)),
+		"dispatched": bool(captured.get("dispatched", False)),
+		"cancelled": bool(captured.get("cancelled", False)),
+		"uncertain": bool(captured.get("uncertain", False)),
+	}
+
+
+def read(
+	ref: str | None,
+	scope: str,
+	max_chars: int,
+	context: Any,
+) -> dict[str, Any]:
+	from ..nvda_bridge import actions
+
+	def perform() -> dict[str, Any]:
+		import api
+
+		obj = context.resolve(ref) if ref else api.getFocusObject()
+		if obj is None:
+			raise RuntimeError("No focused object to read from")
+		return actions.read_text(obj, scope=scope, max_chars=max_chars)
+
+	result = _dispatch(context, perform)
+	return {"ref": ref, **result}
+
+
+def navigate(
+	direction: str,
+	ref: str | None,
+	expect: dict[str, Any] | None,
+	context: Any,
+) -> dict[str, Any]:
+	from ..nvda_bridge import actions
+
+	captured: dict[str, Any] = {}
+
+	def perform() -> dict[str, Any]:
+		def act() -> dict[str, Any]:
+			import api
+
+			obj = context.resolve(ref) if ref else api.getFocusObject()
+			if obj is None:
+				raise RuntimeError("No focused object to navigate from")
+			target, focused = actions.navigate(obj, direction)
+			captured["focused"] = focused
+			captured["ref"] = context.register(target)
+			return captured
+
+		return context.dispatch(act)
+
+	context.settle(perform, expect=expect)
+	return {
+		"direction": direction,
+		"ref": captured.get("ref"),
+		"focused": bool(captured.get("focused", False)),
+	}
+
+
+def scroll(
+	direction: str,
+	amount: str,
+	ref: str | None,
+	expect: dict[str, Any] | None,
+	context: Any,
+) -> dict[str, Any]:
+	from ..nvda_bridge import actions
+
+	captured: dict[str, Any] = {}
+
+	def perform() -> dict[str, Any]:
+		def act() -> dict[str, Any]:
+			import api
+
+			obj = context.resolve(ref) if ref else api.getFocusObject()
+			if obj is None:
+				raise RuntimeError("No focused object to scroll")
+			return actions.scroll(obj, direction, amount)
+
+		captured.update(context.dispatch(act))
+		return captured
+
+	context.settle(perform, expect=expect)
+	return {
+		"direction": direction,
+		"amount": amount,
+		"method": str(captured.get("method", "keyboard")),
+		"key": str(captured.get("key", "")),
+	}
+
+
+def dismiss(expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
+	"""Leave a dialog: Escape first, then its default button.
+
+	This exists because the previous rule let an agent enter a modal and then
+	forbade every tool from leaving it — a safety rule that only traps. It needs
+	the narrow ``dialog_control`` permission and is allowed in modal and menu
+	states.
+	"""
+	from ..nvda_bridge import actions
+	from ..nvda_bridge import ui as nvda_ui
+
+	steps: list[str] = []
+
+	def press_escape() -> None:
+		context.dispatch(lambda: nvda_ui.send_single_gesture("escape"))
+		steps.append("pressed Escape")
+
+	outcome = context.settle(press_escape, budget_ms=600)
+	dialog = (outcome.projection or {}).get("dialog")
+
+	if dialog:
+		def activate_default() -> dict[str, Any]:
+			def act() -> dict[str, Any]:
+				active = actions.dialog_object()
+				if active is None:
+					return {}
+				button = actions.default_dialog_button(active)
+				if button is None:
+					steps.append("dialog has no default button")
+					return {}
+				return actions.do_action(button)
+
+			result = context.dispatch(act)
+			if result:
+				steps.append(f"activated button {result.get('actionName')!r}")
+			return result
+
+		outcome = context.settle(activate_default, budget_ms=800)
+		dialog = (outcome.projection or {}).get("dialog")
+	else:
+		steps.append("no dialog was open")
+
+	# The expectation is about the final state, whichever attempt produced it.
+	from ..server.settle import evaluate_expect
+
+	expectation = evaluate_expect(outcome.projection, expect)
+	if expect:
+		outcome.completed = expectation.satisfied
+		outcome.expect_mismatch = expectation.mismatch
+	if context.result is not None:
+		context.result.settle = outcome
+
+	return {
+		"dismissed": dialog is None,
+		"steps": steps,
+		"dialogName": str((dialog or {}).get("name") or ""),
+	}
+
+
+def click_at(x: int, y: int, button: str, expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
+	from ..nvda_bridge import actions
+
+	captured: dict[str, Any] = {}
+
+	def perform() -> dict[str, Any]:
+		captured.update(context.dispatch(lambda: actions.click_at(x, y, button)))
+		return captured
+
+	context.settle(perform, expect=expect)
+	return {
+		"x": int(captured.get("x", x)),
+		"y": int(captured.get("y", y)),
+		"button": button,
+		"hit": captured.get("hit"),
+		"cursor": list(captured.get("cursor") or []),
+		"onTarget": bool(captured.get("onTarget", True)),
+	}
+
+
+def wait_for_events(
+	since: int,
+	timeout_ms: int,
+	kinds: list[str] | None,
+	context: Any,
+) -> dict[str, Any]:
+	if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool) or timeout_ms < 0 or timeout_ms > 30000:
+		raise ValueError("'timeout_ms' must be an integer between 0 and 30000")
+	result = context.wait_events(since=since, timeout_ms=timeout_ms, kinds=kinds)
+	return {
+		"from_version": int(result.get("from_version", since)),
+		"to_version": int(result.get("to_version", since)),
+		"events": list(result.get("events", [])),
+		"truncated": bool(result.get("truncated", False)),
+		"timed_out": int(result.get("to_version", since)) <= since,
+	}

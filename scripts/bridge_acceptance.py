@@ -47,13 +47,17 @@ SCHEMA_PATH = REPO_ROOT / "schema.json"
 ERROR_CODES = {
     4001, 4003,
     4101, 4102, 4103,
-    4201, 4202, 4203, 4204, 4205,
+    4201, 4202, 4203, 4204, 4205, 4206,
     5001, 5003, 5004,
     5303,
 }
 ENVELOPE_KEYS = {
     "success", "request_id", "action", "duration_ms", "bridge",
-    "nvda_status_snapshot", "data", "error",
+    "nvda_status_snapshot", "result", "data", "error",
+}
+RESULT_KEYS = {
+    "ok", "state_version", "changed", "delta", "settled_ms", "uncertain",
+    "completed", "expect_mismatch",
 }
 ERROR_KEYS = {"code", "message", "name", "category", "retry_policy", "retry_after_ms", "details"}
 
@@ -156,6 +160,21 @@ def check_envelope(result, action, tools_by_name, types, jsonschema):
     if body.get("success") is True:
         if result["http"] != 200:
             problems.append(f"success=True with HTTP {result['http']}")
+        block = body.get("result")
+        if not isinstance(block, dict):
+            problems.append("missing result block")
+        else:
+            extra_block = set(block) - RESULT_KEYS
+            if extra_block:
+                problems.append(f"unexpected result keys {sorted(extra_block)}")
+            if not isinstance(block.get("ok"), bool):
+                problems.append("result.ok is not a boolean")
+            if not isinstance(block.get("state_version"), int) or isinstance(block.get("state_version"), bool):
+                problems.append("result.state_version is not an integer")
+            if "settled_ms" in block and not isinstance(block["settled_ms"], (int, float)):
+                problems.append("result.settled_ms is not numeric")
+            if "changed" in block and not isinstance(block["changed"], bool):
+                problems.append("result.changed is not a boolean")
         schema = None
         definition = tools_by_name.get(action)
         if definition and types is not None:
@@ -239,6 +258,32 @@ CASES = [
     ("get_logs:max-zero", "get_logs", {"max_lines": 0}, "error"),
     ("get_logs:bad-level", "get_logs", {"filter_level": "TRACE"}, "error"),
     ("unknown-action", "definitely_not_a_tool", {}, "error"),
+    # Action surface (P2). Only refs that cannot resolve, and reads, are probed
+    # live: invoking arbitrary controls or pressing Enter would change the
+    # machine's state rather than test the contract.
+    ("observe", "observe", {}, "ok"),
+    ("observe:minimal", "observe", {"include": ["focus"], "max_text": 20}, "ok"),
+    ("observe:bad-include", "observe", {"include": ["everything"]}, "error"),
+    ("observe:extra-prop", "observe", {"depth": 3}, "error"),
+    ("read", "read", {}, "ok"),
+    ("read:document", "read", {"scope": "document", "max_chars": 40}, "ok"),
+    ("read:bad-scope", "read", {"scope": "page"}, "error"),
+    ("read:stale-ref", "read", {"ref": "f-does-not-exist"}, "error"),
+    ("invoke:missing-ref", "invoke", {}, "error"),
+    ("invoke:stale-ref", "invoke", {"ref": "f-does-not-exist"}, "error"),
+    ("focus:stale-ref", "focus", {"ref": "f-does-not-exist"}, "error"),
+    ("set_value:missing-value", "set_value", {"ref": "f"}, "error"),
+    ("set_value:stale-ref", "set_value", {"ref": "f-does-not-exist", "value": "x"}, "error"),
+    ("navigate:bad-direction", "navigate", {"direction": "sideways"}, "error"),
+    ("scroll:bad-amount", "scroll", {"amount": "chapter"}, "error"),
+    ("press:modifier", "press", {"keys": "shift"}, "ok"),
+    ("press:bad-gesture", "press", {"keys": "not+a+real+key"}, "error"),
+    ("press:empty", "press", {"keys": ""}, "error"),
+    ("press:repeat-zero", "press", {"keys": "shift", "repeat": 0}, "error"),
+    ("click_at:missing-y", "click_at", {"x": 10}, "error"),
+    ("dismiss:extra-prop", "dismiss", {"force": True}, "error"),
+    ("wait_for_events", "wait_for_events", {"since": 0, "timeout_ms": 100}, "ok"),
+    ("wait_for_events:bad-timeout", "wait_for_events", {"timeout_ms": -5}, "error"),
 ]
 
 # Wrong-typed values that the published input schemas forbid. Accepting any of

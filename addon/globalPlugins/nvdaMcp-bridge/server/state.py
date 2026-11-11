@@ -28,9 +28,12 @@ import threading
 import time
 from typing import Any, Callable, Optional
 
-#: How far up the tree a projection reaches. Deeper chains cost a COM call each
-#: and rarely add meaning: the window name is the useful part.
-MAX_ANCESTORS = 5
+#: How far up the tree a projection reaches. Eight, not five, because a dialog's
+#: chain runs through its own window and continues to the application frame:
+#: Notepad's Replace box puts the dialog window at depth 4 and the frame at depth
+#: 8, so a five-deep chain cannot tell a dialog from the main window. The plan's
+#: bound is ~40 nodes per capture, which this still satisfies.
+MAX_ANCESTORS = 8
 
 #: Field order for a focus diff. Order matters only for readability of the delta.
 FOCUS_FIELDS = ("role", "name", "value", "states", "location")
@@ -119,9 +122,20 @@ def _window_name(observation: Optional[dict]) -> Optional[str]:
 	"""
 	ancestors = (observation or {}).get("ancestors") or []
 	for ancestor in ancestors:
+		if ancestor.get("role") == "WINDOW" and ancestor.get("name") != "Desktop":
+			return ancestor.get("name")
+	for ancestor in reversed(ancestors):
 		if ancestor.get("role") == "WINDOW":
 			return ancestor.get("name")
 	return ancestors[-1].get("name") if ancestors else None
+
+
+def _window_label(observation: Optional[dict]) -> Optional[str]:
+	"""Prefer the captured foreground-window title; fall back to the ancestor chain."""
+	window = (observation or {}).get("window")
+	if isinstance(window, dict) and window.get("title"):
+		return window["title"]
+	return _window_name(observation)
 
 
 def diff(before: Optional[dict], after: Optional[dict]) -> dict:
@@ -144,11 +158,29 @@ def diff(before: Optional[dict], after: Optional[dict]) -> dict:
 		if old != new:
 			changes[field] = {"from": old, "to": new}
 
-	if before.get("ancestors") != after.get("ancestors"):
-		changes["window"] = {
-			"from": _window_name(before),
-			"to": _window_name(after),
-		}
+	if before.get("window") or after.get("window"):
+		window_changed = before.get("window") != after.get("window")
+	else:
+		window_changed = before.get("ancestors") != after.get("ancestors")
+	if window_changed:
+		old_window = _window_label(before)
+		new_window = _window_label(after)
+		if old_window != new_window:
+			changes["window"] = {"from": old_window, "to": new_window}
+
+	if before.get("dialog") != after.get("dialog"):
+		old_dialog = before.get("dialog") or {}
+		new_dialog = after.get("dialog") or {}
+		if old_dialog.get("name") != new_dialog.get("name"):
+			changes["dialog"] = {
+				"from": old_dialog.get("name"),
+				"to": new_dialog.get("name"),
+			}
+
+	selection_before = before.get("selection")
+	selection_after = after.get("selection")
+	if selection_before != selection_after and (selection_before is not None or selection_after is not None):
+		changes["selection"] = {"from": selection_before, "to": selection_after}
 
 	return changes
 
@@ -202,7 +234,15 @@ class StateProjector:
 		Returns ``(projection, changes, state_version)``. The projection is taken
 		before the lock is held because it performs cross-process reads.
 		"""
-		projection = self._project_fn()
+		return self.adopt(self._project_fn())
+
+	def adopt(self, projection: dict) -> tuple[dict, dict, int]:
+		"""Take a projection that was captured elsewhere; diff it against the last.
+
+		``observe`` captures the projection and the objects behind its references
+		in one main-thread pass, so it cannot go through :meth:`refresh` — doing so
+		would read the screen twice and hand the references an older projection.
+		"""
 		with self._condition:
 			previous = self._projection
 			changes = diff(previous, projection) if previous is not None else {}

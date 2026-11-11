@@ -85,6 +85,8 @@ def generate_python(defn: Dict[str, Any]) -> str:
     lines.append(f'PROTOCOL = {json.dumps(proto["name"])}')
     lines.append(f'PROTOCOL_VERSION = {json.dumps(proto["version"])}')
     lines.append(f"API_LEVEL = {proto['api_level']}")
+    supported = proto.get("supported_api_levels", [proto["api_level"]])
+    lines.append(f"SUPPORTED_API_LEVELS = ({', '.join(str(level) for level in supported)})")
     lines.append(f"MAX_REQUEST_BODY_SIZE = {proto['max_request_body_size']}")
     lines.append(f"MAX_REQUEST_ID_LENGTH = {proto['max_request_id_length']}")
 
@@ -208,8 +210,14 @@ def generate_python(defn: Dict[str, Any]) -> str:
     lines.append('        for key in ("name", "description", "inputSchema", "outputType", "version", "category"):')
     lines.append("            if key not in tool:")
     lines.append('                raise RuntimeError(f"tool entry missing required field: {key}")')
-    lines.append('        if "outputSchema" in tool:')
-    lines.append('            raise RuntimeError("outputSchema is forbidden in protocol v1")')
+    lines.append('        if "outputSchema" in tool and not isinstance(tool["outputSchema"], dict):')
+    lines.append('            raise RuntimeError("tool outputSchema must be an object")')
+    lines.append('        if "deprecated" in tool and not isinstance(tool["deprecated"], bool):')
+    lines.append('            raise RuntimeError("tool deprecated must be a boolean")')
+    lines.append(
+        '        if "supersededBy" in tool and not (tool["supersededBy"] is None or isinstance(tool["supersededBy"], str)):'
+    )
+    lines.append('            raise RuntimeError("tool supersededBy must be a string or null")')
     lines.append("")
     lines.append('        output_type = tool.get("outputType")')
     lines.append("        if not isinstance(output_type, str) or not output_type:")
@@ -218,9 +226,13 @@ def generate_python(defn: Dict[str, Any]) -> str:
     lines.append('            raise RuntimeError(f"tool references unknown outputType: {output_type}")')
     lines.append("        used_types.add(output_type)")
     lines.append("")
-    lines.append("    unused_types = set(types.keys()) - used_types")
+    lines.append('    unused_types = set(types.keys()) - used_types')
     lines.append("    if unused_types:")
     lines.append('        raise RuntimeError("unused output types are not allowed")')
+    lines.append("")
+    lines.append('    schema_hash = payload.get("schema_hash")')
+    lines.append('    if schema_hash is not None and (not isinstance(schema_hash, str) or len(schema_hash) != 64):')
+    lines.append('        raise RuntimeError("tools payload schema_hash must be a 64 character hex digest")')
     lines.append("")
     lines.append("")
     lines.append("def build_tools_payload(tools: list[Dict[str, Any]], types: Dict[str, Any]) -> Dict[str, Any]:")
@@ -300,6 +312,8 @@ def generate_rust(defn: Dict[str, Any]) -> str:
     lines.append("#[allow(dead_code)]")
     lines.append(f'pub const BRIDGE_VERSION: &str = {json.dumps(proto["bridge_version"])};')
     lines.append(f"pub const API_LEVEL: u32 = {proto['api_level']};")
+    supported = proto.get("supported_api_levels", [proto["api_level"]])
+    lines.append(f"pub const SUPPORTED_API_LEVELS: &[u32] = &[{', '.join(str(level) for level in supported)}];")
     lines.append(f'pub const TOKEN_HEADER: &str = {json.dumps(proto["token_header"])};')
     lines.append("#[allow(dead_code)]")
     lines.append(f"pub const MAX_REQUEST_ID_LENGTH: usize = {proto['max_request_id_length']};")
@@ -599,10 +613,14 @@ def generate_tool_discovery_schema(defn: Dict[str, Any]) -> Dict[str, Any]:
                         "requiredPermission": {"type": "string"},
                         "cancellationSupported": {"type": "boolean"},
                         "retrySafe": {"type": "boolean"},
+                        "outputSchema": {"type": "object"},
+                        "deprecated": {"type": "boolean"},
+                        "supersededBy": {"type": ["string", "null"]},
                     },
                 },
             },
             "count": {"type": "integer", "minimum": 0},
+            "schema_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
         },
     }
 
@@ -650,6 +668,21 @@ def generate_action_response_schema(defn: Dict[str, Any]) -> Dict[str, Any]:
                 "$ref": "common.schema.json#/$defs/nvdaStatusSnapshot"
             },
             "data": {},
+            "result": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["ok"],
+                "properties": {
+                    "ok": {"type": "boolean"},
+                    "state_version": {"type": "integer", "minimum": 0},
+                    "changed": {"type": "boolean"},
+                    "delta": {"type": "object"},
+                    "settled_ms": {"type": "number", "minimum": 0},
+                    "uncertain": {"type": "boolean"},
+                    "completed": {"type": "boolean"},
+                    "expect_mismatch": {"type": "object"},
+                },
+            },
             "error": {"$ref": "common.schema.json#/$defs/actionError"},
         },
     }

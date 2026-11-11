@@ -19,6 +19,7 @@ from .protocol_generated import (  # noqa: F401  — re-export for backward comp
     PROTOCOL,
     PROTOCOL_VERSION,
     SECURE_SCREEN_ALLOWED_CATEGORIES,
+    SUPPORTED_API_LEVELS,
     TOKEN_HEADER,
     BridgeActionEnvelope,
     BridgeError,

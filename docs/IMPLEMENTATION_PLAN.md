@@ -1,8 +1,11 @@
 # Implementation plan: from a read-only inspector to an agent that acts
 
-Status: plan, with the parameters measured rather than assumed.
-Verified against NVDA 2026.3.1 on Windows 11, with Edge (Chromium/UIA + IA2) and
-Notepad, using the live bridge and `execute_python` inside NVDA's process.
+Status: **implemented** (P1-P4). The parameters below were measured rather than
+assumed, and the pass/fail checks in §5 were run against a live NVDA; see §5.1 for
+what was observed and `scripts/live_acceptance.py` for the harness.
+Verified against NVDA 2026.3.1 on Windows 11, with Edge/Firefox (Chromium/UIA and
+Gecko/IA2) and Notepad, using the live bridge and `execute_python` inside NVDA's
+process.
 
 This document answers six questions directly, then specifies the work:
 
@@ -246,7 +249,7 @@ So:
   a strong reference and its identity fields;
 * resolution uses that reference first, re-reads `role`/`name`/`windowHandle` to
   confirm identity, and re-invalidates before use;
-* if the object is gone, the answer is `4205 STALE_REFERENCE` with a fresh
+* if the object is gone, the answer is `4206 STALE_REFERENCE` with a fresh
   observation — never a re-scan, and never re-resolution by name.
 
 Identity checks have no shortcut: `isAlive` and `isDefunct` do not exist on these
@@ -259,7 +262,7 @@ across 12 samples over 1.8 s, so the retained-reference path will usually hit.
 
 ### 3.5 Event kinds to record
 
-Twelve, chosen because they carry the transitions an agent needs:
+Eighteen, chosen because they carry the transitions an agent needs:
 
 ```
 gainFocus loseFocus foreground focusEntered focusExited
@@ -362,6 +365,15 @@ companion: v1 output schemas are closed (`additionalProperties: false`). P1 must
 therefore produce the projection and the diff internally even though nothing on
 the wire carries them yet — the envelope is then a serialization, not a refactor.
 
+**As implemented**, the block is `result` on the *response envelope*, beside
+`data`, not inside it. Twenty-odd output dataclasses would otherwise each have to
+declare the same seven fields, every published `outputSchema` would change for
+fields that mean the same thing everywhere, and reads would still have nothing to
+put in `changed`. `data` keeps the tool's own typed payload; `result` is the
+uniform part. `completed` is present only when the caller sent `expect`, and
+`state_version` is always present so staleness is detectable without a follow-up
+call.
+
 ---
 
 ## 5. Phases
@@ -414,6 +426,43 @@ timeout.
   change.
 
 Pass: `bridge_acceptance.py` green at api level 2 with both levels advertised.
+
+---
+
+### 5.1 What the implementation actually does, and what was observed
+
+Every phase shipped. The deviations from the plan above are listed with the
+reason, because a plan that quietly changes is worse than one that is updated.
+
+| Phase | Landed as | Deviation and why |
+| --- | --- | --- |
+| P1 | `server/events.py` (transitions + raw debug journal, 40 ms coalescer), `server/state.py` (projection, diff, three counters), `nvda_bridge/observation.py`, `/state` from the projector, 18 event hooks | Ancestor depth raised 5 → 8: a dialog's chain runs through its own window to the application frame (Notepad's Replace box is at depth 4, its frame at depth 8), so a 5-deep chain cannot tell a dialog from the main window. |
+| P2 | `refs.py`, `settle.py`, `nvda_bridge/actions.py`, `win_input.py`, 11 tools, `dialog_control` | `get_navigator_object` is deprecated rather than retired, and `move_focus`/`read_current_line`/`get_current_focus`/`send_keyboard` are kept as deprecated aliases: deleting working diagnostics would throw away the surface that produced this document. Dialog detection is structural (a named window nested in another window), because the dialog itself reports `WINDOW`, not `DIALOG`. |
+| P3 | `wait_for_events`, one bridge event pump + `tokio::sync::broadcast` in the companion, 10 s sink timeout | — |
+| P4 | `api_level: 2` with `supported_api_levels: [1, 2]`, `result` block, `outputSchema`, `schema_hash`, `deprecated`/`supersededBy`, companion catalog refresh | The companion cannot send `tools/list_changed` (its catalog capability is static), so it swaps the catalog under a lock and the next `tools/list` sees it. |
+
+Live observations from `scripts/live_acceptance.py` (44/44 checks, 1
+environmental skip) and `scripts/bridge_acceptance.py` (69/70 behavioural,
+0/16 type leaks, 8/8 security, 16/16 concurrency):
+
+| Check | Observed |
+| --- | --- |
+| `observe`, live, Firefox/Edge/Notepad | 19-75 ms, one call for focus + ancestors + dialog + window |
+| `set_value` into Notepad | platform `ValuePattern` (not keystrokes); read-back verified |
+| `abc` typed in one action | **1** transition, `state_version` +1 |
+| Idle 2 s | 0 transitions, 0 version bumps |
+| Focus move (`alt+tab`, `tab`) | `changed: true`, `settled_ms` 198-362, delta names old and new |
+| No-op keypress (`shift`) | `changed: false`, `settled_ms` ~800, `dispatched: true` |
+| Notepad Replace dialog | detected (`WINDOW "Pop-up"`), `invoke` on its Cancel closes it, `dismiss` reports the steps |
+| Browser button by `ref` | `invoke` → `changed: true`, delta `name: "Run action" → "Run action 1"`; a `liveRegion` transition appeared in Chromium |
+| `click_at` | pointer read back within 2 px of the request; reports the object under the point |
+| Stale `ref` | `4206`, message points the caller at `observe` |
+| Unknown tool surface | 29 tools advertised, strict input schemas, no type leaks |
+
+Still true and worth keeping in view: a settle that observes no change costs
+about 800 ms (two rounds of the 250 ms first-activity wait), which is the price
+of not returning a half-updated answer; and the first `press` after a restart is
+slower than later ones while NVDA warms its caches.
 
 ---
 
