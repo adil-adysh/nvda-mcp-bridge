@@ -1,0 +1,351 @@
+# Implementation plan: from a read-only inspector to an agent that acts
+
+Status: plan, with the parameters measured rather than assumed.
+Verified against NVDA 2026.3.1 on Windows 11, with Edge (Chromium/UIA + IA2) and
+Notepad, using the live bridge and `execute_python` inside NVDA's process.
+
+This document answers six questions directly, then specifies the work:
+
+1. [How should we implement?](#3-architecture)
+2. [Should we drop the existing tools?](#4-tool-surface)
+3. [What should we redesign?](#2-what-to-redesign-and-what-not-to)
+4. [What is the plan?](#5-phases)
+5. [What is the new architecture?](#3-architecture)
+6. [How do NVDA events work, and are the APIs confirmed?](#1-how-nvda-events-work)
+
+Related: `docs/COMPUTER_USE_REDESIGN.md` (the findings and the proposal),
+`docs/protocol/PROTOCOL.md` (wire format), `docs/BRIDGE_API_REFERENCE.md`.
+
+Reproduce the measurements with `python scripts/browser_event_probe.py`
+(requires developer mode, opens and closes its own window).
+
+---
+
+## 1. How NVDA events work
+
+### 1.1 The pipeline, with the function names verified in this build
+
+```
+platform                       NVDA core                          consumers
+─────────────────────────────────────────────────────────────────────────────
+SetWinEventHook (MSAA/IA2)  →  internalWinEventHandler.pumpAll
+UIAHandler global/local        →  orderedWinEventLimiter.flushEvents
+   event handlers                 ↓  dedupe + rate limit + ordering
+                                  eventHandler.shouldAcceptEvent   ← filter 1
+                                  winEventToNVDAEvent              ← MSAA id → name
+                                  eventHandler.queueEvent
+                                     ↓  queueHandler.eventQueue (main thread)
+                                  eventHandler.executeEvent
+                                     ├─ screen-lock check
+                                     ├─ sleepMode check             ← filter 2
+                                     ├─ doPreGainFocus (gainFocus only)
+                                     └─ _EventExecuter.gen          ← fan-out
+                                          global plugins  →  appModule
+                                          →  treeInterceptor  →  NVDAObject
+                                          →  speech / braille
+```
+
+Four properties matter for a tool surface:
+
+* **`gainFocus` is special.** `doPreGainFocus` sets the focus object *before* the
+  handler chain runs, and fires `foreground` plus `focusEntered` for each new
+  ancestor on the way. That is why a plugin's `event_gainFocus` already sees the
+  new object, and why one focus move produces several events.
+* **The fan-out order is fixed** (global plugins → app module → tree interceptor
+  → the object). A global plugin sees every event of that name, before any
+  app-specific handling, and must call `nextHandler()`.
+* **The stream is lossy by design.** Upstream dedupes duplicate IAccessible focus
+  events (`isDuplicateIAccessibleEvent`), rate-limits and reorders win events
+  (`orderedWinEventLimiter`), and `shouldAcceptEvent` drops `hide` always and
+  `show` except for four window classes. It is a *change signal*, not an audit
+  log.
+* **`sleepMode` objects produce no events at all.** A tool that "waits for an
+  event" from a sleeping object waits forever.
+
+### 1.2 Confirmed APIs
+
+Read live from the running process, not from documentation:
+
+| API | Confirmed signature / value | Notes |
+| --- | --- | --- |
+| `eventHandler.requestEvents` | `(eventName=None, processId=None, windowClassName=None)` | Opt-in per (event, process, class). Not a per-object subscription, and it cannot add an event type NVDA does not already hook. |
+| `eventHandler.shouldAcceptEvent` | `(eventName, windowHandle=None)` | The filter above. |
+| `eventHandler.queueEvent` | `(eventName, obj, **kwargs)` | Bare names: `gainFocus`, not `event_gainFocus`. |
+| `eventHandler.isPendingEvents` | `(eventName=None, obj=None)` | Useful to distinguish "not yet processed" from "never happened". |
+| `eventHandler._acceptEvents` | `set()` — empty | No add-on on this machine has requested extra events. |
+| Global plugin hooks | `event_<name>(self, obj, nextHandler)` | Confirmed by the dispatch chain and by our own recorder. |
+| MSAA/IA2 → NVDA event map | 26 entries | See below. |
+| Event names implemented by `NVDAObject` subclasses | 36, across 201 classes | Caret, selection, text change, typed characters, live regions, UIA notifications. |
+| `NVDAObject.doAction` | `(index=None)` | Default action of the object. |
+| `NVDAObject.setFocus`, `scrollIntoView` | `()` | Object-level navigation, no keystrokes. |
+| `NVDAObject.getActionName`, `actionCount`, `defaultActionIndex` | — | Lets a tool name the action it is about to take. |
+| Text access | `makeTextInfo(POSITION_ALL/CARET/SELECTION/FIRST/LAST)` | 86,134 characters read from the focused browser document. |
+| Pointer | `getDesktopObject().objectFromPoint(x, y)` | Hit-testing without a mouse click. |
+
+MSAA/IA2 event IDs mapped by this build:
+
+```
+2 alert        3 gainFocus    4 menuStart    5 menuEnd      6 menuStart
+7 menuEnd     18 scrollingStart 21 switchEnd 32 desktopSwitch
+261 documentLoadComplete        272 IA2AttributeChange        273 pageChange
+283 caret     32769 destroy    32770 show     32771 hide     32773 gainFocus
+32774 selection 32775 selectionAdd 32776 selectionRemove
+32777 selectionWithIn           32778 stateChange 32779 locationChange
+32780 nameChange                32781 descriptionChange
+32782 valueChange               32793 liveRegionChange
+```
+
+Additionally, these arrived on the browser UIA path and are not in the MSAA map:
+`focusEntered`, `focusExited`, `loseFocus`, `foreground`,
+`becomeNavigatorObject`, `typedCharacter`, `UIA_notification`,
+`UIA_window_windowOpen`, `UIA_elementSelected`, `UIA_layoutInvalidated`,
+`UIA_systemAlert`, `UIA_toolTipOpened`, `textChange`, `textInsert`,
+`textRemove`, `controllerForChange`, `suggestionsOpened`,
+`suggestionsClosed`.
+
+### 1.3 What does not exist
+
+* **No firehose.** There is no "give me every accessibility event" subscription.
+  `requestEvents` only un-blocks events NVDA already hooks, per process and
+  window class. Anything NVDA does not hook (most `show`/`hide`, many UIA
+  property changes, text changes on elements without a local handler group) is
+  invisible to an add-on, and no API changes that.
+* **No per-object subscription.** Granularity is (event name, process, window
+  class), so "tell me when *this* button changes" is not expressible.
+* **No payload.** `valueChange` says a value changed; it does not say to what.
+  `stateChange` says a state changed; not which. Every consumer must re-read.
+
+That last point is the whole argument for the architecture below: the events are
+*edge triggers for a re-read*, so the useful abstraction is a coalesced
+observation, not an event stream.
+
+---
+
+## 2. What to redesign, and what not to
+
+Redesign five things:
+
+| Axis | Now | Target |
+| --- | --- | --- |
+| Observation | one call per question (`get_current_focus`, `get_focus_lineage`, `read_current_line`) | one `observe()` returning focus, ancestors, value, selection, dialog, and a version |
+| Action | keystrokes only, fire-and-forget | object actions (`invoke`, `set_value`, `focus`, `scroll`) plus keystrokes as last resort, all settled |
+| Reference | none; callers re-describe objects by name | versioned `ref` handles, stale ones rejected |
+| Permission | `send_keyboard` blocked in modal/menu | narrow `dialog_control` permission with an escape hatch |
+| Delivery | poll after acting, hope | settle inline with the action; `wait_for_events` for idle time |
+
+Do not redesign: the transport (localhost HTTP, bounded threads, condition-variable
+waits), the auth model, the error taxonomy, or the typed-tool pipeline. Those are
+measured and correct; the last two rounds of work fixed them.
+
+---
+
+## 3. Architecture
+
+### 3.1 Layers
+
+```
+L0  platform     NVDA event dispatch + NVDAObject API          (given)
+L1  event hub    recorder → normaliser → coalescer
+                 ├─ transitions journal  (event_seq, bounded)
+                 └─ dirty flag + revision counter
+L2  observation  project() on the main thread: focus, ancestors,
+                 value, states, selection, dialog, window title
+                 → state_version = hash(projection), bumped only on change
+L3  references   locator + weakref fast path, validated against state_version
+L4  actions      resolve → execute on main thread → settle → return observation
+L5  surface      MCP tools + nvda://ui/state + wait_for_events
+```
+
+### 3.2 Versioning: three counters, not one
+
+This is the correction the browser test forced. The current `EventJournal` bumps
+one counter per event, and 5 characters typed into a text field produced 18
+`caret` events, 5 `valueChange` and 6 `nameChange` — 29 version bumps for one
+visible change. If a `ref` is valid "only for the producing version", every ref
+would be stale before the next call.
+
+* `event_seq` — one per dispatched event. Debugging only.
+* `revision` — bumped when a burst of events goes quiet (40 ms debounce). Means
+  "something happened".
+* `state_version` — bumped only when the *projection* differs from the last one.
+  This is what `ref`s bind to and what callers compare.
+
+`project()` is cheap: 0.01 ms warm, 5.5 ms cold for focus + five ancestors, so it
+can run on every settle without cost. It must never be computed on the HTTP
+thread (NVDA's API is main-thread only), which is why `revision` exists as the
+thread-safe signal to wait on.
+
+### 3.3 Settle: stability, not a fixed quiet window
+
+The proposal in `COMPUTER_USE_REDESIGN.md` §3.4 used a 60 ms quiet window. The
+browser says that is too short, for a structural reason:
+
+| Measurement (Edge, typing into a text field) | Value |
+| --- | --- |
+| `stateChange` relative to `valueChange` | +146 ms (one character), i.e. after the value already changed |
+| Focus settle after one Tab | 117–182 ms, median 140 ms |
+| Actions whose burst spans more than 100 ms | 3 of 5 |
+
+A quiet window shorter than the slowest participant returns a half-updated
+observation: the value changed, the state has not. So settle should be defined on
+the observation itself:
+
+```
+settle(action, budget_ms=1000):
+    baseline = project(); target = state_version
+    act()
+    wait for revision to advance, up to budget
+    loop:
+        stable_since = now
+        while now - stable_since < 60:      # debounce on revision only
+            wait for next revision, up to budget
+        current = project()
+        if current != baseline: return current, changed=True
+        if now - start > budget: return baseline, changed=False
+```
+
+Two properties worth stating: `changed: false` is a real, reportable outcome (the
+action did nothing, which an agent must know rather than infer), and the budget
+is per action, not per event.
+
+### 3.4 References
+
+`ref` is a locator, not an object: `(processID, windowHandle, role path, name,
+state_version)` plus a cached weakref. Resolution tries the weakref, then walks
+from the window root, and returns `4205 STALE_REFERENCE` with a fresh
+observation if either fails. Deliberately no re-resolution by name: in a browser,
+"the button called OK" is ambiguous.
+
+### 3.5 Event kinds to record
+
+Twelve, chosen because they carry the transitions an agent needs:
+
+```
+gainFocus loseFocus foreground focusEntered focusExited
+nameChange valueChange stateChange caret selection
+liveRegionChange alert menuStart menuEnd documentLoadComplete
+typedCharacter UIA_notification
+```
+
+`show`/`hide` are excluded because `shouldAcceptEvent` drops them except for
+notification bars, tooltips and IME candidates — as a UI-appeared signal they are
+a trap. `becomeNavigatorObject` is excluded because NVDA fires it on every focus
+change as the navigator follows focus: it carries no information the focus event
+did not already carry. `UIA_window_windowOpen` is excluded for the same reason as
+`show` — window appearance is better derived from `foreground` plus `focusEntered`.
+`UIA_notification` is kept despite its obscurity: it carries `displayString`,
+which is the closest thing to "what NVDA announced" without capturing speech.
+
+---
+
+## 4. Tool surface
+
+The answer to "should we drop the existing tools" is **no, but three of them
+change contract and two are absorbed**. Deleting working diagnostics would throw
+away the debugging surface that produced this document.
+
+| Tool | Verdict | Why |
+| --- | --- | --- |
+| `health_snapshot`, `get_logs`, `list_loaded_addons`, `inspect_app_module` | keep | Cheap, correct, no overlap with the agent loop. |
+| `inspect_object`, `walk_object_tree`, `get_focus_lineage`, `get_desktop_object` | keep | Debugging depth; `inspect_object` also backs `ref`. |
+| `get_window_title` | keep, promote | Browser title changes produced no `nameChange`, so this is the only reliable window label. |
+| `get_current_focus` | absorb into `observe` | One observation replaces three calls. Keep as a thin alias during migration. |
+| `get_navigator_object` | retire | Navigator is an NVDA-internal concept; no agent task needs it. |
+| `read_current_line` | replace by `read(ref, scope)` | Scope is a parameter (line, sentence, selection, document, subtree). |
+| `move_focus` | replace by `focus(ref)` and `navigate(direction)` | Current version walks siblings only and returns 500 on an only child. |
+| `send_keyboard` | rename to `press`, add `settle` | Same primitive; the race is the defect, not the keystroke. |
+| `speak_text`, `show_message`, `reload_plugins`, `restart_nvda`, `execute_python` | keep | Development surface; `restart_nvda` keeps its confirmation. |
+
+New in this plan:
+
+| Tool | Signature (essentials) | Settle |
+| --- | --- | --- |
+| `observe` | `(include: ["focus","ancestors","value","selection","dialog"], max_text: 200)` | returns `state_version` |
+| `invoke` | `(ref, action: null \| name)` | yes |
+| `set_value` | `(ref, value)` | yes |
+| `focus` | `(ref)` | yes |
+| `press` | `(keys, repeat=1, delay_ms=0)` | yes, default `quiet` |
+| `read` | `(ref = null, scope="line" \| "selection" \| "document" \| "subtree", max_chars=4000)` | no |
+| `navigate` | `(direction="next" \| "previous" \| "first" \| "last" \| "parent" \| "child", ref = null)` | yes |
+| `scroll` | `(ref = null, direction, amount="page" \| "line")` | yes |
+| `dismiss` | `()` — Escape, then the dialog's default button | yes |
+| `click_at` | `(x, y, button="left")` — last resort when nothing is actionable | yes |
+| `wait_for_events` | `(since, timeout_ms, kinds=[])` | — |
+
+`dismiss` requires the new `dialog_control` permission and is allowed in
+`("normal", "modal", "menu")` states. It exists because the current rule lets an
+agent enter a modal and then forbids every tool from leaving it — a safety rule
+that only traps.
+
+---
+
+## 5. Phases
+
+Each phase is independently shippable and has a pass/fail check that can be run
+against a live NVDA.
+
+### P1 — Observation core (no new tools, no contract change)
+
+* `server/state.py`: normaliser, coalescer, projection, `revision` and
+  `state_version`.
+* Recorder wired to the 16 kinds; journal stores *transitions*, not raw events.
+* `GET /state` serves the projection; `GET /events` keeps raw events behind a
+  debug flag for `get_events`.
+
+Pass: typing `abc` in Edge produces at most 2 transitions and 1 `state_version`
+bump; an idle minute produces zero bumps; `observe`-equivalent projection stays
+under 10 ms cold, 1 ms warm.
+
+### P2 — Actions, refs, settle
+
+* `ref` locators, `observe`, `invoke`, `set_value`, `focus`, `press`, `read`,
+  `navigate`, `scroll`, `dismiss`, `click_at`.
+* `dialog_control` permission and the modal state exemption.
+* `settle` contract as §3.3, returned inline.
+
+Pass: scripted navigation of NVDA's own Settings dialog completes without a human
+(adding an add-on, changing an option, confirming, closing); a modal can be
+dismissed; `set_value` is verified by reading the value back; a browser button is
+invoked by `ref` with `changed: true` and the resulting `liveRegionChange` text
+visible in the observation.
+
+### P3 — Delivery
+
+* `wait_for_events(since, timeout_ms, kinds)`.
+* Single receiver task + broadcast for `listen`, replacing one poll loop per
+  subscription.
+* Idle timeout so a dead client cannot hold a loop.
+
+Pass: the existing `scripts/mcp_subscription_spike.py` still passes; two
+simultaneous clients both receive updates; a killed client is reaped within the
+timeout.
+
+### P4 — Deprecation and protocol 2
+
+* Mark superseded tools deprecated in their descriptions (a `deprecated` field
+  needs `api_level: 2`, since v1 tool schemas are closed).
+* Publish `outputSchema` and `schema_hash`; companion re-fetches `/tools` on
+  change.
+
+Pass: `bridge_acceptance.py` green at api level 2 with both levels advertised.
+
+---
+
+## 6. Risks and non-goals
+
+* **Main-thread cost.** Every projection and every action runs on NVDA's main
+  thread. `execute_python` demonstrated the failure mode: a `time.sleep` inside it
+  blocks the event queue, so queued `gainFocus` events are never processed and
+  focus appears frozen. Nothing in L1–L4 may sleep on that thread; waits belong on
+  the HTTP worker via a condition variable.
+* **Property reads can block** on a hung application. Projection must read cached
+  properties only, and must be budgeted; NVDA's watchdog will otherwise cancel it
+  mid-read.
+* **Not a firehose.** If a future requirement is "every DOM mutation", the answer
+  is not this event path — it is polling `textChange` on a local handler group, or
+  reading the document, and it will not be portable across apps.
+* **No SSE/WebSocket.** The bridge is a bounded-thread server and the MCP boundary
+  already has one SDK-managed long-lived stream.
+* **Speech capture is out of scope** for now. If announcements matter, start from
+  `UIA_notification.displayString`, which arrives with the event and needs no
+  speech interception.

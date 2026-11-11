@@ -5,7 +5,9 @@ NVDA 2026.3.1 with `nvdaMcpBridge` 1.0.0 on Windows 11.
 
 Related: `docs/BRIDGE_API_REFERENCE.md` (current contract),
 `docs/protocol/PROTOCOL.md` (wire format), `docs/TOOLS_AUDIT.md` (code quality,
-a different axis from this document).
+a different axis from this document),
+`docs/IMPLEMENTATION_PLAN.md` (the phased plan, and the event API as confirmed
+against a running NVDA).
 
 Reproduce the measurements below with:
 
@@ -298,24 +300,45 @@ heading" means in practice, without pixels.
 
 Implementation sketch:
 
-1. Register `eventHandler` hooks for `event_focusChanged`, `event_valueChange`,
-   `event_nameChange`, `event_show`, `event_stateChange`, appending to a bounded
-   ring buffer with a monotonic sequence number.
-2. `state_version` is that sequence number.
+1. Register `eventHandler` hooks for the curated set in
+   `IMPLEMENTATION_PLAN.md` §3.5, appending to a bounded ring buffer with a
+   monotonic sequence number.
+2. `state_version` is **not** that sequence number; see the correction below.
 3. After dispatch, wait until (a) at least one recorded event post-dates the
-   dispatch, **and** (b) no new event has arrived for `quiet_ms` (default 60), or
-   the timeout expires.
+   dispatch, **and** (b) no new event has arrived for `quiet_ms`, or the timeout
+   expires.
 4. Return the fresh observation inline so the next decision costs one round trip
    instead of two.
-
-Measured behaviour supports this: every raced read had settled by 50 ms, so a
-60 ms quiet window would have removed 8/8 races while adding roughly one
-frame of latency. Waiting on the event stream is exact, whereas sleeping is a
-guess.
 
 `settle` values: `none` (current behaviour, for benchmarking), `focus_change`,
 `value_change`, `quiet` (any event, then quiet), `speech` (wait until NVDA speaks
 something new).
+
+#### Correction: the quiet window must be derived from the observation
+
+The 60 ms default proposed here came from measuring NVDA's own Settings dialog,
+where every raced read had settled by 50 ms. A browser is slower and, worse,
+inconsistent:
+
+| Measured in Edge, typing one character into a text field | Value |
+| --- | --- |
+| `valueChange` → `stateChange` for the same character | +146 ms |
+| Focus settle after one Tab | 117–182 ms, median 140 ms |
+| Immediate read after dispatch that was still stale | 3 of 5 |
+
+A 60 ms quiet window would therefore return an observation in which the value has
+changed but the state has not — the half-updated read that the whole contract
+exists to prevent. `scripts/browser_event_probe.py` reproduces this.
+
+Two consequences, specified in `IMPLEMENTATION_PLAN.md` §3.2–3.3:
+
+* **Three counters.** `event_seq` per event (debugging), `revision` per quiet
+  burst, `state_version` per *observation change*. Binding `ref` lifetimes to the
+  raw event counter would make every reference stale within one keystroke: 5
+  characters produced 29 events in Notepad.
+* **Settle on stability, not on a constant.** Re-project until two consecutive
+  observations agree, with a debounce and a budget; return `changed: false`
+  explicitly when the action had no observable effect.
 
 ### 3.5 Escape hatch for modal and menu states (fixes §2.3)
 
