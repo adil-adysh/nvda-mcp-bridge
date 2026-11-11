@@ -34,14 +34,75 @@ struct Settings {
     log_level: String,
 }
 
+fn resolve_bridge_token() -> Result<String> {
+    if let Ok(token) = env::var("NVDA_BRIDGE_TOKEN") {
+        let trimmed = token.trim().to_string();
+        if trimmed == "nvda-bridge-secret-change-me" {
+            let allow_insecure = env::var("ALLOW_INSECURE_DEFAULT_TOKEN")
+                .map(|v| v.trim() == "1")
+                .unwrap_or(false);
+            if !allow_insecure {
+                bail!(
+                    "Insecure default bridge token 'nvda-bridge-secret-change-me' is disabled. \
+                     Set a secure NVDA_BRIDGE_TOKEN or remove it to read the generated token from %APPDATA%\\nvda\\nvda-mcp-bridge\\token.key."
+                );
+            }
+        }
+        if !trimmed.is_empty() {
+            return Ok(trimmed);
+        }
+    }
+
+    // Attempt to discover from user profile directories
+    let mut candidate_paths = Vec::new();
+    if let Ok(appdata) = env::var("APPDATA") {
+        candidate_paths.push(
+            std::path::PathBuf::from(appdata)
+                .join("nvda")
+                .join("nvda-mcp-bridge")
+                .join("token.key"),
+        );
+    }
+    if let Ok(localappdata) = env::var("LOCALAPPDATA") {
+        candidate_paths.push(
+            std::path::PathBuf::from(localappdata)
+                .join("nvda-mcp-bridge")
+                .join("token.key"),
+        );
+    }
+    if let Ok(userprofile) = env::var("USERPROFILE") {
+        candidate_paths.push(
+            std::path::PathBuf::from(userprofile)
+                .join(".nvda-mcp-bridge")
+                .join("token.key"),
+        );
+    }
+
+    for path in &candidate_paths {
+        if path.exists() {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                let trimmed = content.trim().to_string();
+                if trimmed.len() >= 16 {
+                    info!(token_path = %path.display(), "Loaded bridge authentication token from key file");
+                    return Ok(trimmed);
+                }
+            }
+        }
+    }
+
+    bail!(
+        "No bridge authentication token found. Set NVDA_BRIDGE_TOKEN or ensure the NVDA add-on \
+         has created the token file at %APPDATA%\\nvda\\nvda-mcp-bridge\\token.key"
+    )
+}
+
 impl Settings {
     fn from_env() -> Result<Self> {
         let bridge_url = env::var("NVDA_BRIDGE_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:8765".to_string())
             .trim_end_matches('/')
             .to_string();
-        let bridge_token = env::var("NVDA_BRIDGE_TOKEN")
-            .context("Missing required environment variable NVDA_BRIDGE_TOKEN")?;
+        let bridge_token = resolve_bridge_token()?;
         let log_level = env::var("LOG_LEVEL").unwrap_or_else(|_| "INFO".to_string());
 
         Ok(Self {
@@ -92,8 +153,13 @@ impl BridgeClient {
             bail!("auth_token cannot be empty");
         }
 
+        let timeout_secs = env::var("NVDA_BRIDGE_TIMEOUT_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(15);
+
         let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(8))
+            .timeout(std::time::Duration::from_secs(timeout_secs))
             .build()
             .context("Failed to build HTTP client")?;
 
@@ -198,6 +264,7 @@ impl BridgeClient {
             )
             .annotate(annotation_for_tool(&def));
 
+
             info!(
                 tool = %def.name,
                 category = %def.category,
@@ -231,33 +298,18 @@ impl BridgeClient {
             "params": params,
         });
 
-        let mut last_404 = false;
+        let url = format!("{}/action", self.base_url);
+        let response = self
+            .client
+            .post(&url)
+            .header(TOKEN_HEADER, &self.auth_token)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .with_context(|| format!("Failed to connect to bridge for action: {action}"))?;
 
-        for endpoint in ["action", "execute"] {
-            let url = format!("{}/{}", self.base_url, endpoint);
-            let response = self
-                .client
-                .post(url)
-                .header(TOKEN_HEADER, &self.auth_token)
-                .header(reqwest::header::CONTENT_TYPE, "application/json")
-                .json(&payload)
-                .send()
-                .await
-                .with_context(|| format!("Failed to connect to bridge for action: {action}"))?;
-
-            if endpoint == "action" && response.status().as_u16() == 404 {
-                last_404 = true;
-                continue;
-            }
-
-            return Self::parse_action_response(action, response).await;
-        }
-
-        if last_404 {
-            bail!("Bridge action endpoint not found (/action or /execute)");
-        }
-
-        bail!("Unexpected bridge endpoint resolution failure")
+        Self::parse_action_response(action, response).await
     }
 
     async fn parse_action_response(action: &str, response: Response) -> Result<BridgeActionEnvelope> {
@@ -410,35 +462,34 @@ impl BridgeClient {
 }
 
 fn annotation_for_tool(tool: &BridgeToolDef) -> ToolAnnotations {
-    let mut annotation = ToolAnnotations::new().open_world(false);
+    let annotation = ToolAnnotations::new().open_world(false);
 
-    let dangerous = tool
-        .constraints
-        .as_ref()
-        .and_then(|c| c.dangerous)
-        .unwrap_or(false);
+    let read_only = tool.read_only.unwrap_or_else(|| {
+        tool.name.starts_with("get_")
+            || tool.name.starts_with("read_")
+            || tool.name.starts_with("inspect_")
+            || tool.name.starts_with("walk_")
+            || tool.name.starts_with("list_")
+            || tool.name.starts_with("health_")
+            || matches!(
+                tool.category.as_str(),
+                "diagnostics" | "navigation" | "focus" | "window" | "text"
+            )
+    });
 
-    if dangerous {
-        return annotation.read_only(false).destructive(true).idempotent(false);
-    }
+    let destructive = tool.destructive.unwrap_or_else(|| {
+        tool.constraints
+            .as_ref()
+            .and_then(|c| c.dangerous)
+            .unwrap_or(false)
+    });
 
-    let is_read_only_by_name = tool.name.starts_with("get_")
-        || tool.name.starts_with("read_")
-        || tool.name.starts_with("inspect_")
-        || tool.name.starts_with("walk_")
-        || tool.name.starts_with("list_")
-        || tool.name.starts_with("health_");
-
-    let is_read_only_category = matches!(
-        tool.category.as_str(),
-        "diagnostics" | "navigation" | "focus" | "window" | "text"
-    );
-
-    if is_read_only_by_name || is_read_only_category {
-        annotation = annotation.read_only(true).destructive(false).idempotent(true);
-    }
+    let idempotent = tool.idempotent.unwrap_or(read_only);
 
     annotation
+        .read_only(read_only)
+        .destructive(destructive)
+        .idempotent(idempotent)
 }
 
 struct NvdaServer {
@@ -688,10 +739,25 @@ impl ServerHandler for NvdaServer {
                 Ok(result) => result,
                 Err(err) => {
                     error!(tool = %tool_name, error = %err, "Bridge call failed");
-                    return Err(ErrorData::internal_error(
-                        format!("Bridge call failed for '{}': {}", tool_name, err),
-                        None,
-                    ));
+                    let error_envelope = BridgeActionEnvelope {
+                        success: false,
+                        request_id: None,
+                        action: Some(tool_name.clone()),
+                        duration_ms: None,
+                        bridge: None,
+                        nvda_status_snapshot: None,
+                        data: None,
+                        error: Some(BridgeError {
+                            code: ErrorCode("BRIDGE_UNREACHABLE".into()),
+                            message: format!("Bridge communication failure: {}", err),
+                            name: Some("BridgeConnectionError".into()),
+                            category: Some("transport".into()),
+                            retry_policy: Some("no_retry".into()),
+                            retry_after_ms: None,
+                            details: None,
+                        }),
+                    };
+                    return Ok(CallToolResult::error(Self::error_content(&error_envelope)));
                 }
             };
 
@@ -756,10 +822,26 @@ async fn main() -> Result<()> {
         warn!("Bridge health check failed - continuing to tool discovery");
     }
 
-    let tool_catalog = bridge_client
-        .fetch_tool_catalog()
-        .await
-        .context("Failed to discover tools from bridge /tools")?;
+    let mut retries = 5;
+    let mut catalog_opt = None;
+    while retries > 0 {
+        match bridge_client.fetch_tool_catalog().await {
+            Ok(catalog) => {
+                catalog_opt = Some(catalog);
+                break;
+            }
+            Err(err) => {
+                retries -= 1;
+                if retries > 0 {
+                    warn!(error = %err, remaining = retries, "Bridge not yet ready, retrying in 1s...");
+                    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+                } else {
+                    bail!("Failed to discover tools from bridge /tools after retries: {err}");
+                }
+            }
+        }
+    }
+    let tool_catalog = catalog_opt.unwrap();
 
     info!(
         tool_count = tool_catalog.tools_for_mcp.len(),
@@ -870,15 +952,63 @@ mod tests {
             constraints: Some(BridgeToolConstraints {
                 dangerous: Some(true),
                 requires_explicit_opt_in: Some(true),
-                blocked_on_secure_screen: None,
-                blocked_on_modal: None,
-                blocked_on_menu: None,
+                ..Default::default()
             }),
+            destructive: Some(true),
+            read_only: Some(false),
+            idempotent: Some(false),
+            ..Default::default()
         };
 
         let ann = annotation_for_tool(&tool);
         assert_eq!(ann.read_only_hint, Some(false));
         assert_eq!(ann.destructive_hint, Some(true));
+        assert_eq!(ann.idempotent_hint, Some(false));
+    }
+
+    #[test]
+    fn annotation_uses_explicit_metadata() {
+        let tool = BridgeToolDef {
+            name: "custom_mutation".to_string(),
+            description: "mutation".to_string(),
+            input_schema: serde_json::from_value(json!({"type":"object"})).unwrap(),
+            output_type: None,
+            version: "1.0.0".to_string(),
+            category: "custom".to_string(),
+            read_only: Some(false),
+            destructive: Some(false),
+            idempotent: Some(true),
+            ..Default::default()
+        };
+
+        let ann = annotation_for_tool(&tool);
+        assert_eq!(ann.read_only_hint, Some(false));
+        assert_eq!(ann.destructive_hint, Some(false));
+        assert_eq!(ann.idempotent_hint, Some(true));
+    }
+
+    #[test]
+    fn resolve_bridge_token_rejects_insecure_default() {
+        unsafe {
+            env::set_var("NVDA_BRIDGE_TOKEN", "nvda-bridge-secret-change-me");
+            env::remove_var("ALLOW_INSECURE_DEFAULT_TOKEN");
+        }
+        let result = resolve_bridge_token();
+        assert!(result.is_err(), "Must reject insecure default token by default");
+        assert!(result.unwrap_err().to_string().contains("Insecure default bridge token"));
+
+        unsafe {
+            env::set_var("ALLOW_INSECURE_DEFAULT_TOKEN", "1");
+        }
+        let result_allowed = resolve_bridge_token();
+        assert!(result_allowed.is_ok(), "Must allow default token when migration flag set");
+        assert_eq!(result_allowed.unwrap(), "nvda-bridge-secret-change-me");
+
+        // Clean up
+        unsafe {
+            env::remove_var("NVDA_BRIDGE_TOKEN");
+            env::remove_var("ALLOW_INSECURE_DEFAULT_TOKEN");
+        }
     }
 
     #[test]
@@ -899,6 +1029,7 @@ mod tests {
                 version: "1.0.0".to_string(),
                 category: "window".to_string(),
                 constraints: None,
+                ..Default::default()
             },
             input_schema_value: json!({"type":"object"}),
             output_schema_value: Some(json!({

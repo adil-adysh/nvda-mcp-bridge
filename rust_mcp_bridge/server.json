@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "com.example/nvda_mcp_server",
+  "name": "io.github.adil-adysh/nvda-mcp-server",
   "description": "MCP server for interacting with NVDA via a local bridge for screen reader automation",
   "version": "1.0.0",
   "packages": [
@@ -15,14 +15,14 @@
       "environmentVariables": [
         {
           "name": "NVDA_BRIDGE_URL",
-          "description": "URL of the NVDA bridge service",
-          "isRequired": true,
+          "description": "URL of the NVDA bridge service (defaults to http://127.0.0.1:8765)",
+          "isRequired": false,
           "format": "string"
         },
         {
           "name": "NVDA_BRIDGE_TOKEN",
-          "description": "Authentication token for NVDA bridge",
-          "isRequired": true,
+          "description": "Authentication token for NVDA bridge (optional if auto-discovered from %APPDATA%\\nvda\\nvda-mcp-bridge\\token.key)",
+          "isRequired": false,
           "format": "string",
           "isSecret": true
         },
