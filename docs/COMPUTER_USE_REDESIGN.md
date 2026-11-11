@@ -452,6 +452,76 @@ Constraint: the bridge runs a bounded 16-thread HTTP server, so long-polls must
 be capped (two concurrent waiters is plenty) and must block on a condition
 variable, never on a worker-thread sleep, or they starve ordinary calls.
 
+#### Transport contract, as implemented and validated
+
+The sketches that circulate for this pattern use `after=`,
+`latest_version` and `overflow`. The implemented names differ; use these:
+
+```
+GET /events?since=<cursor>&timeout_ms=<0..30000>&limit=<1..1000>&kinds=focus,value
+X-NVDA-Bridge-Token: <token>
+
+200 {"state_version": 1843, "from_version": 1843, "to_version": 1843,
+     "truncated": false, "dropped": 0,
+     "events": [{"version": 1843, "kind": "focus", "role": 43, "name": "Save",
+                 "at_ms": 77127246}]}
+```
+
+* `since` is the cursor; the response reports the same head as both
+  `from_version` and `to_version`, deliberately, so a consumer written against
+  either name works.
+* `timeout_ms=0` reads history; `>0` long-polls and returns an empty `events`
+  list on timeout rather than an error.
+* `truncated: true` means the ring buffer wrapped past your cursor — re-observe
+  instead of replaying a gap. `dropped` is the running count of overwritten
+  events.
+
+`scripts/validate_event_transport.py` checks the claims this design rests on
+against a live bridge:
+
+| Claim | Measured |
+| --- | --- |
+| An idle long-poll returns an empty page at its timeout | 1512 ms for `timeout_ms=1500`, `events=[]` |
+| A long-poll does not stall NVDA or other requests | action during an in-flight poll: 26.5 ms vs 17.9 ms baseline |
+| Several waiters coexist with normal traffic | 2 waiters + action, all succeeded |
+| Cursor fields let a consumer resync | no missing fields; `truncated`/`dropped` present |
+| A cursor at head returns immediately | 2 ms, `events=[]` |
+
+Two properties follow from the implementation rather than from measurement: the
+long-poll blocks an HTTP worker thread on a condition variable, never NVDA's main
+thread, and every MCP write goes through rmcp's `SubscriptionSink`, so JSON-RPC
+framing is the SDK's problem. That second point is the main reason not to
+hand-roll the stdio protocol: a separate task writing to stdout would race the
+tool responses.
+
+#### Where the recommended sketch needs correcting
+
+* **One poll loop per subscription, not one per process.** `listen` is an async
+  method on the handler, so each `subscriptions/listen` request runs its own
+  loop. Two clients mean two loops against a 16-thread server. Before this is
+  used by more than one client, hoist the loop into a single receiver task and
+  broadcast the version advance to all active subscriptions.
+* **Do not propagate transient errors out of the loop.** The sketch's
+  `?`-everywhere would end the subscription (silently) the first time the bridge
+  restarts, which is exactly when a client cares. The implementation logs and
+  continues.
+* **SSE and WebSocket are not worth it here.** The bridge is a bounded-thread
+  `BaseHTTPRequestHandler` server: an SSE stream would hold a worker for its
+  lifetime, and the MCP boundary already has a long-lived stream
+  (`subscriptions/listen`) that the SDK manages. Adding `text/event-stream`
+  would be a second streaming mechanism to keep correct for no capability gain.
+* **Action settlement belongs in the add-on** (§3.4), not on this stream, which
+  the sketch also concludes.
+
+#### Still missing: `wait_for_events`
+
+The endpoint exists; the MCP tool does not. This is the one gap between the
+design and the code. It should be added before resource subscriptions see real
+use, and it should be treated as the **primary** path rather than a
+"compatibility fallback": a long-poll tool works with every client and every
+protocol generation, while a notification only helps hosts that re-invoke the
+model on it.
+
 #### Opportunity: confirmations, not just events
 
 The same revision replaced server-initiated requests with multi-round-trip
