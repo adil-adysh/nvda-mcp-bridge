@@ -53,6 +53,10 @@ jobs:
         run: |
           cargo build --release --manifest-path rust_mcp_bridge/Cargo.toml
 
+      - name: Stage bundled Rust MCP companion
+        run: |
+          python scripts/package_companion.py stage
+
       - name: Install gettext tools
         run: |
           choco install gettext -y
@@ -70,6 +74,12 @@ jobs:
           scons
           scons pot
 
+      - name: Validate bundled companion in add-on
+        run: |
+          $addon = Get-ChildItem -Path . -Filter *.nvda-addon -File | Select-Object -First 1
+          if (-not $addon) { throw 'No .nvda-addon package found for verification' }
+          python scripts/package_companion.py verify $addon.FullName
+
       - name: Stage release artifacts & generate SHA-256 checksums
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
@@ -78,7 +88,8 @@ jobs:
           $exe = Get-ChildItem -Path rust_mcp_bridge/target -Recurse -Filter "nvda-mcp-server.exe" | Where-Object { $_.DirectoryName -like "*release*" } | Select-Object -First 1
           if (-not $exe) { throw 'nvda-mcp-server.exe release binary not found' }
           Copy-Item -Path $exe.FullName -Destination dist\
-          Get-FileHash -Path dist\* -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" } | Out-File -FilePath dist\SHA256SUMS.txt -Encoding ascii
+          $checksumFile = Join-Path "dist" "SHA256SUMS.txt"
+          Get-ChildItem -Path "dist" -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" } | Sort-Object Name | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLowerInvariant())  $($_.Path | Split-Path -Leaf)" } | Set-Content -Path $checksumFile -Encoding ascii
           Get-Content dist\SHA256SUMS.txt
 
       - name: Upload artifacts
@@ -86,6 +97,7 @@ jobs:
         with:
           name: packaged_addon
           path: dist/*
+          if-no-files-found: error
 
   release:
     runs-on: ubuntu-latest
