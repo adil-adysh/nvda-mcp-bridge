@@ -166,6 +166,33 @@ _fake_gui = gui_settings.gui
 class _FakeDeveloperModeManager:
     is_enabled = False
     time_remaining_seconds = 0.0
+    default_ttl_seconds = 300
+
+    def __init__(self):
+        self.applied_ttl = []
+
+    def set_default_ttl_seconds(self, seconds):
+        self.applied_ttl.append(seconds)
+        self.default_ttl_seconds = seconds
+        return seconds
+
+
+class _ChoiceStub(_Stub):
+    """wx.Choice stand-in with real selection state, used for the TTL control."""
+
+    def __init__(self, parent=None, choices=None, **kwargs):
+        super().__init__(parent, choices=choices, **kwargs)
+        self._items = list(choices or [])
+        self._selection = 0
+
+    def SetSelection(self, index):
+        self._selection = index
+
+    def GetSelection(self):
+        return self._selection
+
+    def SetToolTip(self, text):
+        self.tooltip = text
 
 
 class _FakeBridge:
@@ -193,6 +220,8 @@ class _Client:
 class TestSettingsPanelLifecycle(unittest.TestCase):
     def setUp(self):
         _fake_gui.message_boxes.clear()
+        self._original_choice = gui_settings.wx.Choice
+        gui_settings.wx.Choice = _ChoiceStub
         self.policy = PermissionPolicy()
         self.bridge = _FakeBridge(self.policy)
         with (
@@ -204,6 +233,9 @@ class TestSettingsPanelLifecycle(unittest.TestCase):
             mock.patch.object(gui_settings, "get_bridge_status_summary", return_value="status"),
         ):
             self.panel = gui_settings.MCPBridgeSettingsPanel(parent=None)
+
+    def tearDown(self):
+        gui_settings.wx.Choice = self._original_choice
 
     def test_activation_shows_the_panel(self):
         """The category page must become visible when NVDA activates it."""
@@ -250,6 +282,36 @@ class TestSettingsPanelLifecycle(unittest.TestCase):
         self.panel.onDiscard()
 
         self.assertTrue(restored["value"])
+
+    def test_panel_offers_the_elevation_window_choices(self):
+        """The window must be selectable, and default to the configured value."""
+        self.assertEqual(len(self.panel.devTtlChoices), len(gui_settings.DEVELOPER_TTL_CHOICES_MINUTES))
+        # 300 s configured -> the "5 minutes" entry is preselected.
+        expected = self.panel.devTtlChoices.index(5)
+        self.assertEqual(self.panel.devTtlChoice.GetSelection(), expected)
+        self.assertIn("5 minutes", self.panel.enableDevBtn._kwargs.get("label", ""))
+
+    def test_save_persists_and_applies_the_selected_window(self):
+        """Saving must store the choice and apply it to the live manager."""
+        self.panel.devTtlChoice.SetSelection(self.panel.devTtlChoices.index(15))
+        with mock.patch.object(gui_settings, "save_developer_ttl_seconds") as save_ttl:
+            save_ttl.return_value = True
+            self.panel.onSave()
+
+        save_ttl.assert_called_once_with(900)
+        self.assertEqual(self.bridge.developer_mode_manager.applied_ttl, [900])
+        self.assertEqual(self.bridge.developer_mode_manager.default_ttl_seconds, 900)
+
+    def test_discard_restores_the_saved_window(self):
+        """Cancelling must put the selector back, not leave the unsaved pick."""
+        self.bridge.developer_mode_manager.default_ttl_seconds = 600
+        self.panel.devTtlChoice.SetSelection(self.panel.devTtlChoices.index(30))
+
+        self.panel.onDiscard()
+
+        self.assertEqual(
+            self.panel.devTtlChoice.GetSelection(), self.panel.devTtlChoices.index(10)
+        )
 
 
 class TestConfigureClientsDialog(unittest.TestCase):

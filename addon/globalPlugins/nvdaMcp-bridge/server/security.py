@@ -296,6 +296,54 @@ PERSISTABLE_PERMISSIONS = frozenset({
 
 CONFIG_SECTION = "nvdaMcpBridge"
 CONFIG_PERMISSIONS_KEY = "permissions"
+CONFIG_DEVELOPER_TTL_KEY = "developerModeTtlSeconds"
+
+#: Developer mode is time-limited by design. The window is configurable because
+#: five minutes is shorter than a real debugging session, and re-approving
+#: interrupts the thing being debugged; it is bounded because elevation is the
+#: one grant that must never become permanent.
+DEFAULT_DEVELOPER_TTL_SECONDS = 300
+MIN_DEVELOPER_TTL_SECONDS = 60
+MAX_DEVELOPER_TTL_SECONDS = 1800
+#: Windows offered in the settings panel, in minutes.
+DEVELOPER_TTL_CHOICES_MINUTES = (1, 5, 10, 15, 30)
+
+
+def clamp_developer_ttl(seconds: Any) -> int:
+	"""Return a usable elevation window, bounded to the configured limits."""
+	try:
+		value = int(seconds)
+	except (TypeError, ValueError):
+		return DEFAULT_DEVELOPER_TTL_SECONDS
+	return max(MIN_DEVELOPER_TTL_SECONDS, min(MAX_DEVELOPER_TTL_SECONDS, value))
+
+
+def load_developer_ttl_seconds() -> int:
+	"""Return the saved elevation window, or the default when unset or invalid."""
+	try:
+		import config
+
+		raw = config.conf[CONFIG_SECTION][CONFIG_DEVELOPER_TTL_KEY]
+	except Exception:
+		return DEFAULT_DEVELOPER_TTL_SECONDS
+	return clamp_developer_ttl(raw)
+
+
+def save_developer_ttl_seconds(seconds: int) -> bool:
+	"""Persist the elevation window so it survives NVDA restarts and reloads."""
+	value = clamp_developer_ttl(seconds)
+	try:
+		import config
+
+		config.conf[CONFIG_SECTION][CONFIG_DEVELOPER_TTL_KEY] = value
+		save = getattr(config.conf, "save", None)
+		if callable(save):
+			save()
+		logHandler.log.info(f"SECURITY AUDIT: Developer mode elevation window set to {value} seconds")
+		return True
+	except Exception as e:  # pragma: no cover - depends on NVDA runtime
+		logHandler.log.warning(f"NVDA MCP Bridge: could not persist developer mode window: {e}")
+		return False
 
 
 def register_config_spec() -> None:
@@ -310,7 +358,10 @@ def register_config_spec() -> None:
 		conf = getattr(config, "conf", None)
 		if conf is None or not hasattr(conf, "spec"):
 			return
-		conf.spec.setdefault(CONFIG_SECTION, {CONFIG_PERMISSIONS_KEY: "string"})
+		conf.spec.setdefault(
+			CONFIG_SECTION,
+			{CONFIG_PERMISSIONS_KEY: "string", CONFIG_DEVELOPER_TTL_KEY: "integer"},
+		)
 	except Exception as e:  # pragma: no cover - depends on NVDA runtime
 		logHandler.log.debug(f"NVDA MCP Bridge: could not register config spec: {e}")
 
@@ -362,7 +413,8 @@ class DeveloperModeManager:
 	- Developer mode is disabled by default.
 	- Elevation requires independent local user approval (local token or direct API call).
 	- Ordinary bridge token cannot self-enable developer mode.
-	- Elevation approvals are time-limited (default 300s TTL) and automatically expire.
+	- Elevation approvals are time-limited (default 300s, configurable 60-1800s in
+	  the add-on settings) and automatically expire.
 	- Disabling takes effect immediately.
 	- Resets to disabled on NVDA restart or bridge shutdown.
 	"""
@@ -370,19 +422,36 @@ class DeveloperModeManager:
 	def __init__(
 		self,
 		initial_enabled: bool = False,
-		default_ttl_seconds: int = 300,
+		default_ttl_seconds: int = DEFAULT_DEVELOPER_TTL_SECONDS,
 		permission_policy: Optional[PermissionPolicy] = None,
 	):
 		self._enabled: bool = False
 		self._expires_at: Optional[float] = None
-		self._default_ttl_seconds: int = default_ttl_seconds
+		self._default_ttl_seconds: int = clamp_developer_ttl(default_ttl_seconds)
 		self._local_approval_secret: Optional[str] = None
 		self._secret_expires_at: Optional[float] = None
 		self._local_token_path: Optional[Path] = None
 		self._permission_policy: Optional[PermissionPolicy] = permission_policy
 
 		if initial_enabled:
-			self.approve_locally(duration_seconds=default_ttl_seconds)
+			self.approve_locally()
+
+	@property
+	def default_ttl_seconds(self) -> int:
+		"""The window a plain elevation gets, in seconds, as configured."""
+		return self._default_ttl_seconds
+
+	def set_default_ttl_seconds(self, seconds: int) -> int:
+		"""Change the window used by later elevations.
+
+		An elevation already in progress keeps the expiry it was granted with:
+		shortening the setting must not silently cut a session the user approved.
+		"""
+		self._default_ttl_seconds = clamp_developer_ttl(seconds)
+		logHandler.log.info(
+			f"SECURITY AUDIT: Developer mode elevation window changed to {self._default_ttl_seconds} seconds"
+		)
+		return self._default_ttl_seconds
 
 	def set_permission_policy(self, policy: PermissionPolicy) -> None:
 		"""Link permission policy for atomic capability grant and revocation."""

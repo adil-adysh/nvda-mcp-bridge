@@ -60,6 +60,7 @@ from .security import (
 	check_action_permissions,
 	constant_time_compare,
 	get_or_create_bridge_token,
+	load_developer_ttl_seconds,
 	load_persisted_permissions,
 )
 from ..validation.output_type_registry import build_output_type_registry, validate_output_type_registry
@@ -748,7 +749,9 @@ class NVDAHTTPBridge:
 			if persisted_permissions is not None:
 				self.permission_policy.set_granted(persisted_permissions)
 		self.developer_mode_manager = DeveloperModeManager(
-			initial_enabled=developer_mode, permission_policy=self.permission_policy
+			initial_enabled=developer_mode,
+			default_ttl_seconds=load_developer_ttl_seconds(),
+			permission_policy=self.permission_policy,
 		)
 		self.bridge_token = bridge_token if bridge_token is not None else get_or_create_bridge_token()
 		self.server: Optional[BoundedThreadingHTTPServer] = None

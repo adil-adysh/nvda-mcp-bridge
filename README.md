@@ -109,7 +109,8 @@ Open **NVDA Menu → Preferences → Settings (`NVDA+Control+G`) → NVDA MCP Br
 * Check/uncheck **Allow MCP Input Control**
 * Check/uncheck **Allow MCP Diagnostic Inspection**
 * Check/uncheck **Allow MCP NVDA Lifecycle actions**
-* Click **Enable Developer Mode (5 minutes)...** to approve Python execution. A screen-reader confirmation dialog will appear explaining the security risk. Approving grants the developer capability atomically with a 5-minute auto-expiration timer.
+* Set **Elevation window** to choose how long an approval lasts: 1, 5, 10, 15 or 30 minutes. The value is saved, capped at 30 minutes so elevation can never become permanent, and applies to the next approval — an approval already in progress keeps the window it was granted with.
+* Click **Enable Developer Mode (…)…** to approve Python execution. A screen-reader confirmation dialog will appear explaining the security risk and stating the window you will actually get. Approving grants the developer capability atomically with an auto-expiration timer.
 * Click **Disable Developer Mode** to immediately revoke execution rights.
 * Click **Reset Permissions to Safe Defaults** to revoke all elevated permissions.
 * Developer operations are strictly blocked on the Windows secure desktop under all circumstances.

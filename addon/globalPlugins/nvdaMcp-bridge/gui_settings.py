@@ -28,12 +28,16 @@ from .client_config import (
 )
 from .companion_manager import CompanionManager
 from .server.security import (
+	DEVELOPER_TTL_CHOICES_MINUTES,
 	PERMISSION_DEVELOPER,
 	PERMISSION_DIAGNOSTICS,
 	PERMISSION_INPUT_CONTROL,
 	PERMISSION_NVDA_LIFECYCLE,
 	PERMISSION_READ_ONLY,
 	PERMISSION_SPEECH_OUTPUT,
+	clamp_developer_ttl,
+	load_developer_ttl_seconds,
+	save_developer_ttl_seconds,
 	save_persisted_permissions,
 )
 
@@ -86,8 +90,20 @@ def get_bridge_status_summary(bridge: Any) -> str:
 	return "\n".join(lines)
 
 
+def _format_duration(seconds: int) -> str:
+	"""Render an elevation window for speech and labels."""
+	minutes = max(1, round(seconds / 60))
+	if minutes % 60 == 0:
+		hours = minutes // 60
+		return f"{hours} hour" if hours == 1 else f"{hours} hours"
+	return f"{minutes} minute" if minutes == 1 else f"{minutes} minutes"
+
+
 def enable_developer_mode_interactive(bridge: Any, parent: Any = None) -> bool:
 	"""Prompt the user with an accessible confirmation dialog before enabling developer mode.
+
+	The elevation window comes from the configured setting, so the dialog states
+	the duration the user will actually get.
 
 	Returns:
 		True if enabled, False if declined or unavailable.
@@ -97,6 +113,8 @@ def enable_developer_mode_interactive(bridge: Any, parent: Any = None) -> bool:
 
 	dev_mgr = bridge.developer_mode_manager
 	policy = getattr(bridge, "permission_policy", None)
+	duration = getattr(dev_mgr, "default_ttl_seconds", 300)
+	duration_text = _format_duration(duration)
 
 	if _GUI_AVAILABLE and wx and gui:
 		title = "NVDA MCP Bridge — Enable Developer Mode"
@@ -105,7 +123,7 @@ def enable_developer_mode_interactive(bridge: Any, parent: Any = None) -> bool:
 			"Enabling Developer Mode allows connected MCP clients to execute arbitrary Python code "
 			"with the full process privileges of NVDA.\n\n"
 			"Only enable this if you are actively debugging or writing tools with a trusted AI assistant.\n\n"
-			"Developer mode will automatically expire and revoke execution privileges after 5 minutes (300 seconds).\n\n"
+			f"Developer mode will automatically expire and revoke execution privileges after {duration_text}.\n\n"
 			"Do you want to enable Developer Mode now?"
 		)
 		resp = gui.messageBox(
@@ -117,13 +135,13 @@ def enable_developer_mode_interactive(bridge: Any, parent: Any = None) -> bool:
 		if resp != wx.YES:
 			return False
 
-	dev_mgr.approve_locally(duration_seconds=300)
+	dev_mgr.approve_locally()
 	if policy is not None:
 		policy.grant(PERMISSION_DEVELOPER)
 
 	try:
 		import ui
-		ui.message("NVDA MCP Bridge: Developer Mode enabled for 5 minutes.")
+		ui.message(f"NVDA MCP Bridge: Developer Mode enabled for {duration_text}.")
 	except Exception:
 		pass
 
@@ -547,6 +565,20 @@ if _GUI_AVAILABLE:
 					self.diagnosticsCheckbox.SetValue(policy.is_granted(PERMISSION_DIAGNOSTICS))
 				if hasattr(self, "lifecycleCheckbox"):
 					self.lifecycleCheckbox.SetValue(policy.is_granted(PERMISSION_NVDA_LIFECYCLE))
+			if hasattr(self, "devTtlChoice"):
+				configured = getattr(
+					getattr(self._bridge, "developer_mode_manager", None),
+					"default_ttl_seconds",
+					load_developer_ttl_seconds(),
+				)
+				selected = 0
+				for index, minutes in enumerate(self.devTtlChoices):
+					if minutes * 60 <= configured:
+						selected = index
+				self.devTtlChoice.SetSelection(selected)
+				self.enableDevBtn.SetLabel(
+					f"Enable Developer Mode ({_format_duration(self.devTtlChoices[selected] * 60)})..."
+				)
 
 		def makeSettings(self, settingsSizer):
 			sHelper = guiHelper.BoxSizerHelper(self, sizer=settingsSizer)
@@ -593,8 +625,39 @@ if _GUI_AVAILABLE:
 			devGroup = wx.StaticBox(self, label="Developer Mode (Arbitrary Python Execution)")
 			devSizer = wx.StaticBoxSizer(devGroup, wx.VERTICAL)
 
+			configured_ttl = getattr(
+				getattr(self._bridge, "developer_mode_manager", None),
+				"default_ttl_seconds",
+				load_developer_ttl_seconds(),
+			)
+			self.devTtlChoices = list(DEVELOPER_TTL_CHOICES_MINUTES)
+			self.devTtlChoice = wx.Choice(
+				devGroup,
+				choices=[f"{minutes} minute{'' if minutes == 1 else 's'}" for minutes in self.devTtlChoices],
+			)
+			selected = 0
+			for index, minutes in enumerate(self.devTtlChoices):
+				if minutes * 60 <= configured_ttl:
+					selected = index
+			self.devTtlChoice.SetSelection(selected)
+			self.devTtlChoice.SetToolTip(
+				"How long a developer mode elevation lasts before it expires. "
+				"Applies to the next elevation; an active one keeps its expiry."
+			)
+			self.devTtlChoice.Bind(wx.EVT_CHOICE, self.onDevTtlChanged)
+			devSizer.Add(
+				wx.StaticText(devGroup, label="Elevation window"),
+				0,
+				wx.LEFT | wx.RIGHT | wx.TOP,
+				5,
+			)
+			devSizer.Add(self.devTtlChoice, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
+
 			devBtnSizer = wx.BoxSizer(wx.HORIZONTAL)
-			self.enableDevBtn = wx.Button(devGroup, label="Enable Developer Mode (5 min)...")
+			self.enableDevBtn = wx.Button(
+				devGroup,
+				label=f"Enable Developer Mode ({_format_duration(configured_ttl)})...",
+			)
 			self.enableDevBtn.Bind(wx.EVT_BUTTON, self.onEnableDev)
 			devBtnSizer.Add(self.enableDevBtn, 0, wx.RIGHT, 5)
 
@@ -631,6 +694,12 @@ if _GUI_AVAILABLE:
 			enable_developer_mode_interactive(self._bridge, parent=self)
 			self._refresh_status()
 
+		def onDevTtlChanged(self, event):
+			"""Reflect the chosen window in the button label, before it is saved."""
+			minutes = self.devTtlChoices[self.devTtlChoice.GetSelection()]
+			self.enableDevBtn.SetLabel(f"Enable Developer Mode ({_format_duration(minutes * 60)})...")
+			self.Layout()
+
 		def onDisableDev(self, event):
 			disable_developer_mode_interactive(self._bridge)
 			self._refresh_status()
@@ -664,6 +733,20 @@ if _GUI_AVAILABLE:
 				if callable(sendLayoutUpdated):
 					sendLayoutUpdated()
 
+		def _save_dev_ttl_choice(self) -> int:
+			"""Persist and apply the selected elevation window; returns the seconds used."""
+			try:
+				index = self.devTtlChoice.GetSelection()
+				seconds = clamp_developer_ttl(self.devTtlChoices[index] * 60)
+			except (AttributeError, IndexError, TypeError):
+				return load_developer_ttl_seconds()
+
+			save_developer_ttl_seconds(seconds)
+			dev_mgr = getattr(self._bridge, "developer_mode_manager", None)
+			if dev_mgr is not None:
+				dev_mgr.set_default_ttl_seconds(seconds)
+			return seconds
+
 		def onSave(self):
 			policy = getattr(self._bridge, "permission_policy", None)
 			if not policy:
@@ -690,7 +773,14 @@ if _GUI_AVAILABLE:
 			# Store the choice so it survives NVDA restarts and plugin reloads.
 			save_persisted_permissions(policy.get_granted())
 
-			logHandler.log.info("Saved NVDA MCP Bridge permission configuration")
+			# The elevation window is a separate setting with its own bounds; it
+			# applies to the next elevation, never to one already granted.
+			saved_ttl = self._save_dev_ttl_choice()
+
+			logHandler.log.info(
+				f"Saved NVDA MCP Bridge permission configuration "
+				f"(developer elevation window {saved_ttl} seconds)"
+			)
 else:
 	MCPBridgeSettingsPanel = None  # type: ignore[assignment]
 
