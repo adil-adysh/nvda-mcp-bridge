@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import datetime
-from typing import Any, Type, TypeVar, get_type_hints, get_origin, get_args, Union
+from typing import Any, Literal, Type, TypeVar, get_type_hints, get_origin, get_args, Union
 
 
 T = TypeVar("T")
@@ -83,6 +83,13 @@ def _validate_field(
 	"""
 	field_path = f"{path}.{field_name}" if path else field_name
 
+	# ``Any`` accepts anything, including null. This must precede the None check
+	# below: that check treats null as a missing required value, which is right
+	# for a typed field and wrong for an intentionally free-form one (for example
+	# add-on metadata whose isEnabled/isDisabled are genuinely unknown).
+	if expected_type is Any:
+		return value
+
 	# Handle Optional types
 	is_optional, inner_type = _is_optional(expected_type)
 	if value is None:
@@ -113,6 +120,15 @@ def _validate_field(
 		else:
 			errors[field_path] = f"expected datetime or ISO 8601 string, got {type(value).__name__}"
 			return value
+
+	# Handle Literal[...] — the set of accepted values is part of the contract, so
+	# anything outside it is a caller error rather than something to pass through.
+	if origin is Literal:
+		allowed = get_args(expected_type)
+		if value not in allowed:
+			errors[field_path] = f"expected one of {list(allowed)}, got {value!r}"
+			return value
+		return value
 
 	# Handle list[T]
 	if origin is list:

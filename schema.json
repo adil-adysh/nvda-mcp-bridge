@@ -4,7 +4,7 @@
   "bridge_version": "1.0.0",
   "api_level": 1,
   "types": {
-    "ReloadResult": {
+    "PythonExecutionResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
       "properties": {
@@ -12,18 +12,37 @@
           "type": "boolean"
         },
         "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
           "properties": {
-            "status": {
+            "stdout": {
               "type": "string"
             },
-            "message": {
+            "stderr": {
               "type": "string"
+            },
+            "result": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "captured_variables": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
-          "required": [
-            "status"
-          ],
           "additionalProperties": false
         },
         "error": {
@@ -56,15 +75,20 @@
           "type": "boolean"
         },
         "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
           "properties": {
             "name": {
               "type": "string"
             },
             "role": {
-              "type": [
-                "integer",
-                "null"
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "roleText": {
@@ -86,454 +110,14 @@
               "type": "integer"
             }
           },
+          "additionalProperties": false,
           "required": [
             "name",
-            "role",
             "roleText",
             "value",
             "description",
             "states"
-          ],
-          "additionalProperties": false
-        },
-        "error": {
-          "type": "object",
-          "properties": {
-            "code": {
-              "type": "integer"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "code",
-            "message"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "success"
-      ],
-      "additionalProperties": false
-    },
-    "WindowInfo": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "type": "object",
-      "properties": {
-        "success": {
-          "type": "boolean"
-        },
-        "data": {
-          "type": "object",
-          "properties": {
-            "title": {
-              "type": "string"
-            },
-            "handle": {
-              "type": "integer"
-            },
-            "className": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "title",
-            "handle",
-            "className"
-          ],
-          "additionalProperties": false
-        },
-        "error": {
-          "type": "object",
-          "properties": {
-            "code": {
-              "type": "integer"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "code",
-            "message"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "success"
-      ],
-      "additionalProperties": false
-    },
-    "TextLineInfo": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "type": "object",
-      "properties": {
-        "success": {
-          "type": "boolean"
-        },
-        "data": {
-          "type": "object",
-          "properties": {
-            "text": {
-              "type": "string"
-            },
-            "lineNumber": {
-              "type": [
-                "integer",
-                "null"
-              ]
-            },
-            "note": {
-              "type": "string"
-            },
-            "status": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "text",
-            "status"
-          ],
-          "additionalProperties": false
-        },
-        "error": {
-          "type": "object",
-          "properties": {
-            "code": {
-              "type": "integer"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "code",
-            "message"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "success"
-      ],
-      "additionalProperties": false
-    },
-    "SpeechResult": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "type": "object",
-      "properties": {
-        "success": {
-          "type": "boolean"
-        },
-        "data": {
-          "type": "object",
-          "properties": {
-            "spoken": {
-              "type": "string"
-            },
-            "status": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "spoken"
-          ],
-          "additionalProperties": false
-        },
-        "error": {
-          "type": "object",
-          "properties": {
-            "code": {
-              "type": "integer"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "code",
-            "message"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "success"
-      ],
-      "additionalProperties": false
-    },
-    "MessageResult": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "type": "object",
-      "properties": {
-        "success": {
-          "type": "boolean"
-        },
-        "data": {
-          "type": "object",
-          "properties": {
-            "message": {
-              "type": "string"
-            },
-            "status": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "message"
-          ],
-          "additionalProperties": false
-        },
-        "error": {
-          "type": "object",
-          "properties": {
-            "code": {
-              "type": "integer"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "code",
-            "message"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "success"
-      ],
-      "additionalProperties": false
-    },
-    "KeyboardActionResult": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "type": "object",
-      "properties": {
-        "success": {
-          "type": "boolean"
-        },
-        "data": {
-          "type": "object",
-          "properties": {
-            "gesture": {
-              "type": "string"
-            },
-            "repeat": {
-              "type": "integer"
-            },
-            "delay_ms": {
-              "type": "integer"
-            },
-            "sent": {
-              "type": "boolean"
-            },
-            "sent_count": {
-              "type": "integer"
-            },
-            "cancelled": {
-              "type": "boolean"
-            },
-            "completed": {
-              "type": "boolean"
-            },
-            "uncertain": {
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "gesture",
-            "repeat",
-            "delay_ms",
-            "sent"
-          ],
-          "additionalProperties": false
-        },
-        "error": {
-          "type": "object",
-          "properties": {
-            "code": {
-              "type": "integer"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "code",
-            "message"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "success"
-      ],
-      "additionalProperties": false
-    },
-    "MoveFocusResult": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "type": "object",
-      "properties": {
-        "success": {
-          "type": "boolean"
-        },
-        "data": {
-          "type": "object",
-          "properties": {
-            "direction": {
-              "type": "string",
-              "enum": [
-                "next",
-                "previous"
-              ]
-            },
-            "pendingFocus": {
-              "type": "boolean"
-            },
-            "newFocus": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "role": {
-                  "type": [
-                    "integer",
-                    "null"
-                  ]
-                },
-                "roleText": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "name",
-                "role",
-                "roleText"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "required": [
-            "direction",
-            "pendingFocus",
-            "newFocus"
-          ],
-          "additionalProperties": false
-        },
-        "error": {
-          "type": "object",
-          "properties": {
-            "code": {
-              "type": "integer"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "code",
-            "message"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "success"
-      ],
-      "additionalProperties": false
-    },
-    "ObjectInspection": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "type": "object",
-      "properties": {
-        "success": {
-          "type": "boolean"
-        },
-        "data": {
-          "type": "object",
-          "properties": {
-            "target": {
-              "type": "string",
-              "enum": [
-                "focus",
-                "navigator",
-                "desktop"
-              ]
-            },
-            "object": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "required": [
-            "target",
-            "object"
-          ],
-          "additionalProperties": false
-        },
-        "error": {
-          "type": "object",
-          "properties": {
-            "code": {
-              "type": "integer"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "code",
-            "message"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "success"
-      ],
-      "additionalProperties": false
-    },
-    "ObjectTreeSnapshot": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "type": "object",
-      "properties": {
-        "success": {
-          "type": "boolean"
-        },
-        "data": {
-          "type": "object",
-          "properties": {
-            "target": {
-              "type": "string",
-              "enum": [
-                "focus",
-                "navigator",
-                "desktop"
-              ]
-            },
-            "max_depth": {
-              "type": "integer"
-            },
-            "max_children": {
-              "type": "integer"
-            },
-            "tree": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "required": [
-            "target",
-            "max_depth",
-            "max_children",
-            "tree"
-          ],
-          "additionalProperties": false
+          ]
         },
         "error": {
           "type": "object",
@@ -565,11 +149,12 @@
           "type": "boolean"
         },
         "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
           "properties": {
             "focus": {
               "type": "object",
-              "additionalProperties": true
+              "additionalProperties": {}
             },
             "ancestorCount": {
               "type": "integer"
@@ -581,259 +166,17 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "additionalProperties": true
+                "additionalProperties": {}
               }
             }
           },
+          "additionalProperties": false,
           "required": [
             "focus",
             "ancestorCount",
             "truncated",
             "ancestors"
-          ],
-          "additionalProperties": false
-        },
-        "error": {
-          "type": "object",
-          "properties": {
-            "code": {
-              "type": "integer"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "code",
-            "message"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "success"
-      ],
-      "additionalProperties": false
-    },
-    "AppModuleInfo": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "type": "object",
-      "properties": {
-        "success": {
-          "type": "boolean"
-        },
-        "data": {
-          "type": "object",
-          "properties": {
-            "source": {
-              "type": "string",
-              "enum": [
-                "focus",
-                "navigator",
-                "desktop"
-              ]
-            },
-            "object": {
-              "type": "object",
-              "additionalProperties": true
-            },
-            "appModule": {
-              "type": "object",
-              "additionalProperties": true
-            }
-          },
-          "required": [
-            "source",
-            "object",
-            "appModule"
-          ],
-          "additionalProperties": false
-        },
-        "error": {
-          "type": "object",
-          "properties": {
-            "code": {
-              "type": "integer"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "code",
-            "message"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "success"
-      ],
-      "additionalProperties": false
-    },
-    "AddonMetadataList": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "type": "object",
-      "properties": {
-        "success": {
-          "type": "boolean"
-        },
-        "data": {
-          "type": "object",
-          "properties": {
-            "scope": {
-              "type": "string",
-              "enum": [
-                "running",
-                "available",
-                "all"
-              ]
-            },
-            "count": {
-              "type": "integer"
-            },
-            "runningCount": {
-              "type": "integer"
-            },
-            "availableCount": {
-              "type": "integer"
-            },
-            "addons": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "additionalProperties": true
-              }
-            }
-          },
-          "required": [
-            "scope",
-            "count",
-            "runningCount",
-            "availableCount",
-            "addons"
-          ],
-          "additionalProperties": false
-        },
-        "error": {
-          "type": "object",
-          "properties": {
-            "code": {
-              "type": "integer"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "code",
-            "message"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "success"
-      ],
-      "additionalProperties": false
-    },
-    "HealthSnapshot": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "type": "object",
-      "properties": {
-        "success": {
-          "type": "boolean"
-        },
-        "data": {
-          "type": "object",
-          "properties": {
-            "timestamp": {
-              "type": "integer"
-            },
-            "options": {
-              "type": "object",
-              "properties": {
-                "include_logs": {
-                  "type": "boolean"
-                },
-                "log_lines": {
-                  "type": "integer"
-                },
-                "include_tree": {
-                  "type": "boolean"
-                },
-                "tree_depth": {
-                  "type": "integer"
-                },
-                "tree_max_children": {
-                  "type": "integer"
-                },
-                "addon_scope": {
-                  "type": "string"
-                }
-              },
-              "additionalProperties": true
-            },
-            "errors": {
-              "type": "object",
-              "additionalProperties": true
-            },
-            "ok": {
-              "type": "boolean"
-            },
-            "errorCount": {
-              "type": "integer"
-            }
-          },
-          "required": [
-            "timestamp",
-            "options",
-            "errors",
-            "ok",
-            "errorCount"
-          ],
-          "additionalProperties": true
-        },
-        "error": {
-          "type": "object",
-          "properties": {
-            "code": {
-              "type": "integer"
-            },
-            "message": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "code",
-            "message"
-          ],
-          "additionalProperties": false
-        }
-      },
-      "required": [
-        "success"
-      ],
-      "additionalProperties": false
-    },
-    "NvdaRestartResult": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "type": "object",
-      "properties": {
-        "success": {
-          "type": "boolean"
-        },
-        "data": {
-          "type": "object",
-          "properties": {
-            "status": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "status"
-          ],
-          "additionalProperties": true
+          ]
         },
         "error": {
           "type": "object",
@@ -865,6 +208,7 @@
           "type": "boolean"
         },
         "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
           "properties": {
             "log_file": {
@@ -876,12 +220,6 @@
             "max_lines": {
               "type": "integer"
             },
-            "filter_level": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
             "lines": {
               "type": "array",
               "items": {
@@ -890,16 +228,26 @@
             },
             "file_size": {
               "type": "integer"
+            },
+            "filter_level": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           },
+          "additionalProperties": false,
           "required": [
             "log_file",
             "returned_lines",
             "max_lines",
             "lines",
             "file_size"
-          ],
-          "additionalProperties": true
+          ]
         },
         "error": {
           "type": "object",
@@ -923,7 +271,7 @@
       ],
       "additionalProperties": false
     },
-    "PythonExecutionResult": {
+    "WindowInfo": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
       "properties": {
@@ -931,33 +279,769 @@
           "type": "boolean"
         },
         "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
           "properties": {
-            "stdout": {
+            "title": {
               "type": "string"
             },
-            "stderr": {
+            "handle": {
+              "type": "integer"
+            },
+            "className": {
               "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "handle",
+            "className"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
             },
-            "result": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "captured_variables": {
-              "type": [
-                "object",
-                "null"
-              ],
-              "additionalProperties": true
+            "message": {
+              "type": "string"
             }
           },
           "required": [
-            "stdout",
-            "stderr"
+            "code",
+            "message"
           ],
           "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "HealthSnapshot": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "timestamp": {
+              "type": "integer"
+            },
+            "options": {
+              "type": "object",
+              "properties": {
+                "include_logs": {
+                  "type": "boolean"
+                },
+                "log_lines": {
+                  "type": "integer"
+                },
+                "include_tree": {
+                  "type": "boolean"
+                },
+                "tree_depth": {
+                  "type": "integer"
+                },
+                "tree_max_children": {
+                  "type": "integer"
+                },
+                "addon_scope": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "include_logs",
+                "log_lines",
+                "include_tree",
+                "tree_depth",
+                "tree_max_children",
+                "addon_scope"
+              ]
+            },
+            "errors": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "ok": {
+              "type": "boolean"
+            },
+            "errorCount": {
+              "type": "integer"
+            },
+            "window": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "focus": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "navigator": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "appModule": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "addons": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "focusLineage": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "focusTree": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "logs": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "timestamp",
+            "options",
+            "errors",
+            "ok",
+            "errorCount"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "AppModuleInfo": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "object": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "appModule": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "object",
+            "appModule"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "ObjectInspection": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string"
+            },
+            "object": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "target",
+            "object"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "AddonMetadataList": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string"
+            },
+            "count": {
+              "type": "integer"
+            },
+            "runningCount": {
+              "type": "integer"
+            },
+            "availableCount": {
+              "type": "integer"
+            },
+            "addons": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": {}
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "scope",
+            "count",
+            "runningCount",
+            "availableCount",
+            "addons"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "MoveFocusResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "direction": {
+              "type": "string"
+            },
+            "pendingFocus": {
+              "type": "boolean"
+            },
+            "newFocus": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "direction",
+            "pendingFocus",
+            "newFocus"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "TextLineInfo": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "lineNumber": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "note": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "text"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "ReloadResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "NvdaRestartResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "KeyboardActionResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "gesture": {
+              "type": "string"
+            },
+            "repeat": {
+              "type": "integer"
+            },
+            "delay_ms": {
+              "type": "integer"
+            },
+            "sent": {
+              "type": "boolean"
+            },
+            "sent_count": {
+              "type": "integer"
+            },
+            "cancelled": {
+              "type": "boolean"
+            },
+            "completed": {
+              "type": "boolean"
+            },
+            "uncertain": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "gesture",
+            "repeat",
+            "delay_ms",
+            "sent"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "MessageResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "message"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "SpeechResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "spoken": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "spoken"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "ObjectTreeSnapshot": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string"
+            },
+            "max_depth": {
+              "type": "integer"
+            },
+            "max_children": {
+              "type": "integer"
+            },
+            "tree": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "target",
+            "max_depth",
+            "max_children",
+            "tree"
+          ]
         },
         "error": {
           "type": "object",

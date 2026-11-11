@@ -1,4 +1,14 @@
-"""Named output type registry for nvda-bridge-protocol v1."""
+"""Named output type registry for nvda-bridge-protocol v1.
+
+Schemas are *derived* from each tool's output dataclass rather than transcribed
+by hand. A hand-written copy is a second source of truth: it drifts from the
+dataclass, and the drift is only discovered at runtime when a client rejects a
+payload that the bridge considered valid (see the `completed`/`uncertain`
+regression in KeyboardActionResult).
+
+Deriving means one declaration — the dataclass in ``tools/models.py`` — drives
+validation, ``GET /tools`` discovery, and the generated ``schema.json``.
+"""
 
 from __future__ import annotations
 
@@ -34,251 +44,34 @@ def _tool_response_schema(data_schema: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_output_type_registry() -> dict[str, dict[str, Any]]:
-	"""Build all named output types exposed by GET /tools."""
-	return {
-		"ReloadResult": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"status": {"type": "string"},
-					"message": {"type": "string"},
-				},
-				"required": ["status"],
-				"additionalProperties": False,
-			}
-		),
-		"ObjectInfo": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"name": {"type": "string"},
-					"role": {"type": ["integer", "null"]},
-					"roleText": {"type": "string"},
-					"value": {"type": "string"},
-					"description": {"type": "string"},
-					"states": {"type": "string"},
-					"windowClassName": {"type": "string"},
-					"windowControlID": {"type": "integer"},
-				},
-				"required": ["name", "role", "roleText", "value", "description", "states"],
-				"additionalProperties": False,
-			}
-		),
-		"WindowInfo": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"title": {"type": "string"},
-					"handle": {"type": "integer"},
-					"className": {"type": "string"},
-				},
-				"required": ["title", "handle", "className"],
-				"additionalProperties": False,
-			}
-		),
-		"TextLineInfo": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"text": {"type": "string"},
-					"lineNumber": {"type": ["integer", "null"]},
-					"note": {"type": "string"},
-					"status": {"type": "string"},
-				},
-				"required": ["text", "status"],
-				"additionalProperties": False,
-			}
-		),
-		"SpeechResult": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"spoken": {"type": "string"},
-					"status": {"type": "string"},
-				},
-				"required": ["spoken"],
-				"additionalProperties": False,
-			}
-		),
-		"MessageResult": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"message": {"type": "string"},
-					"status": {"type": "string"},
-				},
-				"required": ["message"],
-				"additionalProperties": False,
-			}
-		),
-		"KeyboardActionResult": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"gesture": {"type": "string"},
-					"repeat": {"type": "integer"},
-					"delay_ms": {"type": "integer"},
-					"sent": {"type": "boolean"},
-					"sent_count": {"type": "integer"},
-					"cancelled": {"type": "boolean"},
-					# Reported by the sequence coordinator so clients can tell a
-					# fully dispatched sequence from a partial or uncertain one.
-					"completed": {"type": "boolean"},
-					"uncertain": {"type": "boolean"},
-				},
-				"required": ["gesture", "repeat", "delay_ms", "sent"],
-				"additionalProperties": False,
-			}
-		),
-		"MoveFocusResult": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"direction": {"type": "string", "enum": ["next", "previous"]},
-					"pendingFocus": {"type": "boolean"},
-					"newFocus": {
-						"type": "object",
-						"properties": {
-							"name": {"type": "string"},
-							"role": {"type": ["integer", "null"]},
-							"roleText": {"type": "string"},
-						},
-						"required": ["name", "role", "roleText"],
-						"additionalProperties": False,
-					},
-				},
-				"required": ["direction", "pendingFocus", "newFocus"],
-				"additionalProperties": False,
-			}
-		),
-		"ObjectInspection": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"target": {"type": "string", "enum": ["focus", "navigator", "desktop"]},
-					"object": {"type": "object", "additionalProperties": True},
-				},
-				"required": ["target", "object"],
-				"additionalProperties": False,
-			}
-		),
-		"ObjectTreeSnapshot": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"target": {"type": "string", "enum": ["focus", "navigator", "desktop"]},
-					"max_depth": {"type": "integer"},
-					"max_children": {"type": "integer"},
-					"tree": {"type": "object", "additionalProperties": True},
-				},
-				"required": ["target", "max_depth", "max_children", "tree"],
-				"additionalProperties": False,
-			}
-		),
-		"FocusLineage": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"focus": {"type": "object", "additionalProperties": True},
-					"ancestorCount": {"type": "integer"},
-					"truncated": {"type": "boolean"},
-					"ancestors": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
-				},
-				"required": ["focus", "ancestorCount", "truncated", "ancestors"],
-				"additionalProperties": False,
-			}
-		),
-		"AppModuleInfo": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"source": {"type": "string", "enum": ["focus", "navigator", "desktop"]},
-					"object": {"type": "object", "additionalProperties": True},
-					"appModule": {"type": "object", "additionalProperties": True},
-				},
-				"required": ["source", "object", "appModule"],
-				"additionalProperties": False,
-			}
-		),
-		"AddonMetadataList": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"scope": {"type": "string", "enum": ["running", "available", "all"]},
-					"count": {"type": "integer"},
-					"runningCount": {"type": "integer"},
-					"availableCount": {"type": "integer"},
-					"addons": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
-				},
-				"required": ["scope", "count", "runningCount", "availableCount", "addons"],
-				"additionalProperties": False,
-			}
-		),
-		"HealthSnapshot": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"timestamp": {"type": "integer"},
-					"options": {
-						"type": "object",
-						"properties": {
-							"include_logs": {"type": "boolean"},
-							"log_lines": {"type": "integer"},
-							"include_tree": {"type": "boolean"},
-							"tree_depth": {"type": "integer"},
-							"tree_max_children": {"type": "integer"},
-							"addon_scope": {"type": "string"},
-						},
-						"additionalProperties": True,
-					},
-					"errors": {"type": "object", "additionalProperties": True},
-					"ok": {"type": "boolean"},
-					"errorCount": {"type": "integer"},
-				},
-				"required": ["timestamp", "options", "errors", "ok", "errorCount"],
-				"additionalProperties": True,
-			}
-		),
-		"NvdaRestartResult": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {"status": {"type": "string"}},
-				"required": ["status"],
-				"additionalProperties": True,
-			}
-		),
-		"LogEntries": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"log_file": {"type": "string"},
-					"returned_lines": {"type": "integer"},
-					"max_lines": {"type": "integer"},
-					"filter_level": {"type": ["string", "null"]},
-					"lines": {"type": "array", "items": {"type": "string"}},
-					"file_size": {"type": "integer"},
-				},
-				"required": ["log_file", "returned_lines", "max_lines", "lines", "file_size"],
-				"additionalProperties": True,
-			}
-		),
-		"PythonExecutionResult": _tool_response_schema(
-			{
-				"type": "object",
-				"properties": {
-					"stdout": {"type": "string"},
-					"stderr": {"type": "string"},
-					"result": {"type": ["string", "null"]},
-					"captured_variables": {
-						"type": ["object", "null"],
-						"additionalProperties": True,
-					},
-				},
-				"required": ["stdout", "stderr"],
-				"additionalProperties": False,
-			}
-		),
-	}
+	"""Build all named output types exposed by GET /tools.
+
+	Each type name is the output dataclass's own name and its ``data`` schema is
+	generated from that dataclass. The import of the tool registry is deferred to
+	keep ``core`` free of a dependency on ``tools`` at module import time.
+	"""
+	from ..tools.registry import NVDA_TOOLS_REGISTRY
+
+	types: dict[str, dict[str, Any]] = {}
+	for metadata in NVDA_TOOLS_REGISTRY.list_tools():
+		tool = NVDA_TOOLS_REGISTRY.get(metadata.name, metadata.version)
+		output_schema = tool.get_output_schema()
+		model = output_schema.model
+		type_name = getattr(model, "__name__", "")
+		schema = _tool_response_schema(output_schema.to_json_schema())
+
+		# Several tools may legitimately share one output model (three focus
+		# tools return ObjectInfo). Only a name mapping to two different shapes
+		# is ambiguous, because discovery keys types by name.
+		existing = types.get(type_name)
+		if existing is not None and existing != schema:
+			raise ValueError(
+				f"Output type name '{type_name}' maps to two different schemas; "
+				"output models must have unique names for discovery to be unambiguous",
+			)
+		types[type_name] = schema
+
+	return types
 
 
 def validate_output_type_registry(type_registry: dict[str, dict[str, Any]]) -> None:

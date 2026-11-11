@@ -204,7 +204,13 @@ class KeyboardActionResult:
 
 @dataclass(frozen=True)
 class MoveFocusResult:
-	"""Move focus result."""
+	"""Move focus result.
+
+	``pendingFocus`` is always true: ``setFocus()`` posts an asynchronous Windows
+	message, and confirming it would require waiting for the resulting focus event
+	— which cannot happen while this call occupies NVDA's main thread. Callers
+	must re-read focus rather than treating ``newFocus`` as confirmed.
+	"""
 
 	direction: str
 	pendingFocus: bool
@@ -264,7 +270,7 @@ class HealthSnapshot:
 	"""Health diagnostics snapshot."""
 
 	timestamp: int
-	options: dict[str, Any]
+	options: "SnapshotOptions"
 	errors: dict[str, Any]
 	ok: bool
 	errorCount: int
@@ -276,6 +282,22 @@ class HealthSnapshot:
 	focusLineage: Optional[dict[str, Any]] = None
 	focusTree: Optional[dict[str, Any]] = None
 	logs: Optional[dict[str, Any]] = None
+
+
+@dataclass(frozen=True)
+class SnapshotOptions:
+	"""The options a health_snapshot call was made with, echoed back.
+
+	Typed rather than ``dict[str, Any]`` so the published schema declares the
+	fields instead of degrading to a permissive object.
+	"""
+
+	include_logs: bool
+	log_lines: int
+	include_tree: bool
+	tree_depth: int
+	tree_max_children: int
+	addon_scope: str
 
 
 @dataclass(frozen=True)

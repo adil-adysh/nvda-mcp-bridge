@@ -1,20 +1,30 @@
 # pyright: reportMissingImports=false, reportUnusedCallResult=false
 
+import importlib
 import unittest
 
 import sys
 import os
+import types
 
-# Add addon directory to path for imports
-_ADDON_DIR = os.path.join(
-	os.path.dirname(os.path.abspath(__file__)), "..", "addon", "globalPlugins", "nvdaMcp-bridge"
+# The output type registry derives its schemas from the tool registry, so these
+# tests load the add-on as a package (as NVDA does) rather than importing the
+# validation module standalone.
+_ADDON_DIR = os.path.normpath(
+	os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "addon", "globalPlugins", "nvdaMcp-bridge")
 )
-sys.path.insert(0, _ADDON_DIR)
+if _ADDON_DIR not in sys.path:
+	sys.path.insert(0, _ADDON_DIR)
 
-from validation.output_type_registry import (
-	build_output_type_registry,
-	validate_output_type_registry,
-)
+_PACKAGE_NAME = "nvdaMcpBridge"
+if _PACKAGE_NAME not in sys.modules:
+	_package = types.ModuleType(_PACKAGE_NAME)
+	_package.__path__ = [_ADDON_DIR]
+	sys.modules[_PACKAGE_NAME] = _package
+
+_registry_module = importlib.import_module(f"{_PACKAGE_NAME}.validation.output_type_registry")
+build_output_type_registry = _registry_module.build_output_type_registry
+validate_output_type_registry = _registry_module.validate_output_type_registry
 
 
 class OutputTypeRegistryTests(unittest.TestCase):
