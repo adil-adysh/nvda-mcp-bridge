@@ -1,9 +1,10 @@
 # pyright: reportMissingImports=false, reportUnusedCallResult=false
-"""Unit tests for CompanionManager: installation, verification, rollback, and locking."""
+"""Unit tests for CompanionManager: installation, PE verification, rollback, and locking."""
 
 import hashlib
 import json
 import os
+import struct
 import sys
 import tempfile
 import types
@@ -30,7 +31,22 @@ if _PACKAGE_NAME not in sys.modules:
     _package.__path__ = [_ADDON_DIR]
     sys.modules[_PACKAGE_NAME] = _package
 
-from nvdaMcpBridge.companion_manager import CompanionManager, calculate_sha256  # noqa: E402
+from nvdaMcpBridge.companion_manager import (  # noqa: E402
+    CompanionManager,
+    calculate_sha256,
+    validate_pe_binary,
+)
+
+
+def make_mock_pe_binary(machine: int = 0x8664) -> bytes:
+    """Generate a valid minimal mock PE binary with specified machine architecture."""
+    dos = bytearray(64)
+    dos[0:2] = b"MZ"
+    struct.pack_into("<I", dos, 0x3C, 128)  # pe_offset = 128
+    pe = bytearray(2048)
+    pe[0:4] = b"PE\x00\x00"
+    struct.pack_into("<H", pe, 4, machine)  # machine type (0x8664 = x64, 0x014c = x86)
+    return bytes(dos) + b"\x00" * 64 + bytes(pe)
 
 
 class TestCompanionManager(unittest.TestCase):
@@ -42,8 +58,8 @@ class TestCompanionManager(unittest.TestCase):
         self.bundled_dir.mkdir(parents=True)
         self.install_dir.mkdir(parents=True)
 
-        # Create a valid mock companion binary
-        self.binary_content = b"MZ\x90\x00" + b"X" * 2048
+        # Create a valid mock x64 companion binary
+        self.binary_content = make_mock_pe_binary(0x8664)
         self.binary_sha = hashlib.sha256(self.binary_content).hexdigest().lower()
 
         self.mock_exe = self.bundled_dir / "nvda-mcp-server.exe"
@@ -68,7 +84,7 @@ class TestCompanionManager(unittest.TestCase):
     def test_verify_bundled_artifact_success(self):
         """Verify valid bundled companion artifact passes verification."""
         valid, msg = self.mgr.verify_bundled_artifact()
-        self.assertTrue(valid)
+        self.assertTrue(valid, msg)
         self.assertIn("verified successfully", msg)
 
     def test_missing_binary(self):
@@ -80,11 +96,23 @@ class TestCompanionManager(unittest.TestCase):
 
     def test_corrupt_bundled_artifact_checksum_mismatch(self):
         """Verify detection of corrupt bundled binary with mismatched checksum."""
-        # Alter content of binary
-        self.mock_exe.write_bytes(b"MZ\x00corrupted_payload_here" + b"Y" * 2048)
+        # Alter content while keeping valid PE header
+        alt_binary = make_mock_pe_binary(0x8664) + b"extra_tampered_bytes"
+        self.mock_exe.write_bytes(alt_binary)
         valid, msg = self.mgr.verify_bundled_artifact()
         self.assertFalse(valid)
         self.assertIn("checksum mismatch", msg)
+
+    def test_incompatible_architecture_rejected(self):
+        """Verify 32-bit x86 binary is rejected as incompatible for x64 architecture."""
+        x86_binary = make_mock_pe_binary(0x014C)  # IMAGE_FILE_MACHINE_I386
+        self.mock_exe.write_bytes(x86_binary)
+        self.manifest_data["sha256"] = hashlib.sha256(x86_binary).hexdigest().lower()
+        self.manifest_file.write_text(json.dumps(self.manifest_data), encoding="utf-8")
+
+        valid, msg = self.mgr.verify_bundled_artifact()
+        self.assertFalse(valid)
+        self.assertIn("Incompatible architecture", msg)
 
     def test_missing_manifest(self):
         """Verify error when manifest.json is missing."""
@@ -95,16 +123,18 @@ class TestCompanionManager(unittest.TestCase):
 
     def test_clean_installation(self):
         """Verify clean first-time installation creates binary and installed_manifest."""
-        status_before = self.mgr.inspect_installed()
+        status_before = self.mgr.inspect_installed(verify_hash=False)
         self.assertFalse(status_before.installed)
+        self.assertEqual(status_before.integrity_state, "missing")
 
         success, msg = self.mgr.install_or_repair()
-        self.assertTrue(success)
+        self.assertTrue(success, msg)
         self.assertIn("Successfully installed", msg)
 
-        status_after = self.mgr.inspect_installed()
+        status_after = self.mgr.inspect_installed(verify_hash=True)
         self.assertTrue(status_after.installed)
         self.assertTrue(status_after.compatible)
+        self.assertEqual(status_after.integrity_state, "installed")
         self.assertEqual(status_after.installed_version, "1.0.0")
 
         # Verify installed file
@@ -116,21 +146,33 @@ class TestCompanionManager(unittest.TestCase):
         self.mgr.install_or_repair()
         success, msg = self.mgr.install_or_repair(force=False)
         self.assertTrue(success)
-        self.assertIn("already installed and up to date", msg)
+        self.assertIn("already installed and verified up to date", msg)
 
     def test_repair_corrupt_installed_binary(self):
         """Verify repair replaces corrupt installed binary."""
         self.mgr.install_or_repair()
-        # Corrupt installed binary
-        self.mgr.installed_exe_path.write_bytes(b"bad")
 
+        # Corrupt installed binary by replacing with invalid data
+        self.mgr.installed_exe_path.write_bytes(b"corrupted_binary_data")
+
+        # In-depth inspection should detect corruption
+        status_corrupt = self.mgr.inspect_installed(verify_hash=True)
+        self.assertFalse(status_corrupt.compatible)
+        self.assertEqual(status_corrupt.integrity_state, "corrupt")
+
+        # Force repair should restore working binary
         success, msg = self.mgr.install_or_repair(force=True)
         self.assertTrue(success)
         self.assertEqual(calculate_sha256(self.mgr.installed_exe_path), self.binary_sha)
 
-    def test_failed_installation_and_rollback(self):
+        # Status after repair should be clean
+        status_repaired = self.mgr.inspect_installed(verify_hash=True)
+        self.assertTrue(status_repaired.compatible)
+        self.assertEqual(status_repaired.integrity_state, "installed")
+
+    def test_failed_installation_and_rollback_on_activation(self):
         """Verify rollback restores previous working version if stage activation fails."""
-        # 1. Install version 1.0.0
+        # 1. Install initial version
         self.mgr.install_or_repair()
         orig_content = self.mgr.installed_exe_path.read_bytes()
 
@@ -152,6 +194,55 @@ class TestCompanionManager(unittest.TestCase):
             self.assertEqual(self.mgr.installed_exe_path.read_bytes(), orig_content)
         finally:
             Path.rename = real_rename
+
+    def test_failed_active_verification_triggers_rollback(self):
+        """Verify rollback occurs if active binary fails checksum verification after placement."""
+        # 1. Install initial version
+        self.mgr.install_or_repair()
+        orig_content = self.mgr.installed_exe_path.read_bytes()
+
+        # 2. Simulate silent disk corruption by tampering with staged binary after verification
+        # By corrupting bundled artifact temporarily during a forced upgrade
+        bad_pe = make_mock_pe_binary(0x8664) + b"corrupted_after_check"
+        bad_sha = hashlib.sha256(bad_pe).hexdigest().lower()
+
+        # Update manifest to expect bad_sha so stage passes, but mock calculate_sha256 to fail on active verification
+        self.mgr.get_bundled_manifest = lambda: {
+            "binary_name": "nvda-mcp-server.exe",
+            "version": "1.0.1",
+            "architecture": "windows-x64",
+            "sha256": bad_sha,
+        }
+        self.mock_exe.write_bytes(bad_pe)
+
+        real_calc = calculate_sha256
+
+        # Make active verification return mismatched sha
+        def mock_calc(path):
+            if path == self.mgr.installed_exe_path:
+                return "0000000000000000000000000000000000000000000000000000000000000000"
+            return real_calc(path)
+
+        import nvdaMcpBridge.companion_manager as cm_mod
+        orig_fn = cm_mod.calculate_sha256
+        cm_mod.calculate_sha256 = mock_calc
+
+        try:
+            success, msg = self.mgr.install_or_repair(force=True)
+            self.assertFalse(success)
+            self.assertIn("rolled back", msg)
+            # Original binary was restored
+            self.assertTrue(self.mgr.installed_exe_path.is_file())
+            self.assertEqual(self.mgr.installed_exe_path.read_bytes(), orig_content)
+        finally:
+            cm_mod.calculate_sha256 = orig_fn
+
+    def test_cancellation_before_activation(self):
+        """Verify installation aborts cleanly without altering state when cancelled."""
+        success, msg = self.mgr.install_or_repair(is_cancelled=lambda: True)
+        self.assertFalse(success)
+        self.assertIn("cancelled", msg)
+        self.assertFalse(self.mgr.installed_exe_path.is_file())
 
     def test_uninstall_cleanly_removes_files(self):
         """Verify uninstall removes binary and manifest."""
