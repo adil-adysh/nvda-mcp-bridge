@@ -5,43 +5,34 @@
   "type": "object",
   "additionalProperties": true,
   "required": [
-    "request_id",
     "success",
     "action",
-    "duration_ms",
     "bridge",
     "nvda_status_snapshot"
   ],
   "properties": {
-    "request_id": { "$ref": "common.schema.json#/$defs/uuidLike" },
-    "success": { "type": "boolean" },
-    "action": { "type": "string", "minLength": 1, "maxLength": 128 },
-    "duration_ms": { "type": "number", "minimum": 0 },
-    "bridge": { "$ref": "common.schema.json#/$defs/bridgeMeta" },
-    "nvda_status_snapshot": { "$ref": "common.schema.json#/$defs/nvdaStatusSnapshot" },
-    "data": true,
-    "error": { "$ref": "common.schema.json#/$defs/actionError" }
-  },
-  "allOf": [
-    {
-      "if": {
-        "properties": { "success": { "const": true } },
-        "required": ["success"]
-      },
-      "then": {
-        "required": ["data"],
-        "not": { "required": ["error"] }
-      }
+    "request_id": {
+      "$ref": "common.schema.json#/$defs/uuidLike"
     },
-    {
-      "if": {
-        "properties": { "success": { "const": false } },
-        "required": ["success"]
-      },
-      "then": {
-        "required": ["error"],
-        "not": { "required": ["data"] }
-      }
+    "success": {
+      "type": "boolean"
+    },
+    "action": {
+      "type": "string"
+    },
+    "duration_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "bridge": {
+      "$ref": "common.schema.json#/$defs/bridgeMeta"
+    },
+    "nvda_status_snapshot": {
+      "$ref": "common.schema.json#/$defs/nvdaStatusSnapshot"
+    },
+    "data": {},
+    "error": {
+      "$ref": "common.schema.json#/$defs/actionError"
     }
-  ]
+  }
 }

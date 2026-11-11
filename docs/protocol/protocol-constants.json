@@ -1,0 +1,122 @@
+{
+  "$schema": "https://nvda.local/schemas/protocol-constants.schema.json",
+  "$id": "https://nvda.local/schemas/protocol-constants.json",
+  "title": "NVDA Bridge Protocol Constants — single source of truth for Python and Rust codegen",
+
+  "protocol": {
+    "name": "nvda-bridge-protocol",
+    "version": "1.0.0",
+    "bridge_version": "1.0.0",
+    "api_level": 1,
+    "default_bridge_token": "nvda-bridge-secret-change-me",
+    "token_header": "X-NVDA-Bridge-Token",
+    "max_request_body_size": 1048576,
+    "max_request_id_length": 128
+  },
+
+  "error_codes": {
+    "4001": { "name": "AUTH_FAILURE", "category": "auth", "retry_policy": "never" },
+    "4101": { "name": "INVALID_JSON", "category": "validation", "retry_policy": "never" },
+    "4102": { "name": "INVALID_ACTION_NAME", "category": "validation", "retry_policy": "never" },
+    "4103": { "name": "INVALID_PARAMS_SCHEMA", "category": "validation", "retry_policy": "never" },
+    "4201": { "name": "SECURE_SCREEN_ACTIVE", "category": "nvda_state", "retry_policy": "after_state_change" },
+    "4202": { "name": "MODAL_DIALOG_BLOCKING", "category": "nvda_state", "retry_policy": "after_delay", "retry_after_ms": 500 },
+    "4203": { "name": "MENU_OPEN_BLOCKING", "category": "nvda_state", "retry_policy": "after_delay", "retry_after_ms": 500 },
+    "5001": { "name": "NVDA_COM_TIMEOUT", "category": "runtime", "retry_policy": "after_delay", "retry_after_ms": 1000 },
+    "5003": { "name": "TOOL_EXECUTION_EXCEPTION", "category": "runtime", "retry_policy": "after_delay", "retry_after_ms": 1000 },
+    "5303": { "name": "BRIDGE_INTERNAL_ERROR", "category": "internal", "retry_policy": "after_delay", "retry_after_ms": 1000 }
+  },
+
+  "http_status_mapping": {
+    "rules": [
+      { "code": 4001, "http_status": 401 },
+      { "min": 4100, "max": 4199, "http_status": 400 },
+      { "min": 4200, "max": 4299, "http_status": 409 },
+      { "min": 5000, "max": 5999, "http_status": 500 }
+    ],
+    "default": 500
+  },
+
+  "category_rules": {
+    "secure_screen_allowed_categories": ["diagnostics", "developer"],
+    "modal_blocking_blocked_categories": ["focus", "navigation", "ui", "window", "text"],
+    "menu_open_blocked_categories": ["focus", "navigation", "ui", "window"]
+  },
+
+  "structs": {
+    "BridgeMeta": {
+      "description": "Protocol metadata block in every action response.",
+      "fields": [
+        { "name": "bridge_version", "type": "Option<String>", "serde_default": true, "python_type": "Optional[str]", "python_default": "None" },
+        { "name": "api_level", "type": "Option<u32>", "serde_default": true, "python_type": "Optional[int]", "python_default": "None" }
+      ]
+    },
+    "NvdaStatusSnapshot": {
+      "description": "Snapshot of NVDA runtime state in every action response.",
+      "fields": [
+        { "name": "secure_screen", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" },
+        { "name": "modal_blocking", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" },
+        { "name": "menu_open", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" }
+      ]
+    },
+    "BridgeError": {
+      "description": "Structured error from bridge action responses.",
+      "fields": [
+        { "name": "code", "type": "ErrorCode", "serde_default": false, "python_type": "str", "python_default": "\"UNKNOWN\"" },
+        { "name": "message", "type": "String", "serde_default": false, "python_type": "str", "python_default": "\"\"" },
+        { "name": "name", "type": "Option<String>", "serde_default": false, "python_type": "Optional[str]", "python_default": "None" },
+        { "name": "category", "type": "Option<String>", "serde_default": false, "python_type": "Optional[str]", "python_default": "None" },
+        { "name": "retry_policy", "type": "Option<String>", "serde_default": false, "python_type": "Optional[str]", "python_default": "None" },
+        { "name": "retry_after_ms", "type": "Option<u64>", "serde_default": false, "python_type": "Optional[int]", "python_default": "None" },
+        { "name": "details", "type": "Option<Value>", "serde_default": false, "python_type": "Optional[Dict[str, Any]]", "python_default": "None" }
+      ]
+    },
+    "BridgeActionEnvelope": {
+      "description": "Full response envelope from the NVDA bridge /action endpoint.",
+      "fields": [
+        { "name": "success", "type": "bool", "serde_default": false, "python_type": "bool", "python_default": "False" },
+        { "name": "request_id", "type": "Option<String>", "serde_default": false, "python_type": "Optional[str]", "python_default": "None" },
+        { "name": "action", "type": "Option<String>", "serde_default": false, "python_type": "Optional[str]", "python_default": "None" },
+        { "name": "duration_ms", "type": "Option<f64>", "serde_default": false, "python_type": "Optional[float]", "python_default": "None" },
+        { "name": "bridge", "type": "Option<BridgeMeta>", "serde_default": false, "python_type": "Optional[Dict[str, Any]]", "python_default": "None" },
+        { "name": "nvda_status_snapshot", "type": "Option<NvdaStatusSnapshot>", "serde_default": false, "python_type": "Optional[Dict[str, Any]]", "python_default": "None" },
+        { "name": "data", "type": "Option<Value>", "serde_default": false, "python_type": "Optional[Dict[str, Any]]", "python_default": "None" },
+        { "name": "error", "type": "Option<BridgeError>", "serde_default": false, "python_type": "Optional[Dict[str, Any]]", "python_default": "None" }
+      ]
+    },
+    "BridgeToolConstraints": {
+      "description": "Per-tool execution constraints from bridge discovery.",
+      "fields": [
+        { "name": "dangerous", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" },
+        { "name": "requires_explicit_opt_in", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" },
+        { "name": "blocked_on_secure_screen", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" },
+        { "name": "blocked_on_modal", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" },
+        { "name": "blocked_on_menu", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" }
+      ]
+    },
+    "BridgeToolDef": {
+      "description": "Tool definition from bridge /tools discovery.",
+      "fields": [
+        { "name": "name", "type": "String", "serde_default": false, "python_type": "str", "python_default": "\"\"" },
+        { "name": "description", "type": "String", "serde_default": false, "python_type": "str", "python_default": "\"\"" },
+        { "name": "input_schema", "type": "Map<String, Value>", "serde_rename": "inputSchema", "serde_default": false, "python_type": "Dict[str, Any]", "python_default": "{}", "python_serialize_name": "inputSchema" },
+        { "name": "output_type", "type": "Option<String>", "serde_rename": "outputType", "serde_default": false, "python_type": "Optional[str]", "python_default": "None", "python_serialize_name": "outputType" },
+        { "name": "version", "type": "String", "serde_default": false, "python_type": "str", "python_default": "\"0.0.0\"" },
+        { "name": "category", "type": "String", "serde_default": false, "python_type": "str", "python_default": "\"\"" },
+        { "name": "constraints", "type": "Option<BridgeToolConstraints>", "serde_default": true, "python_type": "Optional[Dict[str, Any]]", "python_default": "None" }
+      ]
+    },
+    "BridgeToolsResponse": {
+      "description": "Full response from bridge /tools discovery endpoint.",
+      "fields": [
+        { "name": "protocol", "type": "String", "serde_default": false, "python_type": "str", "python_default": "\"\"" },
+        { "name": "protocol_version", "type": "String", "serde_default": false, "python_type": "str", "python_default": "\"\"" },
+        { "name": "bridge_version", "type": "String", "serde_default": false, "python_type": "str", "python_default": "\"\"" },
+        { "name": "api_level", "type": "u32", "serde_default": false, "python_type": "int", "python_default": "0" },
+        { "name": "types", "type": "Map<String, Value>", "serde_default": false, "python_type": "Dict[str, Any]", "python_default": "{}" },
+        { "name": "tools", "type": "Vec<BridgeToolDef>", "serde_default": false, "python_type": "list[Dict[str, Any]]", "python_default": "[]" },
+        { "name": "count", "type": "usize", "serde_default": false, "python_type": "int", "python_default": "0" }
+      ]
+    }
+  }
+}

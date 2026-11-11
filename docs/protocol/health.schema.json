@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://nvda.local/schemas/health.schema.json",
-  "title": "NVDA Bridge Health Response",
+  "title": "NVDA Bridge Health Check",
   "type": "object",
-  "additionalProperties": true,
+  "additionalProperties": false,
   "required": [
     "status",
     "protocol",
@@ -16,22 +16,45 @@
     "nvda_status"
   ],
   "properties": {
-    "status": { "type": "string", "enum": ["ok", "degraded", "error"] },
-    "protocol": { "$ref": "common.schema.json#/$defs/protocol" },
-    "protocol_version": { "const": "1.0.0" },
-    "bridge_version": { "$ref": "common.schema.json#/$defs/semver" },
-    "api_level": { "const": 1 },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "degraded",
+        "error"
+      ]
+    },
+    "protocol": {
+      "$ref": "common.schema.json#/$defs/protocol"
+    },
+    "protocol_version": {
+      "const": "1.0.0"
+    },
+    "bridge_version": {
+      "$ref": "common.schema.json#/$defs/semver"
+    },
+    "api_level": {
+      "const": 1
+    },
     "supported_api_levels": {
       "type": "array",
-      "items": { "const": 1 },
-      "minItems": 1,
-      "uniqueItems": true
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "minItems": 1
     },
-    "uptime_seconds": { "type": "integer", "minimum": 0 },
-    "timestamp_utc": { "type": "string", "format": "date-time" },
+    "uptime_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "timestamp_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
     "nvda_status": {
       "type": "object",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "required": [
         "running",
         "secure_screen",
@@ -41,12 +64,24 @@
         "braille_available"
       ],
       "properties": {
-        "running": { "type": "boolean" },
-        "secure_screen": { "type": "boolean" },
-        "modal_blocking": { "type": "boolean" },
-        "menu_open": { "type": "boolean" },
-        "speech_available": { "type": "boolean" },
-        "braille_available": { "type": "boolean" }
+        "running": {
+          "type": "boolean"
+        },
+        "secure_screen": {
+          "type": "boolean"
+        },
+        "modal_blocking": {
+          "type": "boolean"
+        },
+        "menu_open": {
+          "type": "boolean"
+        },
+        "speech_available": {
+          "type": "boolean"
+        },
+        "braille_available": {
+          "type": "boolean"
+        }
       }
     }
   }
