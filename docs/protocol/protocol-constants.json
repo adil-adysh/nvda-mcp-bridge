@@ -8,7 +8,7 @@
     "version": "1.0.0",
     "bridge_version": "1.0.0",
     "api_level": 1,
-    "default_bridge_token": "nvda-bridge-secret-change-me",
+    "default_bridge_token": "",
     "token_header": "X-NVDA-Bridge-Token",
     "max_request_body_size": 1048576,
     "max_request_id_length": 128
@@ -16,29 +16,35 @@
 
   "error_codes": {
     "4001": { "name": "AUTH_FAILURE", "category": "auth", "retry_policy": "never" },
+    "4003": { "name": "PERMISSION_DENIED", "category": "auth", "retry_policy": "never" },
     "4101": { "name": "INVALID_JSON", "category": "validation", "retry_policy": "never" },
     "4102": { "name": "INVALID_ACTION_NAME", "category": "validation", "retry_policy": "never" },
     "4103": { "name": "INVALID_PARAMS_SCHEMA", "category": "validation", "retry_policy": "never" },
     "4201": { "name": "SECURE_SCREEN_ACTIVE", "category": "nvda_state", "retry_policy": "after_state_change" },
     "4202": { "name": "MODAL_DIALOG_BLOCKING", "category": "nvda_state", "retry_policy": "after_delay", "retry_after_ms": 500 },
     "4203": { "name": "MENU_OPEN_BLOCKING", "category": "nvda_state", "retry_policy": "after_delay", "retry_after_ms": 500 },
+    "4204": { "name": "ACTION_CANCELLED", "category": "runtime", "retry_policy": "never" },
     "5001": { "name": "NVDA_COM_TIMEOUT", "category": "runtime", "retry_policy": "after_delay", "retry_after_ms": 1000 },
     "5003": { "name": "TOOL_EXECUTION_EXCEPTION", "category": "runtime", "retry_policy": "after_delay", "retry_after_ms": 1000 },
+    "5004": { "name": "EXECUTION_TIMEOUT", "category": "runtime", "retry_policy": "never" },
     "5303": { "name": "BRIDGE_INTERNAL_ERROR", "category": "internal", "retry_policy": "after_delay", "retry_after_ms": 1000 }
   },
 
   "http_status_mapping": {
     "rules": [
       { "code": 4001, "http_status": 401 },
+      { "code": 4003, "http_status": 403 },
       { "min": 4100, "max": 4199, "http_status": 400 },
+      { "code": 4204, "http_status": 409 },
       { "min": 4200, "max": 4299, "http_status": 409 },
+      { "code": 5004, "http_status": 504 },
       { "min": 5000, "max": 5999, "http_status": 500 }
     ],
     "default": 500
   },
 
   "category_rules": {
-    "secure_screen_allowed_categories": ["diagnostics", "developer"],
+    "secure_screen_allowed_categories": ["diagnostics"],
     "modal_blocking_blocked_categories": ["focus", "navigation", "ui", "window", "text"],
     "menu_open_blocked_categories": ["focus", "navigation", "ui", "window"]
   },
@@ -91,7 +97,8 @@
         { "name": "requires_explicit_opt_in", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" },
         { "name": "blocked_on_secure_screen", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" },
         { "name": "blocked_on_modal", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" },
-        { "name": "blocked_on_menu", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" }
+        { "name": "blocked_on_menu", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" },
+        { "name": "requires_developer_mode", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" }
       ]
     },
     "BridgeToolDef": {
@@ -103,7 +110,14 @@
         { "name": "output_type", "type": "Option<String>", "serde_rename": "outputType", "serde_default": false, "python_type": "Optional[str]", "python_default": "None", "python_serialize_name": "outputType" },
         { "name": "version", "type": "String", "serde_default": false, "python_type": "str", "python_default": "\"0.0.0\"" },
         { "name": "category", "type": "String", "serde_default": false, "python_type": "str", "python_default": "\"\"" },
-        { "name": "constraints", "type": "Option<BridgeToolConstraints>", "serde_default": true, "python_type": "Optional[Dict[str, Any]]", "python_default": "None" }
+        { "name": "constraints", "type": "Option<BridgeToolConstraints>", "serde_default": true, "python_type": "Optional[Dict[str, Any]]", "python_default": "None" },
+        { "name": "read_only", "type": "Option<bool>", "serde_rename": "readOnly", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None", "python_serialize_name": "readOnly" },
+        { "name": "destructive", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" },
+        { "name": "idempotent", "type": "Option<bool>", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None" },
+        { "name": "side_effects", "type": "Option<bool>", "serde_rename": "sideEffects", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None", "python_serialize_name": "sideEffects" },
+        { "name": "required_permission", "type": "Option<String>", "serde_rename": "requiredPermission", "serde_default": true, "python_type": "Optional[str]", "python_default": "None", "python_serialize_name": "requiredPermission" },
+        { "name": "cancellation_supported", "type": "Option<bool>", "serde_rename": "cancellationSupported", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None", "python_serialize_name": "cancellationSupported" },
+        { "name": "retry_safe", "type": "Option<bool>", "serde_rename": "retrySafe", "serde_default": true, "python_type": "Optional[bool]", "python_default": "None", "python_serialize_name": "retrySafe" }
       ]
     },
     "BridgeToolsResponse": {

@@ -330,6 +330,12 @@
             },
             "sent": {
               "type": "boolean"
+            },
+            "sent_count": {
+              "type": "integer"
+            },
+            "cancelled": {
+              "type": "boolean"
             }
           },
           "required": [
@@ -1005,7 +1011,22 @@
           "code"
         ]
       },
-      "outputType": "PythonExecutionResult"
+      "outputType": "PythonExecutionResult",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": true,
+        "requires_explicit_opt_in": true,
+        "requires_developer_mode": true
+      },
+      "readOnly": false,
+      "destructive": true,
+      "idempotent": false,
+      "sideEffects": true,
+      "requiredPermission": "developer",
+      "cancellationSupported": false,
+      "retrySafe": false
     },
     {
       "name": "get_current_focus",
@@ -1018,7 +1039,22 @@
         "properties": {},
         "additionalProperties": false
       },
-      "outputType": "ObjectInfo"
+      "outputType": "ObjectInfo",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "read_only",
+      "cancellationSupported": false,
+      "retrySafe": true
     },
     {
       "name": "get_desktop_object",
@@ -1031,7 +1067,22 @@
         "properties": {},
         "additionalProperties": false
       },
-      "outputType": "ObjectInfo"
+      "outputType": "ObjectInfo",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "read_only",
+      "cancellationSupported": false,
+      "retrySafe": true
     },
     {
       "name": "get_focus_lineage",
@@ -1048,7 +1099,22 @@
         },
         "additionalProperties": false
       },
-      "outputType": "FocusLineage"
+      "outputType": "FocusLineage",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "diagnostics",
+      "cancellationSupported": false,
+      "retrySafe": true
     },
     {
       "name": "get_logs",
@@ -1085,7 +1151,22 @@
         },
         "additionalProperties": false
       },
-      "outputType": "LogEntries"
+      "outputType": "LogEntries",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "diagnostics",
+      "cancellationSupported": false,
+      "retrySafe": true
     },
     {
       "name": "get_navigator_object",
@@ -1098,7 +1179,22 @@
         "properties": {},
         "additionalProperties": false
       },
-      "outputType": "ObjectInfo"
+      "outputType": "ObjectInfo",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "read_only",
+      "cancellationSupported": false,
+      "retrySafe": true
     },
     {
       "name": "get_window_title",
@@ -1111,7 +1207,22 @@
         "properties": {},
         "additionalProperties": false
       },
-      "outputType": "WindowInfo"
+      "outputType": "WindowInfo",
+      "constraints": {
+        "blocked_on_secure_screen": false,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "read_only",
+      "cancellationSupported": false,
+      "retrySafe": true
     },
     {
       "name": "health_snapshot",
@@ -1148,7 +1259,22 @@
         },
         "additionalProperties": false
       },
-      "outputType": "HealthSnapshot"
+      "outputType": "HealthSnapshot",
+      "constraints": {
+        "blocked_on_secure_screen": false,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "diagnostics",
+      "cancellationSupported": false,
+      "retrySafe": true
     },
     {
       "name": "inspect_app_module",
@@ -1170,7 +1296,22 @@
         },
         "additionalProperties": false
       },
-      "outputType": "AppModuleInfo"
+      "outputType": "AppModuleInfo",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "diagnostics",
+      "cancellationSupported": false,
+      "retrySafe": true
     },
     {
       "name": "inspect_object",
@@ -1195,7 +1336,22 @@
         },
         "additionalProperties": false
       },
-      "outputType": "ObjectInspection"
+      "outputType": "ObjectInspection",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "diagnostics",
+      "cancellationSupported": false,
+      "retrySafe": true
     },
     {
       "name": "list_loaded_addons",
@@ -1217,7 +1373,22 @@
         },
         "additionalProperties": false
       },
-      "outputType": "AddonMetadataList"
+      "outputType": "AddonMetadataList",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "diagnostics",
+      "cancellationSupported": false,
+      "retrySafe": true
     },
     {
       "name": "move_focus",
@@ -1241,7 +1412,22 @@
           "direction"
         ]
       },
-      "outputType": "MoveFocusResult"
+      "outputType": "MoveFocusResult",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": false,
+      "idempotent": false,
+      "sideEffects": true,
+      "requiredPermission": "input_control",
+      "cancellationSupported": false,
+      "retrySafe": false
     },
     {
       "name": "read_current_line",
@@ -1254,7 +1440,22 @@
         "properties": {},
         "additionalProperties": false
       },
-      "outputType": "TextLineInfo"
+      "outputType": "TextLineInfo",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "read_only",
+      "cancellationSupported": false,
+      "retrySafe": true
     },
     {
       "name": "reload_plugins",
@@ -1267,7 +1468,22 @@
         "properties": {},
         "additionalProperties": false
       },
-      "outputType": "ReloadResult"
+      "outputType": "ReloadResult",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": true,
+        "requires_explicit_opt_in": true,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": true,
+      "idempotent": true,
+      "sideEffects": true,
+      "requiredPermission": "nvda_lifecycle",
+      "cancellationSupported": false,
+      "retrySafe": false
     },
     {
       "name": "restart_nvda",
@@ -1287,7 +1503,22 @@
         },
         "additionalProperties": false
       },
-      "outputType": "NvdaRestartResult"
+      "outputType": "NvdaRestartResult",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": true,
+        "requires_explicit_opt_in": true,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": true,
+      "idempotent": false,
+      "sideEffects": true,
+      "requiredPermission": "nvda_lifecycle",
+      "cancellationSupported": false,
+      "retrySafe": false
     },
     {
       "name": "send_keyboard",
@@ -1313,7 +1544,22 @@
           "gesture"
         ]
       },
-      "outputType": "KeyboardActionResult"
+      "outputType": "KeyboardActionResult",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": false,
+      "idempotent": false,
+      "sideEffects": true,
+      "requiredPermission": "input_control",
+      "cancellationSupported": true,
+      "retrySafe": false
     },
     {
       "name": "show_message",
@@ -1333,7 +1579,22 @@
           "message"
         ]
       },
-      "outputType": "MessageResult"
+      "outputType": "MessageResult",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": false,
+      "idempotent": false,
+      "sideEffects": true,
+      "requiredPermission": "speech_output",
+      "cancellationSupported": false,
+      "retrySafe": false
     },
     {
       "name": "speak_text",
@@ -1353,7 +1614,22 @@
           "text"
         ]
       },
-      "outputType": "SpeechResult"
+      "outputType": "SpeechResult",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": false,
+      "idempotent": false,
+      "sideEffects": true,
+      "requiredPermission": "speech_output",
+      "cancellationSupported": false,
+      "retrySafe": false
     },
     {
       "name": "walk_object_tree",
@@ -1381,7 +1657,22 @@
         },
         "additionalProperties": false
       },
-      "outputType": "ObjectTreeSnapshot"
+      "outputType": "ObjectTreeSnapshot",
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "diagnostics",
+      "cancellationSupported": true,
+      "retrySafe": true
     }
   ],
   "count": 19

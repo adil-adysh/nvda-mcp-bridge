@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 
 # ── Protocol constants ──
 
-DEFAULT_BRIDGE_TOKEN = "nvda-bridge-secret-change-me"
+DEFAULT_BRIDGE_TOKEN = ""
 TOKEN_HEADER = "X-NVDA-Bridge-Token"
 BRIDGE_VERSION = "1.0.0"
 PROTOCOL = "nvda-bridge-protocol"
@@ -26,21 +26,24 @@ MAX_REQUEST_ID_LENGTH = 128
 # fmt: off
 ERROR_CODES: Dict[int, Dict[str, Any]] = {
     4001: {"name": "AUTH_FAILURE", "category": "auth", "retry_policy": "never"},
+    4003: {"name": "PERMISSION_DENIED", "category": "auth", "retry_policy": "never"},
     4101: {"name": "INVALID_JSON", "category": "validation", "retry_policy": "never"},
     4102: {"name": "INVALID_ACTION_NAME", "category": "validation", "retry_policy": "never"},
     4103: {"name": "INVALID_PARAMS_SCHEMA", "category": "validation", "retry_policy": "never"},
     4201: {"name": "SECURE_SCREEN_ACTIVE", "category": "nvda_state", "retry_policy": "after_state_change"},
     4202: {"name": "MODAL_DIALOG_BLOCKING", "category": "nvda_state", "retry_policy": "after_delay", "retry_after_ms": 500},
     4203: {"name": "MENU_OPEN_BLOCKING", "category": "nvda_state", "retry_policy": "after_delay", "retry_after_ms": 500},
+    4204: {"name": "ACTION_CANCELLED", "category": "runtime", "retry_policy": "never"},
     5001: {"name": "NVDA_COM_TIMEOUT", "category": "runtime", "retry_policy": "after_delay", "retry_after_ms": 1000},
     5003: {"name": "TOOL_EXECUTION_EXCEPTION", "category": "runtime", "retry_policy": "after_delay", "retry_after_ms": 1000},
+    5004: {"name": "EXECUTION_TIMEOUT", "category": "runtime", "retry_policy": "never"},
     5303: {"name": "BRIDGE_INTERNAL_ERROR", "category": "internal", "retry_policy": "after_delay", "retry_after_ms": 1000},
 }
 # fmt: on
 
 # ── Category rules ──
 
-SECURE_SCREEN_ALLOWED_CATEGORIES = {'diagnostics', 'developer'}
+SECURE_SCREEN_ALLOWED_CATEGORIES = {'diagnostics'}
 MODAL_BLOCKING_BLOCKED_CATEGORIES = {'focus', 'navigation', 'ui', 'window', 'text'}
 MENU_OPEN_BLOCKED_CATEGORIES = {'focus', 'navigation', 'ui', 'window'}
 
@@ -90,6 +93,7 @@ class BridgeToolConstraints:
     blocked_on_secure_screen: Optional[bool] = field(default=None)
     blocked_on_modal: Optional[bool] = field(default=None)
     blocked_on_menu: Optional[bool] = field(default=None)
+    requires_developer_mode: Optional[bool] = field(default=None)
 
 @dataclass
 class BridgeToolDef:
@@ -101,6 +105,13 @@ class BridgeToolDef:
     version: str = field(default="0.0.0")
     category: str = field(default="")
     constraints: Optional[Dict[str, Any]] = field(default=None)
+    read_only: Optional[bool] = field(default=None)
+    destructive: Optional[bool] = field(default=None)
+    idempotent: Optional[bool] = field(default=None)
+    side_effects: Optional[bool] = field(default=None)
+    required_permission: Optional[str] = field(default=None)
+    cancellation_supported: Optional[bool] = field(default=None)
+    retry_safe: Optional[bool] = field(default=None)
 
 @dataclass
 class BridgeToolsResponse:
@@ -120,10 +131,16 @@ def http_status_from_error_code(code: int) -> int:
     # fmt: off
     if code == 4001:
         return 401
+    if code == 4003:
+        return 403
     if 4100 <= code <= 4199:
         return 400
+    if code == 4204:
+        return 409
     if 4200 <= code <= 4299:
         return 409
+    if code == 5004:
+        return 504
     if 5000 <= code <= 5999:
         return 500
     return 500
@@ -192,12 +209,14 @@ def validate_tools_discovery_payload(payload: Dict[str, Any]) -> None:
 
 def build_tools_payload(tools: list[Dict[str, Any]], types: Dict[str, Any]) -> Dict[str, Any]:
     """Build a /tools discovery response payload."""
+    used_types = {tool.get("outputType") for tool in tools if isinstance(tool, dict) and tool.get("outputType")}
+    filtered_types = {k: v for k, v in types.items() if k in used_types}
     return {
         "protocol": PROTOCOL,
         "protocol_version": PROTOCOL_VERSION,
         "bridge_version": BRIDGE_VERSION,
         "api_level": API_LEVEL,
-        "types": types,
+        "types": filtered_types,
         "tools": tools,
         "count": len(tools),
     }

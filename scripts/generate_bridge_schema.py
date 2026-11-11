@@ -67,6 +67,17 @@ def generate_schema(addon_root: Path, package_name: str = PACKAGE_NAME) -> dict[
         if output_type_name is None:
             output_type_name = str(output_schema.model)
 
+        allowed_states = getattr(meta, "allowed_nvda_states", ("normal",))
+        is_developer = getattr(meta, "required_permission", "") == "developer" or meta.name == "execute_python"
+        constraints = {
+            "blocked_on_secure_screen": "secure_desktop" not in allowed_states,
+            "blocked_on_modal": "modal" not in allowed_states,
+            "blocked_on_menu": "menu" not in allowed_states,
+            "dangerous": getattr(meta, "destructive", False) or is_developer,
+            "requires_explicit_opt_in": is_developer or getattr(meta, "required_permission", "") == "nvda_lifecycle",
+            "requires_developer_mode": is_developer,
+        }
+
         tools.append(
             {
                 "name": meta.name,
@@ -75,6 +86,14 @@ def generate_schema(addon_root: Path, package_name: str = PACKAGE_NAME) -> dict[
                 "category": meta.category,
                 "inputSchema": input_schema_json,
                 "outputType": output_type_name,
+                "constraints": constraints,
+                "readOnly": getattr(meta, "read_only", False),
+                "destructive": getattr(meta, "destructive", False),
+                "idempotent": getattr(meta, "idempotent", False),
+                "sideEffects": getattr(meta, "side_effects", False),
+                "requiredPermission": getattr(meta, "required_permission", "read_only"),
+                "cancellationSupported": getattr(meta, "cancellation_supported", False),
+                "retrySafe": getattr(meta, "retry_safe", False),
             }
         )
 

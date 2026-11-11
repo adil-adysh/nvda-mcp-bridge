@@ -115,6 +115,8 @@ pub struct BridgeToolConstraints {
     pub blocked_on_modal: Option<bool>,
     #[serde(default)]
     pub blocked_on_menu: Option<bool>,
+    #[serde(default)]
+    pub requires_developer_mode: Option<bool>,
 }
 
 /// Tool definition from bridge /tools discovery.
@@ -130,6 +132,20 @@ pub struct BridgeToolDef {
     pub category: String,
     #[serde(default)]
     pub constraints: Option<BridgeToolConstraints>,
+    #[serde(rename = "readOnly", default)]
+    pub read_only: Option<bool>,
+    #[serde(default)]
+    pub destructive: Option<bool>,
+    #[serde(default)]
+    pub idempotent: Option<bool>,
+    #[serde(rename = "sideEffects", default)]
+    pub side_effects: Option<bool>,
+    #[serde(rename = "requiredPermission", default)]
+    pub required_permission: Option<String>,
+    #[serde(rename = "cancellationSupported", default)]
+    pub cancellation_supported: Option<bool>,
+    #[serde(rename = "retrySafe", default)]
+    pub retry_safe: Option<bool>,
 }
 
 /// Full response from bridge /tools discovery endpoint.

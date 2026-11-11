@@ -149,8 +149,32 @@
               },
               "requires_explicit_opt_in": {
                 "type": "boolean"
+              },
+              "requires_developer_mode": {
+                "type": "boolean"
               }
             }
+          },
+          "readOnly": {
+            "type": "boolean"
+          },
+          "destructive": {
+            "type": "boolean"
+          },
+          "idempotent": {
+            "type": "boolean"
+          },
+          "sideEffects": {
+            "type": "boolean"
+          },
+          "requiredPermission": {
+            "type": "string"
+          },
+          "cancellationSupported": {
+            "type": "boolean"
+          },
+          "retrySafe": {
+            "type": "boolean"
           }
         }
       }

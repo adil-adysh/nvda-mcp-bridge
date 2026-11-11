@@ -225,12 +225,14 @@ def generate_python(defn: Dict[str, Any]) -> str:
     lines.append("")
     lines.append("def build_tools_payload(tools: list[Dict[str, Any]], types: Dict[str, Any]) -> Dict[str, Any]:")
     lines.append('    """Build a /tools discovery response payload."""')
+    lines.append('    used_types = {tool.get("outputType") for tool in tools if isinstance(tool, dict) and tool.get("outputType")}')
+    lines.append('    filtered_types = {k: v for k, v in types.items() if k in used_types}')
     lines.append("    return {")
     lines.append('        "protocol": PROTOCOL,')
     lines.append('        "protocol_version": PROTOCOL_VERSION,')
     lines.append('        "bridge_version": BRIDGE_VERSION,')
     lines.append('        "api_level": API_LEVEL,')
-    lines.append('        "types": types,')
+    lines.append('        "types": filtered_types,')
     lines.append('        "tools": tools,')
     lines.append('        "count": len(tools),')
     lines.append("    }")
@@ -587,8 +589,16 @@ def generate_tool_discovery_schema(defn: Dict[str, Any]) -> Dict[str, Any]:
                                 "blocked_on_menu": {"type": "boolean"},
                                 "dangerous": {"type": "boolean"},
                                 "requires_explicit_opt_in": {"type": "boolean"},
+                                "requires_developer_mode": {"type": "boolean"},
                             },
                         },
+                        "readOnly": {"type": "boolean"},
+                        "destructive": {"type": "boolean"},
+                        "idempotent": {"type": "boolean"},
+                        "sideEffects": {"type": "boolean"},
+                        "requiredPermission": {"type": "string"},
+                        "cancellationSupported": {"type": "boolean"},
+                        "retrySafe": {"type": "boolean"},
                     },
                 },
             },
