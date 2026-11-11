@@ -14,6 +14,88 @@ import logHandler
 _input_lock = threading.Lock()
 
 
+class KeyboardExecutionError(RuntimeError):
+	"""Base exception for keyboard execution failures with structured execution tracking."""
+
+	def __init__(
+		self,
+		message: str,
+		gesture: str,
+		repeat: int,
+		sent_count: int,
+		cancelled: bool = False,
+		timed_out: bool = False,
+		uncertain: bool = False,
+		original_error: Optional[Exception] = None,
+	):
+		super().__init__(message)
+		self.gesture = gesture
+		self.repeat = repeat
+		self.sent_count = sent_count
+		self.cancelled = cancelled
+		self.timed_out = timed_out
+		self.uncertain = uncertain
+		self.original_error = original_error
+
+	def to_details(self) -> Dict[str, Any]:
+		return {
+			"gesture": self.gesture,
+			"repeat": self.repeat,
+			"sent_count": self.sent_count,
+			"cancelled": self.cancelled,
+			"timed_out": self.timed_out,
+			"uncertain": self.uncertain,
+		}
+
+
+class KeyboardTimeoutError(KeyboardExecutionError, TimeoutError):
+	"""Raised when a keyboard sequence or gesture dispatch times out."""
+
+	def __init__(
+		self,
+		message: str,
+		gesture: str,
+		repeat: int,
+		sent_count: int,
+		uncertain: bool = False,
+		original_error: Optional[Exception] = None,
+	):
+		super().__init__(
+			message=message,
+			gesture=gesture,
+			repeat=repeat,
+			sent_count=sent_count,
+			cancelled=False,
+			timed_out=True,
+			uncertain=uncertain,
+			original_error=original_error,
+		)
+
+
+class KeyboardCancelledError(KeyboardExecutionError):
+	"""Raised when a keyboard sequence is cancelled before completion."""
+
+	def __init__(
+		self,
+		message: str,
+		gesture: str,
+		repeat: int,
+		sent_count: int,
+		uncertain: bool = False,
+		original_error: Optional[Exception] = None,
+	):
+		super().__init__(
+			message=message,
+			gesture=gesture,
+			repeat=repeat,
+			sent_count=sent_count,
+			cancelled=True,
+			timed_out=False,
+			uncertain=uncertain,
+			original_error=original_error,
+		)
+
+
 def resolve_gesture(gesture: str) -> Any:
 	"""Validate and resolve an NVDA keyboard gesture name.
 
@@ -79,7 +161,8 @@ def send_keyboard(
 
 	Raises:
 		ValueError: If input is invalid or gesture cannot be resolved.
-		TimeoutError: If input lock cannot be acquired or sequence deadline is exceeded.
+		KeyboardTimeoutError: If input lock cannot be acquired or sequence deadline is exceeded.
+		KeyboardExecutionError: If dispatch fails on the main thread.
 	"""
 	if not isinstance(gesture, str) or not gesture.strip():
 		raise ValueError("'gesture' must be a non-empty string")
@@ -103,7 +186,13 @@ def send_keyboard(
 	wait_time = max(0.01, deadline - time.monotonic())
 	acquired = _input_lock.acquire(timeout=wait_time)
 	if not acquired:
-		raise TimeoutError("Timeout waiting for keyboard input lock; another operation is active")
+		raise KeyboardTimeoutError(
+			message="Timeout waiting for keyboard input lock; another operation is active",
+			gesture=normalized_gesture,
+			repeat=repeat,
+			sent_count=0,
+			uncertain=False,
+		)
 
 	sent_count = 0
 	was_cancelled = False
@@ -116,31 +205,83 @@ def send_keyboard(
 				break
 
 			# 2. Check sequence deadline
-			if time.monotonic() >= deadline:
-				raise TimeoutError(
-					f"Keyboard sequence timed out after dispatching {sent_count} of {repeat} gestures"
+			remaining = deadline - time.monotonic()
+			if remaining <= 0:
+				raise KeyboardTimeoutError(
+					message=f"Keyboard sequence timed out before dispatching gesture {idx + 1} of {repeat}",
+					gesture=normalized_gesture,
+					repeat=repeat,
+					sent_count=sent_count,
+					uncertain=False,
 				)
 
 			# 3. Dispatch single gesture primitive (does NOT acquire _input_lock)
 			if main_thread_fn is not None:
 				try:
 					main_thread_fn(resolved_gesture)
-				except TypeError:
-					main_thread_fn()
+				except Exception as fn_err:
+					raise KeyboardExecutionError(
+						message=f"Keyboard dispatch failed on gesture {idx + 1} of {repeat}: {fn_err}",
+						gesture=normalized_gesture,
+						repeat=repeat,
+						sent_count=sent_count,
+						uncertain=False,
+						original_error=fn_err,
+					) from fn_err
 			elif threading.current_thread() is threading.main_thread():
-				send_single_gesture(resolved_gesture)
-			else:
-				# Background thread without dispatcher: try queueHandler or direct
 				try:
-					import queueHandler
-					done_evt = threading.Event()
-					queueHandler.queueFunction(
-						queueHandler.eventQueue,
-						lambda: (send_single_gesture(resolved_gesture), done_evt.set()),
-					)
-					done_evt.wait(timeout=max(0.1, deadline - time.monotonic()))
-				except Exception:
 					send_single_gesture(resolved_gesture)
+				except Exception as direct_err:
+					raise KeyboardExecutionError(
+						message=f"Keyboard dispatch failed on gesture {idx + 1} of {repeat}: {direct_err}",
+						gesture=normalized_gesture,
+						repeat=repeat,
+						sent_count=sent_count,
+						uncertain=False,
+						original_error=direct_err,
+					) from direct_err
+			else:
+				# Background thread without custom dispatcher: queue to NVDA event queue
+				import queueHandler
+
+				done_evt = threading.Event()
+				dispatch_exception: Optional[Exception] = None
+
+				def _dispatch_worker():
+					nonlocal dispatch_exception
+					try:
+						send_single_gesture(resolved_gesture)
+					except Exception as cb_err:
+						dispatch_exception = cb_err
+					finally:
+						done_evt.set()
+
+				try:
+					queueHandler.queueFunction(queueHandler.eventQueue, _dispatch_worker)
+				except Exception as q_err:
+					raise RuntimeError(
+						f"Failed to queue keyboard gesture to NVDA main thread: {q_err}"
+					) from q_err
+
+				time_for_gesture = max(0.01, deadline - time.monotonic())
+				if not done_evt.wait(timeout=time_for_gesture):
+					raise KeyboardTimeoutError(
+						message=f"Timed out waiting for main thread execution of gesture {idx + 1} of {repeat}",
+						gesture=normalized_gesture,
+						repeat=repeat,
+						sent_count=sent_count,
+						uncertain=True,
+					)
+
+				if dispatch_exception is not None:
+					raise KeyboardExecutionError(
+						message=f"Main thread exception during gesture {idx + 1} of {repeat}: {dispatch_exception}",
+						gesture=normalized_gesture,
+						repeat=repeat,
+						sent_count=sent_count,
+						uncertain=False,
+						original_error=dispatch_exception,
+					) from dispatch_exception
 
 			sent_count += 1
 
@@ -162,21 +303,14 @@ def send_keyboard(
 						time.sleep(actual_wait)
 
 					if time.monotonic() >= deadline and idx < repeat - 1:
-						raise TimeoutError(
-							f"Keyboard sequence timed out during pacing after dispatching {sent_count} of {repeat} gestures"
+						raise KeyboardTimeoutError(
+							message=f"Keyboard sequence timed out during pacing after dispatching {sent_count} of {repeat} gestures",
+							gesture=normalized_gesture,
+							repeat=repeat,
+							sent_count=sent_count,
+							uncertain=False,
 						)
 
-	except TimeoutError:
-		raise
-	except Exception as e:
-		if sent_count == 0:
-			raise ValueError(f"Failed to send keyboard gesture '{normalized_gesture}': {e}")
-		logHandler.log.error(
-			f"Error during repeated keyboard send after {sent_count} gestures: {e}", exc_info=True
-		)
-		raise RuntimeError(
-			f"Keyboard sequence error after {sent_count} of {repeat} gestures: {e}"
-		) from e
 	finally:
 		_input_lock.release()
 
@@ -187,6 +321,8 @@ def send_keyboard(
 		"sent": sent_count > 0,
 		"sent_count": sent_count,
 		"cancelled": was_cancelled,
+		"completed": not was_cancelled and sent_count == repeat,
+		"uncertain": False,
 	}
 
 

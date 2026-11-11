@@ -589,7 +589,9 @@ class NVDAHTTPBridge:
 		self.port = port
 		self.shutdown_event = shutdown_event or threading.Event()
 		self.permission_policy = permission_policy or PermissionPolicy()
-		self.developer_mode_manager = DeveloperModeManager(initial_enabled=developer_mode)
+		self.developer_mode_manager = DeveloperModeManager(
+			initial_enabled=developer_mode, permission_policy=self.permission_policy
+		)
 		self.bridge_token = bridge_token if bridge_token is not None else get_or_create_bridge_token()
 		self.server: Optional[BoundedThreadingHTTPServer] = None
 		self.main_thread_executor = MainThreadExecutor(default_timeout=10.0)
@@ -860,22 +862,70 @@ class NVDAHTTPBridge:
 				repeat = int(resolved_params.get("repeat", 1))
 				delay_ms = int(resolved_params.get("delay_ms", 0))
 				gesture = str(resolved_params.get("gesture", ""))
+				seq_deadline = time.monotonic() + effective_timeout
 
 				def _dispatch_single_gesture(resolved_gesture: Any):
+					remaining_seq_time = max(0.1, seq_deadline - time.monotonic())
 					return self.main_thread_executor.execute(
 						lambda: nvda_ui.send_single_gesture(resolved_gesture),
-						timeout=effective_timeout,
+						timeout=remaining_seq_time,
 						cancellation_event=cancellation_event,
 					)
 
-				kb_result = nvda_ui.send_keyboard(
-					gesture=gesture,
-					repeat=repeat,
-					delay_ms=delay_ms,
-					cancellation_event=cancellation_event,
-					main_thread_fn=_dispatch_single_gesture,
-					timeout=effective_timeout,
-				)
+				try:
+					kb_result = nvda_ui.send_keyboard(
+						gesture=gesture,
+						repeat=repeat,
+						delay_ms=delay_ms,
+						cancellation_event=cancellation_event,
+						main_thread_fn=_dispatch_single_gesture,
+						timeout=effective_timeout,
+					)
+				except nvda_ui.KeyboardExecutionError as ke:
+					duration_ms = (time.perf_counter() - start_time) * 1000
+					logHandler.log.error(
+						f"bridge.action.keyboard_error action={action_name} duration_ms={duration_ms:.1f} error={str(ke)}",
+						exc_info=True,
+					)
+					err_code = 5004 if ke.timed_out else (4204 if ke.cancelled else 5003)
+					return {
+						"request_id": request_id,
+						"success": False,
+						"action": action_name,
+						"duration_ms": round(duration_ms, 2),
+						"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
+						"nvda_status_snapshot": self.get_nvda_status_snapshot(),
+						"data": ke.to_details(),
+						"error": {
+							"code": err_code,
+							"name": ERROR_CODES[err_code]["name"],
+							"message": str(ke),
+							"category": ERROR_CODES[err_code]["category"],
+							"retry_policy": "never",
+							"details": ke.to_details(),
+						},
+					}
+
+				if kb_result.get("cancelled"):
+					duration_ms = (time.perf_counter() - start_time) * 1000
+					return {
+						"request_id": request_id,
+						"success": False,
+						"action": action_name,
+						"duration_ms": round(duration_ms, 2),
+						"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
+						"nvda_status_snapshot": self.get_nvda_status_snapshot(),
+						"data": kb_result,
+						"error": {
+							"code": 4204,
+							"name": ERROR_CODES[4204]["name"],
+							"message": f"Keyboard sequence cancelled after dispatching {kb_result.get('sent_count', 0)} of {repeat} gestures",
+							"category": ERROR_CODES[4204]["category"],
+							"retry_policy": "never",
+							"details": kb_result,
+						},
+					}
+
 				result = {"success": True, "output": kb_result}
 			else:
 				def _execute_tool():
