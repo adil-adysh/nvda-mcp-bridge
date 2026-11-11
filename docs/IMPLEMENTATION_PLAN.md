@@ -234,8 +234,10 @@ observation cannot change faster than the application emits work.
 
 `ref` is a locator, not a pointer, and **resolving one must not walk the tree.**
 Walking to the focused control in a 15-node page took 130 ms — about 9 ms per
-node, because every `children` call crosses into the browser process. A 300-node
-page would cost seconds per action.
+node, because every `children` call crosses into the browser process. Scaling that
+to a 500-item page did not just get slow: the walk ran past the main-thread
+executor's 10 s budget, returned `504`, and froze NVDA's UI for those seconds. A
+ref resolver that walks is not a slow component, it is an outage.
 
 So:
 
@@ -397,12 +399,15 @@ Pass: `bridge_acceptance.py` green at api level 2 with both levels advertised.
 * **Speech capture is out of scope** for now. If announcements matter, start from
   `UIA_notification.displayString`, which arrives with the event and needs no
   speech interception.
-* **Errors that cannot be acted on.** During probing, two consecutive requests
-  were rejected with `403 Forbidden Host/Origin` and no further detail, then the
-  same request succeeded. The probe could only guess "enable developer mode",
-  which was wrong. A 403 has three distinct causes — bad host/origin, bad token,
-  withheld permission — and an agent cannot recover from a guess, so the response
-  must say which.
+* **Errors that cannot be acted on — corrected.** Probing first suggested that a
+  `403` carried no usable reason. It does: the body is
+  `{"code": 4003, "name": "PERMISSION_DENIED", "message": "Action 'execute_python'
+  requires permission 'developer' which has not been granted"}` — the elevation
+  had simply expired (300 s TTL). The mistake was in the client, which turned
+  every `URLError` into "bridge unreachable" and then guessed. Two lessons worth
+  keeping: clients must surface `error.code` rather than the HTTP status, and
+  `retry_policy: "never"` is the wrong answer for a permission that the user can
+  re-grant — that should say "re-request elevation", not "give up".
 
 ## 7. Evidence index
 
@@ -420,6 +425,7 @@ Every design decision above traces to a measurement. Reproduce with
 | Plain `div` rewritten 40×/s for 3 s | 0 events | content change is not observable; `read` exists for it |
 | `aria-live` region at 2.5/s | 9 `liveRegionChange` in 3 s | keep `liveRegionChange`; it is the only dynamic-content signal |
 | Tree walk to the focused control | 130 ms / 15 nodes (~9 ms/node) | refs are captured, not resolved by scanning |
+| Walk to the 450th of 500 links | exceeded the 10 s executor budget, `504`, NVDA frozen | a walking resolver is an outage, not a slow path |
 | Same DOM node, 12 samples over 1.8 s | 1 Python object | retained-reference resolution will usually hit |
 | `doAction()` on an unfocused button | page reacted, 0.2 ms | `invoke` is viable and does not need focus |
 | Checkbox toggled, cached `states` unchanged | stale | projection must invalidate before reading |
@@ -429,6 +435,9 @@ Every design decision above traces to a measurement. Reproduce with
 
 Still unmeasured, and worth checking before the phases that depend on them:
 
+* **The bounded-walk number and the UIA value path** — both blocked when the 300 s
+  developer elevation expired mid-probe. `scripts/large_tree_probe.py` is written
+  and one re-grant runs it.
 * **Heavy applications** — Word, VS Code, a 1000-node web app. The 130 ms walk
   and 14 ms projection are small-page numbers; both could be an order of
   magnitude worse, which would change the ref cap and the settle budget.
