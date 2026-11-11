@@ -68,6 +68,11 @@ class Reference:
 	state_version: int
 	created: float = field(default_factory=time.monotonic)
 	kind: str = "node"
+	#: Which identity reader to use when resolving this reference again. Recorded
+	#: at capture time because probing a dead object for its type can itself raise:
+	#: a dead UIA element raises from the first attribute access, which would make
+	#: "is this an NVDA object or an element?" fail instead of answering.
+	target_kind: str = "nvda"
 
 	def is_expired(self, ttl_s: float, now: float) -> bool:
 		return ttl_s > 0 and (now - self.created) > ttl_s
@@ -93,6 +98,7 @@ class ReferenceTable:
 		objects: dict[str, Any],
 		state_version: int,
 		identity_of: Callable[[Any], dict[str, Any]],
+		target_kind: str = "nvda",
 	) -> list[str]:
 		"""Capture ``objects`` (ref -> object) and return the captured refs."""
 		registered: list[str] = []
@@ -108,6 +114,7 @@ class ReferenceTable:
 				state_version=state_version,
 				created=self._clock(),
 				kind=_kind_of(ref),
+				target_kind=target_kind,
 			)
 			with self._lock:
 				self._refs[ref] = entry
@@ -174,11 +181,19 @@ def _kind_of(ref: str) -> str:
 def _identity_mismatch(expected: dict[str, Any], current: dict[str, Any]) -> Optional[str]:
 	"""Return a human-readable mismatch, or None when the object still matches.
 
+	Every recorded field except ``name`` is structural and must still read back
+	the same. The comparison is generic rather than a fixed field list because
+	references now point at two kinds of target — NVDA objects (role, window
+	class, control id) and UIA elements (control type, automation id, runtime id)
+	— and each brings its own unambiguous fields.
+
 	``name`` is compared only to *report* a rename; a renamed object is still the
 	same object, and rejecting it would make references unusable on exactly the
 	controls whose label tracks their value.
 	"""
-	for field_name in ("role", "windowClassName", "windowControlID"):
+	for field_name in sorted(set(expected) | set(current)):
+		if field_name == "name":
+			continue
 		before = expected.get(field_name)
 		after = current.get(field_name)
 		if before is None or after is None:

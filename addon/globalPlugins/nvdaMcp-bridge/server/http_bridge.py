@@ -927,21 +927,35 @@ class NVDAHTTPBridge:
 
 	def _resolve_ref(self, ref: str) -> Any:
 		"""Resolve a reference to its captured object. Main thread only."""
-		from ..nvda_bridge import actions
+		from ..nvda_bridge import actions, uia
 
 		if not isinstance(ref, str) or not ref.strip():
 			raise ValueError("'ref' must be a non-empty string")
-		entry = self.refs.get(ref.strip(), identity_of=actions.identity_of)
+		cleaned = ref.strip()
+		# Peek first: the kind recorded at capture time chooses the identity
+		# reader, and reading identity is the step that can report staleness.
+		# Probing the object instead would raise on exactly the dead elements this
+		# check exists to report.
+		entry = self.refs.get(cleaned)
+		reader = uia.identity_of if entry.target_kind == "uia" else actions.identity_of
+		entry = self.refs.get(cleaned, identity_of=reader)
 		return entry.obj
 
 	def _register_ref(self, obj: Any) -> str:
 		"""Capture an arbitrary object under a fresh ref. Main thread only."""
-		from ..nvda_bridge import actions
+		from ..nvda_bridge import actions, uia
 
+		target_kind = "uia" if uia.is_element(obj) else "nvda"
 		with self._ref_lock:
 			self._ref_sequence += 1
 			ref = f"n{self._ref_sequence}"
-		self.refs.register({ref: obj}, self.projector.state_version, actions.identity_of)
+		reader = uia.identity_of if target_kind == "uia" else actions.identity_of
+		self.refs.register(
+			{ref: obj},
+			self.projector.state_version,
+			reader,
+			target_kind=target_kind,
+		)
 		return ref
 
 	def _result_payload(self, context: ExecutionContext) -> Dict[str, Any]:

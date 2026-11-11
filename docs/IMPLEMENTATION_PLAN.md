@@ -1,8 +1,9 @@
 # Implementation plan: from a read-only inspector to an agent that acts
 
-Status: **implemented** (P1-P4). The parameters below were measured rather than
+Status: **implemented** (P1-P5). The parameters below were measured rather than
 assumed, and the pass/fail checks in §5 were run against a live NVDA; see §5.1 for
-what was observed and `scripts/live_acceptance.py` for the harness.
+what was observed and `scripts/live_acceptance.py` / `scripts/locate_acceptance.py`
+for the harnesses.
 Verified against NVDA 2026.3.1 on Windows 11, with Edge/Firefox (Chromium/UIA and
 Gecko/IA2) and Notepad, using the live bridge and `execute_python` inside NVDA's
 process.
@@ -305,6 +306,7 @@ New in this plan:
 | Tool | Signature (essentials) | Settle |
 | --- | --- | --- |
 | `observe` | `(include: ["focus","ancestors","value","selection","dialog"], max_text: 200)` | returns `state_version` |
+| `locate` | `(role?, name?, exact=false, within?, limit=10, max_nodes=400, timeout_ms=500)` — searches with UIA, falls back to a bounded walk | returns refs |
 | `invoke` | `(ref, action: null \| name)` | yes |
 | `set_value` | `(ref, value)` — platform `SetValue` when the object exposes it, keyboard otherwise | yes |
 | `focus` | `(ref)` | yes |
@@ -427,6 +429,30 @@ timeout.
 
 Pass: `bridge_acceptance.py` green at api level 2 with both levels advertised.
 
+### P5 — `locate`: reach beyond the neighbourhood
+
+P1-P4 act reliably on what they can see, and cannot find anything else. A control
+outside the focus, its ancestors, its children and the open dialog can only be
+reached by pressing Tab and hoping — which is why the browser acceptance passed
+only because the page autofocused its button. Searching is also the missing half
+of replay (§8): a recorded step needs a selector that can be resolved again.
+
+* `locate(role?, name?, exact=false, within?, limit, max_nodes, timeout_ms)`.
+* Provider-side search first: `UIAHandler.handler.clientObject` is a full
+  `IUIAutomation6`, so `FindAll(TreeScope_Descendants, condition)` with a
+  `CreatePropertyConditionEx` name filter (case-insensitive substring) answers for
+  the whole window in one call.
+* Bounded breadth-first walk as the fallback for applications without a usable UIA
+  provider, and for roles with no UIA control type.
+* Matches are returned as ordinary `ref`s, so `invoke`/`focus`/`read` work on them
+  unchanged, plus `automationId` (often the most stable replay selector).
+* Settle early-exit: when `expect` is satisfied, stop instead of spending the
+  rest of the budget.
+
+Pass: `locate(role=LINK, name="Two")` over a 200-link page returns a ref in under
+200 ms and `invoke` on it changes the page; a 500-node page does not freeze NVDA;
+no match returns `matches: []` with how much was searched, not an error.
+
 ---
 
 ### 5.1 What the implementation actually does, and what was observed
@@ -440,6 +466,7 @@ reason, because a plan that quietly changes is worse than one that is updated.
 | P2 | `refs.py`, `settle.py`, `nvda_bridge/actions.py`, `win_input.py`, 11 tools, `dialog_control` | `get_navigator_object` is deprecated rather than retired, and `move_focus`/`read_current_line`/`get_current_focus`/`send_keyboard` are kept as deprecated aliases: deleting working diagnostics would throw away the surface that produced this document. Dialog detection is structural (a named window nested in another window), because the dialog itself reports `WINDOW`, not `DIALOG`. |
 | P3 | `wait_for_events`, one bridge event pump + `tokio::sync::broadcast` in the companion, 10 s sink timeout | — |
 | P4 | `api_level: 2` with `supported_api_levels: [1, 2]`, `result` block, `outputSchema`, `schema_hash`, `deprecated`/`supersededBy`, companion catalog refresh | The companion cannot send `tools/list_changed` (its catalog capability is static), so it swaps the catalog under a lock and the next `tools/list` sees it. |
+| P5 | `server/locate.py` (match rules), `nvda_bridge/locate.py` (UIA search + bounded walk), `nvda_bridge/uia.py` (Invoke/Value/Toggle/SelectionItem/ExpandCollapse), `nvda_bridge/targets.py` (one dispatch seam), `locate` tool | A located target is an `IUIAutomationElement`, not an NVDA object: `NVDAObjects.UIA.UIA(UIAElement=…)` rejects a live element with `E_INVALIDARG`, and hit-testing only works while the element is on screen. So references now record their `target_kind` and the action layer routes by it; `navigate` refuses a located target and says so. The default search root is the foreground window, because a top-level dialog (Notepad's Save As) is not an ancestor of the focus. |
 
 Live observations from `scripts/live_acceptance.py` (44/44 checks, 1
 environmental skip) and `scripts/bridge_acceptance.py` (69/70 behavioural,
@@ -457,12 +484,31 @@ environmental skip) and `scripts/bridge_acceptance.py` (69/70 behavioural,
 | Browser button by `ref` | `invoke` → `changed: true`, delta `name: "Run action" → "Run action 1"`; a `liveRegion` transition appeared in Chromium |
 | `click_at` | pointer read back within 2 px of the request; reports the object under the point |
 | Stale `ref` | `4206`, message points the caller at `observe` |
-| Unknown tool surface | 29 tools advertised, strict input schemas, no type leaks |
+| Unknown tool surface | 30 tools advertised, strict input schemas, no type leaks |
+
+`locate`, from `scripts/locate_acceptance.py` (39/39 checks) and the probes in
+`scripts/uia_*.py`:
+
+| Check | Observed |
+| --- | --- |
+| Button found by name on a 200-link page | 15-23 ms, `method: "uia"`, one match, ref returned |
+| Full `FindAll` over an Edge window | 65 ms for 2,346 elements; role-only 49-54 ms; role+name ~12 ms |
+| `invoke` on a located button | page reacts (9.8 ms in the probe) without focus or keystrokes |
+| `invoke` on an off-screen link (`OFFSCREEN`, y = 7740) | succeeds and changes the page |
+| `set_value` on a located field | `ValuePattern.SetValue`, read back through `read` |
+| Broad name-only search | 5 of N candidates, `truncated: true` with the true total |
+| Role with no UIA control type (`TABLECELL`) | `method: "walk"`, bounded to ~325 ms by its budget |
+| Walk cost, NVDA objects | 963 ms for 200 nodes (~4.8 ms/node) vs 65 ms for one UIA call |
+| Top-level dialog (Notepad Save As) | scope `DIALOG 'Save as'`, Cancel found with `automationId: "2"`, `invoke` closes it, `changed: true` |
+| Located ref after its window closes | `4206` |
+| `automationId` on located controls | present (`"2"` for Cancel, `"1"` for Save) — the best replay selector so far |
 
 Still true and worth keeping in view: a settle that observes no change costs
 about 800 ms (two rounds of the 250 ms first-activity wait), which is the price
 of not returning a half-updated answer; and the first `press` after a restart is
-slower than later ones while NVDA warms its caches.
+slower than later ones while NVDA warms its caches. A located reference is not an
+NVDA object, so `navigate` and the tree half of `observe` cannot be used on it —
+re-`locate` or `observe` instead.
 
 ---
 
@@ -497,8 +543,9 @@ slower than later ones while NVDA warms its caches.
 ## 7. Evidence index
 
 Every design decision above traces to a measurement. Reproduce with
-`scripts/browser_event_probe.py` (events, settle) and
-`scripts/action_surface_probe.py` (actions, refs, projection).
+`scripts/browser_event_probe.py` (events, settle), `scripts/action_surface_probe.py`
+(actions, refs, projection), `scripts/uia_locator_probe.py` (what the UIA surface
+offers) and `scripts/uia_action_probe.py` (searching and acting through it).
 
 | Measurement | Value | Decision it drives |
 | --- | --- | --- |
@@ -517,17 +564,20 @@ Every design decision above traces to a measurement. Reproduce with
 | Projection, cached vs invalidated | 0.01 ms vs 13.9 ms median | projection on demand, 2–3 per settle |
 | `value` setter / IA2 editable text / UIA element | absent / absent / absent | `set_value` is keyboard-backed on the web |
 | `isAlive`, `isDefunct`, `isCurrent` | missing, missing, `False` on a valid object | validate refs by identity re-read, not a flag |
+| `FindAll(Descendants, TrueCondition)`, Edge window | 65 ms, 2,346 elements | search belongs to the provider, not the client |
+| `FindAll` with control type + substring name | ~12 ms, exact match | `locate` can search on every call |
+| Same subtree through NVDA `children` | 963 ms / 200 nodes (~4.8 ms/node) | a client-side search is an order of magnitude worse |
+| `NVDAObjects.UIA.UIA(UIAElement=live element)` | `E_INVALIDARG` | located refs stay elements and need their own action layer |
+| UIA hit-test at a match's centre | 3-5 ms, `None` when off screen | hit-testing cannot be the bridge; UIA patterns act on the element |
 
-Still unmeasured, and worth checking before the phases that depend on them:
+Still unmeasured, and worth checking before relying on them:
 
-* **The bounded-walk number and the UIA value path** — both blocked when the 300 s
-  developer elevation expired mid-probe. `scripts/large_tree_probe.py` is written
-  and one re-grant runs it.
 * **Heavy applications** — Word, VS Code, a 1000-node web app. The 130 ms walk
   and 14 ms projection are small-page numbers; both could be an order of
   magnitude worse, which would change the ref cap and the settle budget.
-* **UIA-only applications**, where `ValuePattern` and UIA text patterns exist and
-  `set_value` may be a real assignment rather than a keystroke impersonation.
+* **Applications with no UIA provider** (some Java/Electron combinations, VDI
+  sessions), where `locate` can only take the bounded walk and a long page will
+  truncate at its budget.
 * **Long sessions** — whether repeated invalidation leaks or slows down; the
   probe ran for seconds, not hours.
 * **Non-Chromium browsers** (Firefox/Gecko) and **terminal emulators**, which

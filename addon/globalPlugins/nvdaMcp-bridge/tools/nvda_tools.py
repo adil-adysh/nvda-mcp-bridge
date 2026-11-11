@@ -454,6 +454,40 @@ ALL_NVDA_TOOLS = [
     ),
     TypedToolImpl.from_coordinator(
         ToolMetadata(
+            name="locate",
+            version="1.0.0",
+            description=(
+                "Find controls by role and/or name anywhere in the current window (or under a "
+                "ref), and return a ref for each match. Searches with the application's own UIA "
+                "provider when it can, otherwise with a bounded walk; 'method' says which "
+                "answered. Use it to reach a control that is not the focus or next to it."
+            ),
+            category="observation",
+            read_only=True,
+            destructive=False,
+            idempotent=True,
+            side_effects=False,
+            required_permission="read_only",
+            allowed_nvda_states=("normal", "modal", "menu"),
+            expected_duration_ms=80,
+            retry_safe=True,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.LocateInput,
+        models.LocateResult,
+        lambda input_obj, context: tool_handlers.locate(
+            role=input_obj.role,
+            name=input_obj.name,
+            exact=input_obj.exact,
+            within=input_obj.within,
+            limit=input_obj.limit,
+            max_nodes=input_obj.max_nodes,
+            timeout_ms=input_obj.timeout_ms,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
             name="invoke",
             version="1.0.0",
             description=(

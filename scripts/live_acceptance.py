@@ -288,6 +288,19 @@ def activate(bridge: Bridge, fragment: str, attempts: int = 14) -> bool:
     if fragment in window_title(bridge).lower():
         return True
 
+    # Raising the window with the topmost toggle is what works when
+    # SetForegroundWindow is refused: it changes the Z order. Prefer the task
+    # switcher after that, because a click at the centre can land on a menu or a
+    # link — a click is the last resort, not the first.
+    if force_foreground(fragment):
+        if wait_for(lambda: fragment in window_title(bridge).lower(), timeout_s=1.5, interval_s=0.15):
+            return True
+
+    for _ in range(attempts):
+        bridge.call("press", {"keys": "alt+tab"})
+        if wait_for(lambda: fragment in window_title(bridge).lower(), timeout_s=1.2, interval_s=0.15):
+            return True
+
     # Prefer a click when the window already exists: it is deterministic, while
     # the task switcher walks a multi-window MRU list. A window that refuses to
     # come forward still accepts a click, and a click is the tool surface's own
@@ -303,10 +316,6 @@ def activate(bridge: Bridge, fragment: str, attempts: int = 14) -> bool:
         if wait_for(lambda: fragment in window_title(bridge).lower(), timeout_s=2.0, interval_s=0.15):
             return True
 
-    for _ in range(attempts):
-        bridge.call("press", {"keys": "alt+tab"})
-        if wait_for(lambda: fragment in window_title(bridge).lower(), timeout_s=1.2, interval_s=0.15):
-            return True
     return False
 
 
@@ -407,9 +416,14 @@ def prepare_notepad(bridge: Bridge, report: Report) -> bool:
         report.skip("Notepad can be focused", window_title(bridge) or "no window")
         return False
     report.check("Notepad can be focused", True, window_title(bridge))
+    # A click can leave a ribbon menu open; Escape closes it, and only then does
+    # Tab reach the editor.
+    for _ in range(2):
+        bridge.call("press", {"keys": "escape"})
+        time.sleep(0.2)
     # Activating by click can land on the tab strip; Tab reaches the editor in
     # Notepad, and the check below is what decides whether it worked.
-    for _ in range(3):
+    for _ in range(4):
         observed = data(bridge.call("observe"))
         role = (observed.get("focus") or {}).get("role")
         if role in ("DOCUMENT", "EDITABLETEXT"):
@@ -539,10 +553,10 @@ def open_page(path: Path, page_title: str) -> str:
         if not Path(executable).is_file():
             continue
         subprocess.Popen([executable, flag, url])  # noqa: S603
-        if wait_for(lambda: bool(_windows_matching(page_title)), timeout_s=20, interval_s=0.3):
+        if wait_for(lambda: bool(_windows_matching(page_title)), timeout_s=45, interval_s=0.3):
             return Path(executable).name
     os.startfile(str(path))  # noqa: S606
-    wait_for(lambda: bool(_windows_matching(page_title)), timeout_s=20, interval_s=0.3)
+    wait_for(lambda: bool(_windows_matching(page_title)), timeout_s=45, interval_s=0.3)
     return "default-browser"
 
 
@@ -550,13 +564,23 @@ def check_browser(bridge: Bridge, report: Report, page_path: Path, page_title: s
     report.section("browser automation (P2)")
     browser = open_page(page_path, page_title)
     report.note("browser launched", browser)
-    activated = activate(bridge, page_title, attempts=12)
+    activated = activate(bridge, page_title, attempts=30)
     report.check("the acceptance page opens", bool(activated), window_title(bridge))
     if not activated:
         return
 
     observed = data(bridge.call("observe"))
     focus = observed.get("focus") or {}
+    # The page autofocuses its button, but a browser that opened in the
+    # background does not apply that until it is interacted with. Reach the
+    # button the way a keyboard user would, then assert on where focus is.
+    for _ in range(6):
+        if focus.get("role") == "BUTTON":
+            break
+        bridge.call("press", {"keys": "tab"})
+        time.sleep(0.15)
+        observed = data(bridge.call("observe"))
+        focus = observed.get("focus") or {}
     report.check("the page's button has focus", focus.get("role") == "BUTTON", str(focus.get("role")))
     report.check("the button is named", "Run action" in str(focus.get("name")), str(focus.get("name")))
 

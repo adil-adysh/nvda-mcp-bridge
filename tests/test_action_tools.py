@@ -109,6 +109,24 @@ _fake_bridge.ui = types.SimpleNamespace(
 	resolve_gesture=lambda gesture: gesture,
 )
 
+
+class _FakeTargets:
+	"""The dispatch seam between a ref and the primitive that acts on it.
+
+	A handler does not know whether a reference points at an NVDA object or a
+	located UIA element; this stands in for the module that does.
+	"""
+
+	invoke = staticmethod(_FakeActions.do_action)
+	set_focus = staticmethod(_FakeActions.set_focus)
+	set_value = staticmethod(_FakeActions.set_value)
+	read_text = staticmethod(_FakeActions.read_text)
+	navigate = staticmethod(_FakeActions.navigate)
+	scroll = staticmethod(_FakeActions.scroll)
+
+
+_fake_bridge.targets = _FakeTargets
+
 _BRIDGE_KEY = f"{_PACKAGE_NAME}.nvda_bridge"
 _original_bridge = sys.modules.get(_BRIDGE_KEY)
 

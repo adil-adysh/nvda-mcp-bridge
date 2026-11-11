@@ -1,6 +1,6 @@
 """Dataclass models for all NVDA MCP Bridge tools.
 
-Strict input/output schemas for all 19 tools.
+Strict input/output schemas for every bridge tool.
 No implicit coercion, all fields explicit.
 Zero-dependency models using stdlib dataclasses.
 """
@@ -235,6 +235,25 @@ class WaitForEventsInput:
 	since: int = 0
 	timeout_ms: int = 1000
 	kinds: Optional[list[str]] = None
+
+
+@dataclass(frozen=True)
+class LocateInput:
+	"""Search for controls by role and name.
+
+	``within`` narrows the search to a referenced subtree; without it the search
+	runs over the containing dialog when one is open, otherwise the application
+	window. ``max_nodes`` and ``timeout_ms`` bound the fallback walk, which is the
+	only path that can be slow.
+	"""
+
+	role: Optional[str] = None
+	name: Optional[str] = None
+	exact: bool = False
+	within: Optional[str] = None
+	limit: int = 10
+	max_nodes: int = 400
+	timeout_ms: int = 500
 
 
 # ============================================================================
@@ -586,3 +605,57 @@ class WaitEventsResult:
 	events: list[dict[str, Any]] = field(default_factory=list)
 	truncated: bool = False
 	timed_out: bool = False
+
+
+# ============================================================================
+# LOCATE OUTPUT MODELS (implementation plan P5)
+# ============================================================================
+
+
+@dataclass(frozen=True)
+class LocateMatch:
+	"""One control found by ``locate``.
+
+	``target`` says what kind of handle ``ref`` is:
+
+	* ``uia`` — an ``IUIAutomationElement``; invoke/focus/read use UIA patterns
+	  and need no keyboard. ``automationId`` is often the most stable selector a
+	  replay could use.
+	* ``nvda`` — an NVDA object from the bounded walk; identical to an
+	  observation reference, so every action works as usual.
+
+	``location`` is ``[left, top, width, height]`` in screen pixels, the same
+	shape an observed node uses; its centre is a legal ``click_at`` point.
+	"""
+
+	ref: str
+	role: str
+	name: str = ""
+	value: str = ""
+	states: list[str] = field(default_factory=list)
+	location: list[int] = field(default_factory=list)
+	automationId: str = ""
+	depth: int = -1
+	path: list[str] = field(default_factory=list)
+	target: str = "uia"
+
+
+@dataclass(frozen=True)
+class LocateResult:
+	"""The outcome of one search.
+
+	``method`` is ``uia`` (provider-side), ``uia-window`` (the ref had no UIA
+	representation of its own, so the search ran over its containing window —
+	wider than asked), or ``walk`` (bounded breadth-first through NVDA objects).
+
+	``searched`` counts what the backend examined: candidates returned by UIA, or
+	nodes visited by the walk. An empty ``matches`` list is a normal answer and
+	means the search completed; ``truncated`` is what says it stopped early.
+	"""
+
+	matches: list[LocateMatch] = field(default_factory=list)
+	method: str = "uia"
+	searched: int = 0
+	truncated: bool = False
+	elapsed_ms: float = 0.0
+	scope: str = ""

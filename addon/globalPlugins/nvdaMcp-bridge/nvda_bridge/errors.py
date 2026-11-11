@@ -28,3 +28,14 @@ class DomainUnavailableError(RuntimeError):
 	def to_details(self) -> dict[str, Any]:
 		"""Structured detail for the wire error."""
 		return dict(self.details)
+
+
+class ElementUnavailableError(DomainUnavailableError):
+	"""A located UIA element no longer exists.
+
+	Reported as a stale reference (4206) rather than as a domain failure: the
+	caller's next move is to locate again, exactly as for an expired ref, and the
+	element's disappearance is not a bridge fault.
+	"""
+
+	protocol_code: int = 4206

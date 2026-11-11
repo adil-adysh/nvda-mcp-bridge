@@ -885,6 +885,109 @@
       ],
       "additionalProperties": false
     },
+    "LocateResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "matches": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "ref": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  },
+                  "states": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "location": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  },
+                  "automationId": {
+                    "type": "string"
+                  },
+                  "depth": {
+                    "type": "integer"
+                  },
+                  "path": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "target": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "ref",
+                  "role"
+                ]
+              }
+            },
+            "method": {
+              "type": "string"
+            },
+            "searched": {
+              "type": "integer"
+            },
+            "truncated": {
+              "type": "boolean"
+            },
+            "elapsed_ms": {
+              "type": "number"
+            },
+            "scope": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
     "MoveFocusResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
@@ -2988,6 +3091,153 @@
       "supersededBy": null
     },
     {
+      "name": "locate",
+      "version": "1.0.0",
+      "description": "Find controls by role and/or name anywhere in the current window (or under a ref), and return a ref for each match. Searches with the application's own UIA provider when it can, otherwise with a bounded walk; 'method' says which answered. Use it to reach a control that is not the focus or next to it.",
+      "category": "observation",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "exact": {
+            "type": "boolean"
+          },
+          "within": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "max_nodes": {
+            "type": "integer"
+          },
+          "timeout_ms": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "LocateResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "matches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "states": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "location": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "automationId": {
+                  "type": "string"
+                },
+                "depth": {
+                  "type": "integer"
+                },
+                "path": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "target": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "ref",
+                "role"
+              ]
+            }
+          },
+          "method": {
+            "type": "string"
+          },
+          "searched": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "elapsed_ms": {
+            "type": "number"
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "read_only",
+      "cancellationSupported": false,
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
       "name": "move_focus",
       "version": "1.0.0",
       "description": "Deprecated: use navigate. Move focus to next or previous object.",
@@ -4106,5 +4356,5 @@
       "supersededBy": null
     }
   ],
-  "count": 30
+  "count": 31
 }

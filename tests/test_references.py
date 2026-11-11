@@ -152,6 +152,14 @@ class ReferenceTableTests(unittest.TestCase):
 		self.assertEqual(refs._kind_of("d1"), "dialog")
 		self.assertEqual(refs._kind_of("n9"), "node")
 
+	def test_the_target_kind_is_recorded_when_the_reference_is_captured(self):
+		element = FakeObject()
+		self.table.register({"n1": element}, state_version=1, identity_of=identity_of, target_kind="uia")
+		self.assertEqual(self.table.get("n1").target_kind, "uia")
+		# The default is an NVDA object, which is what observe hands out.
+		self.table.register({"f": FakeObject()}, state_version=1, identity_of=identity_of)
+		self.assertEqual(self.table.get("f").target_kind, "nvda")
+
 
 if __name__ == "__main__":
 	unittest.main()

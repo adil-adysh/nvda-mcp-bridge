@@ -197,14 +197,63 @@ def observe(include: list[str], max_text: int, context: Any) -> dict[str, Any]:
 	return _dispatch(context, lambda: context.observe(include, max_text))
 
 
+def locate(
+	role: str | None,
+	name: str | None,
+	exact: bool,
+	within: str | None,
+	limit: int,
+	max_nodes: int,
+	timeout_ms: int,
+	context: Any,
+) -> dict[str, Any]:
+	"""Find controls by role and name; hand back references to each match.
+
+	One main-thread hop does the whole thing — resolve ``within``, search, and
+	register the matches — because the search already runs there and a second
+	round trip would let the screen change between finding and registering.
+
+	Bounds are enforced here rather than in the schema: the walk is the only
+	backend that can overrun, and the caller needs a sentence explaining which
+	value was wrong, not a generic schema violation.
+	"""
+	if not role and not name:
+		raise ValueError("'locate' needs at least one of 'role' or 'name'")
+	if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 50:
+		raise ValueError("'limit' must be an integer between 1 and 50")
+	if not isinstance(max_nodes, int) or isinstance(max_nodes, bool) or not 1 <= max_nodes <= 2000:
+		raise ValueError("'max_nodes' must be an integer between 1 and 2000")
+	if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool) or not 50 <= timeout_ms <= 3000:
+		raise ValueError("'timeout_ms' must be an integer between 50 and 3000")
+
+	def perform() -> dict[str, Any]:
+		from ..nvda_bridge import locate as search
+
+		root = context.resolve(within) if within else None
+		payload, objects = search.find(
+			role=role,
+			name=name,
+			exact=exact,
+			within=root,
+			limit=limit,
+			max_nodes=max_nodes,
+			timeout_ms=timeout_ms,
+		)
+		for record, obj in zip(payload["matches"], objects):
+			record["ref"] = context.register(obj)
+		return payload
+
+	return _dispatch(context, perform)
+
+
 def invoke(ref: str, action: str | None, expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
-	from ..nvda_bridge import actions
+	from ..nvda_bridge import targets
 
 	captured: dict[str, Any] = {}
 
 	def perform() -> dict[str, Any]:
 		def act() -> dict[str, Any]:
-			return actions.do_action(context.resolve(ref), action)
+			return targets.invoke(context.resolve(ref), action)
 
 		captured.update(context.dispatch(act))
 		return captured
@@ -220,13 +269,13 @@ def invoke(ref: str, action: str | None, expect: dict[str, Any] | None, context:
 
 
 def set_value(ref: str, value: str, expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
-	from ..nvda_bridge import actions
+	from ..nvda_bridge import targets
 
 	captured: dict[str, Any] = {}
 
 	def perform() -> dict[str, Any]:
 		def act() -> dict[str, Any]:
-			return actions.set_value(context.resolve(ref), value)
+			return targets.set_value(context.resolve(ref), value)
 
 		captured.update(context.dispatch(act))
 		return captured
@@ -241,10 +290,10 @@ def set_value(ref: str, value: str, expect: dict[str, Any] | None, context: Any)
 
 
 def focus_object(ref: str, expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
-	from ..nvda_bridge import actions
+	from ..nvda_bridge import targets
 
 	def perform() -> dict[str, Any]:
-		return context.dispatch(lambda: actions.set_focus(context.resolve(ref)))
+		return context.dispatch(lambda: targets.set_focus(context.resolve(ref)))
 
 	context.settle(perform, expect=expect)
 	return {"ref": ref, "requested": True}
@@ -300,7 +349,7 @@ def read(
 	max_chars: int,
 	context: Any,
 ) -> dict[str, Any]:
-	from ..nvda_bridge import actions
+	from ..nvda_bridge import targets
 
 	def perform() -> dict[str, Any]:
 		import api
@@ -308,7 +357,7 @@ def read(
 		obj = context.resolve(ref) if ref else api.getFocusObject()
 		if obj is None:
 			raise RuntimeError("No focused object to read from")
-		return actions.read_text(obj, scope=scope, max_chars=max_chars)
+		return targets.read_text(obj, scope=scope, max_chars=max_chars)
 
 	result = _dispatch(context, perform)
 	return {"ref": ref, **result}
@@ -320,7 +369,7 @@ def navigate(
 	expect: dict[str, Any] | None,
 	context: Any,
 ) -> dict[str, Any]:
-	from ..nvda_bridge import actions
+	from ..nvda_bridge import targets
 
 	captured: dict[str, Any] = {}
 
@@ -331,7 +380,7 @@ def navigate(
 			obj = context.resolve(ref) if ref else api.getFocusObject()
 			if obj is None:
 				raise RuntimeError("No focused object to navigate from")
-			target, focused = actions.navigate(obj, direction)
+			target, focused = targets.navigate(obj, direction)
 			captured["focused"] = focused
 			captured["ref"] = context.register(target)
 			return captured
@@ -353,7 +402,7 @@ def scroll(
 	expect: dict[str, Any] | None,
 	context: Any,
 ) -> dict[str, Any]:
-	from ..nvda_bridge import actions
+	from ..nvda_bridge import targets
 
 	captured: dict[str, Any] = {}
 
@@ -364,7 +413,7 @@ def scroll(
 			obj = context.resolve(ref) if ref else api.getFocusObject()
 			if obj is None:
 				raise RuntimeError("No focused object to scroll")
-			return actions.scroll(obj, direction, amount)
+			return targets.scroll(obj, direction, amount)
 
 		captured.update(context.dispatch(act))
 		return captured
