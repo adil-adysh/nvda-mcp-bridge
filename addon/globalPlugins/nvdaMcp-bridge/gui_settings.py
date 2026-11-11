@@ -419,7 +419,7 @@ if _GUI_AVAILABLE and wx:
 
 			summary = "\n".join(messages)
 			title = f"NVDA MCP Bridge — Configured {configured_count} Client(s)"
-			gui.messageBox(summary, title, wx.ICON_INFORMATION, parent=parent if parent else self)
+			gui.messageBox(summary, title, wx.ICON_INFORMATION, parent=self)
 
 			try:
 				import ui
@@ -509,11 +509,35 @@ if _GUI_AVAILABLE:
 			return None
 
 		def onPanelActivated(self):
-			"""Called by NVDA when this panel category is selected in the Settings dialog."""
+			"""Called by NVDA when this panel category is selected in the Settings dialog.
+
+			NVDA's SettingsPanel.onPanelActivated() is responsible for showing the
+			panel (it calls self.Show()). MultiCategorySettingsDialog hides every
+			panel and only invokes onPanelActivated() for the newly selected
+			category, so failing to delegate to the base implementation leaves
+			this panel hidden and the category page renders blank.
+			"""
+			baseActivated = getattr(super(), "onPanelActivated", None)
+			if callable(baseActivated):
+				baseActivated()
+			else:
+				# Older NVDA releases have no base implementation to delegate to.
+				self.Show()
 			self._refresh_status()
+
+		def onPanelDeactivated(self):
+			"""Called by NVDA when another settings category replaces this one."""
+			baseDeactivated = getattr(super(), "onPanelDeactivated", None)
+			if callable(baseDeactivated):
+				baseDeactivated()
+			else:
+				self.Hide()
 
 		def onDiscard(self):
 			"""Called by NVDA when user cancels the settings dialog."""
+			baseDiscard = getattr(super(), "onDiscard", None)
+			if callable(baseDiscard):
+				baseDiscard()
 			policy = getattr(self._bridge, "permission_policy", None)
 			if policy:
 				if hasattr(self, "inputControlCheckbox"):
@@ -630,6 +654,12 @@ if _GUI_AVAILABLE:
 			if hasattr(self, "statusLabel") and self.statusLabel:
 				self.statusLabel.SetLabel(get_bridge_status_summary(self._bridge))
 				self.Layout()
+				# The status text changes length at runtime (permission list,
+				# developer-mode countdown). Let the scrolled container recompute
+				# its layout and scrollbars so the label is never clipped.
+				sendLayoutUpdated = getattr(self, "_sendLayoutUpdatedEvent", None)
+				if callable(sendLayoutUpdated):
+					sendLayoutUpdated()
 
 		def onSave(self):
 			policy = getattr(self._bridge, "permission_policy", None)
