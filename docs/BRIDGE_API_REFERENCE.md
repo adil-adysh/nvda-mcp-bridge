@@ -223,3 +223,7 @@ Additive only. A client that asks for api level 1 sees the v1 payloads above.
   `tools.listChanged` and sends `notifications/tools/list_changed` when the
   bridge's `schema_hash` changes, so a connected client re-lists instead of
   keeping the tool set it saw at connect time.
+* **Errors survive the companion.** A 4xx with a complete error envelope is
+  passed through as a tool error carrying the bridge's code, name, category,
+  retry policy and details, rather than being flattened into "bridge
+  unreachable"; only a real transport failure is reported as one.

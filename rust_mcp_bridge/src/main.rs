@@ -385,6 +385,18 @@ impl BridgeClient {
         }
 
         if status.as_u16() >= 400 {
+            // The bridge reports domain failures (a stale reference, a window that
+            // does not exist, a dialog in the way) as 4xx with a complete error
+            // envelope. That is an answer, not a transport failure: passing it
+            // through gives the caller the code, the retry policy and the details
+            // instead of "bridge unreachable", which invites pointless retries.
+            if status.as_u16() != 401 {
+                if let Ok(parsed) = serde_json::from_str::<Value>(&body_text) {
+                    if parsed.get("success").and_then(Value::as_bool) == Some(false) {
+                        return Self::parse_action_payload(parsed);
+                    }
+                }
+            }
             bail!(
                 "Bridge returned {} for action '{}': {}",
                 status.as_u16(),
