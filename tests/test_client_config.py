@@ -403,7 +403,7 @@ class TestCliAgentClients(unittest.TestCase):
             userprofile_override=self.userprofile,
         )
         self.assertTrue(ok, msg)
-        self.assertEqual(preview.name, "Codex CLI")
+        self.assertEqual(preview.name, "Codex (app and CLI)")
         text = format_preview_text(preview)
         self.assertIn("[mcp_servers.nvda]", text)
         self.assertIn(f"command = '{self.resolved_exe}'", text)

@@ -218,13 +218,14 @@ class ClaudeCodeAdapter(StandardMcpAdapter):
 
 
 class CodexAdapter(BaseClientAdapter):
-	"""Codex CLI configuration (``~/.codex/config.toml``).
+	"""Codex configuration (``~/.codex/config.toml``).
 
+	The desktop app and the CLI share this one file, so an entry here serves both
+	(the app ships its own, newer `codex.exe` but reads the same `CODEX_HOME`).
 	Codex defines servers as TOML tables::
 
 		[mcp_servers.nvda]
 		command = 'C:\\Users\\you\\nvda-mcp-server.exe'
-		args = []
 
 	That file also carries the user's model, project trust, plugin and shell
 	settings, and the standard library has no TOML writer. So this adapter edits
@@ -239,7 +240,7 @@ class CodexAdapter(BaseClientAdapter):
 	_TABLE = "mcp_servers.nvda"
 
 	def __init__(self):
-		super().__init__("codex", "Codex CLI", "mcp_servers")
+		super().__init__("codex", "Codex (app and CLI)", "mcp_servers")
 
 	def load(self, text: str) -> Dict[str, Any]:
 		if tomllib is None:
@@ -416,10 +417,10 @@ def get_default_client_candidates(
 			userprofile / ".claude.json",
 		))
 
-		# Codex CLI configuration is TOML, next to its sessions and plugins
+		# Codex: the desktop app and the CLI share this file, so one entry serves both
 		candidates.append((
 			"codex",
-			"Codex CLI",
+			"Codex (app and CLI)",
 			userprofile / ".codex" / "config.toml",
 			userprofile / ".codex",
 		))

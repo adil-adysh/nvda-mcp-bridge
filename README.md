@@ -46,7 +46,7 @@ A thread-safe NVDA add-on that exposes NVDA internals as an MCP-compatible inter
 ### 3. Configure Your MCP Client Automatically
 
 1. Open **NVDA Menu (`NVDA+N`) → Tools → NVDA MCP Bridge → Configure MCP Clients...**.
-2. The configurator automatically detects supported clients (Visual Studio Code, Claude Desktop, Claude Code, Codex CLI, Cursor, Antigravity) and safely merges the `nvda` server entry.
+2. The configurator automatically detects supported clients (Visual Studio Code, Claude Desktop, Claude Code, Codex, Cursor, Antigravity) and safely merges the `nvda` server entry.
 3. Existing settings and other MCP servers are completely preserved, and a timestamped backup (`.bak.<timestamp>`) is created before modifying any configuration.
 4. `python scripts/client_config_acceptance.py` checks the result against the clients themselves: it has each vendor's own command write an entry into a throwaway home directory and compares that with ours, then asks Claude Code to connect through the real file.
 
@@ -116,9 +116,9 @@ It records the server in the user-scope `mcpServers` object of `%USERPROFILE%\.c
 }
 ```
 
-#### Codex CLI
+#### Codex (desktop app and CLI)
 
-The equivalent one-liner is:
+The app and the CLI read the same `%USERPROFILE%\.codex\config.toml`, so one entry serves both. The equivalent one-liner is:
 
 ```powershell
 codex mcp add nvda -- "%LOCALAPPDATA%\Programs\NVDA MCP Bridge\bin\nvda-mcp-server.exe"
@@ -130,6 +130,8 @@ which adds this table to `%USERPROFILE%\.codex\config.toml`. Codex keeps its mod
 [mcp_servers.nvda]
 command = 'the full path to nvda-mcp-server.exe'
 ```
+
+Restart the Codex app if it is running; it reads its configuration when it starts.
 
 > **Note on Authentication:** You do **not** need to copy or paste authentication tokens into client configurations. The companion binary automatically discovers the bridge credential generated in `%APPDATA%\nvda\nvda-mcp-bridge\token.key` using Windows user security controls.
 

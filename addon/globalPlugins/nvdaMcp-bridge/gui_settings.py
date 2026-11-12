@@ -310,7 +310,8 @@ if _GUI_AVAILABLE and wx:
 				self,
 				label=(
 					"Select the MCP clients you want to configure to use the NVDA MCP Companion.\n"
-					"Existing settings and other MCP servers will be preserved. Backups are created automatically."
+					"Existing settings and other MCP servers will be preserved. Backups are created automatically.\n"
+					"A client that is already running must be restarted before it sees the new server."
 				),
 			)
 			main_sizer.Add(instructions, 0, wx.ALL | wx.EXPAND, 10)
@@ -471,7 +472,7 @@ def configure_clients_interactive(parent: Any = None) -> Tuple[bool, str]:
 	detected = [c for c in clients if c.detected]
 
 	if not detected:
-		msg = "No supported MCP clients (VS Code, Claude Desktop, Claude Code, Codex CLI, Cursor, Antigravity) were detected."
+		msg = "No supported MCP clients (VS Code, Claude Desktop, Claude Code, Codex, Cursor, Antigravity) were detected."
 		if _GUI_AVAILABLE and wx and gui:
 			gui.messageBox(msg, "NVDA MCP Bridge", wx.ICON_INFORMATION, parent=parent)
 		return False, msg
