@@ -68,7 +68,7 @@ jobs:
 
       - name: Set security analysis status
         id: setSecurityAnalysisStatus
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const setSecurityAnalysisStatus = require('./.github/workflows/securityAnalysis.js')
@@ -145,7 +145,7 @@ jobs:
 
       - name: Set security analysis status
         id: setSecurityAnalysisStatus
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const setSecurityAnalysisStatus = require('./.github/workflows/securityAnalysis.js')
