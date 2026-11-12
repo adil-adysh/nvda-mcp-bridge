@@ -173,8 +173,9 @@ Error envelope:
 
 ## Action Names
 
-The bridge exposes discoverable actions via `GET /tools`, 28 of them at
-api_level 4. The surface is organised by what a tool answers:
+The bridge exposes discoverable actions via `GET /tools`, 32 of them at
+api_level 4 (31 in a default catalog that omits the opt-in developer tool).
+The surface is organised by what a tool answers:
 
 * **reading a screen**: `observe`
 * **finding something**: `locate`, `list_reading_targets`
@@ -185,7 +186,7 @@ api_level 4. The surface is organised by what a tool answers:
 * **the user's own output**: `speak_text`, `show_message`
 * **diagnostics**: `inspect_object`, `walk_object_tree`, `get_focus_lineage`,
   `inspect_app_module`, `list_loaded_addons`, `health_snapshot`, `get_logs`,
-  `get_action_trace`
+  `search_logs`, `get_log_context`, `summarize_logs`, `get_action_trace`
 * **lifecycle** (each requires an explicit grant): `restart_nvda`,
   `reload_plugins`, `execute_python`
 
@@ -281,6 +282,32 @@ and a `reason` naming the fix (put focus in its page) rather than an answer abou
 some other window.
 
 Use `GET /tools` as the source of truth for parameter schemas and output types.
+
+## Native Log Diagnostics
+
+`search_logs`, `get_log_context` and `summarize_logs` are coordinator-mode,
+read-only diagnostics tools. They require the `diagnostics` permission and read
+only `globalVars.appArgs.logFileName`; no path is accepted from a client. The
+full contracts, severity ordering, source-glob semantics, cursor rules,
+timestamp limitations, exception parsing and worked investigations are in
+[LOG_DIAGNOSTICS.md](LOG_DIAGNOSTICS.md).
+
+Highlights:
+
+* Logical records, not physical lines: a header plus its multiline message and
+  traceback is one entry with `line_start`/`line_end`.
+* `entry_id` is `generation:byte-offset:record-hash`, stable under append-only
+  growth and invalidated if the bytes at that offset change.
+* Cursors are stateless, bound to the filter set and generation, expire after
+  30 minutes, and report `4206 STALE_REFERENCE` on replacement/truncation.
+* `DEBUGWARNING` and `IO` are first-class levels; unknown levels are preserved.
+* Time is time-of-day unless the header carries a date; the response says which.
+* Responses report `truncated`, `parse_failures`, `scan_budget_exhausted`,
+  `response_truncated` and time precision instead of presenting a partial answer
+  as complete.
+* `get_action_trace` is unchanged. Use `search_logs(trace_id=...)` for native
+  records that explicitly carry the action's trace id; temporal matches in the
+  trace remain labelled `time_window`.
 
 ## Protocol 2 (api_level 2)
 

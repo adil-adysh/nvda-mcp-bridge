@@ -448,6 +448,482 @@
       ],
       "additionalProperties": false
     },
+    "LogContextResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "integer"
+            },
+            "entry_id": {
+              "type": "string"
+            },
+            "anchor": {
+              "type": "object",
+              "properties": {
+                "entry_id": {
+                  "type": "string"
+                },
+                "timestamp": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_ms": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_date": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_date_source": {
+                  "type": "string"
+                },
+                "timestamp_absolute": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_timezone": {
+                  "type": "string"
+                },
+                "level": {
+                  "type": "string"
+                },
+                "logger": {
+                  "type": "string"
+                },
+                "module": {
+                  "type": "string"
+                },
+                "function": {
+                  "type": "string"
+                },
+                "subsystem": {
+                  "type": "string"
+                },
+                "addon": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "thread": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "name"
+                  ]
+                },
+                "message": {
+                  "type": "string"
+                },
+                "line_start": {
+                  "type": "integer"
+                },
+                "line_end": {
+                  "type": "integer"
+                },
+                "parse_status": {
+                  "type": "string"
+                },
+                "parse_notes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "derived_fields": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "exception": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "enrichment": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "raw": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "entry_id",
+                "timestamp_date_source",
+                "timestamp_timezone",
+                "level",
+                "logger",
+                "module",
+                "function",
+                "subsystem",
+                "thread",
+                "message",
+                "line_start",
+                "line_end",
+                "parse_status"
+              ]
+            },
+            "entries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "entry_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "timestamp_ms": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "timestamp_date": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "timestamp_date_source": {
+                    "type": "string"
+                  },
+                  "timestamp_absolute": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "timestamp_timezone": {
+                    "type": "string"
+                  },
+                  "level": {
+                    "type": "string"
+                  },
+                  "logger": {
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "subsystem": {
+                    "type": "string"
+                  },
+                  "addon": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "thread": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                      "name"
+                    ]
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "line_start": {
+                    "type": "integer"
+                  },
+                  "line_end": {
+                    "type": "integer"
+                  },
+                  "parse_status": {
+                    "type": "string"
+                  },
+                  "parse_notes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "derived_fields": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "exception": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "enrichment": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "raw": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "entry_id",
+                  "timestamp_date_source",
+                  "timestamp_timezone",
+                  "level",
+                  "logger",
+                  "module",
+                  "function",
+                  "subsystem",
+                  "thread",
+                  "message",
+                  "line_start",
+                  "line_end",
+                  "parse_status"
+                ]
+              }
+            },
+            "before": {
+              "type": "integer"
+            },
+            "after": {
+              "type": "integer"
+            },
+            "returned": {
+              "type": "integer"
+            },
+            "complete_before": {
+              "type": "boolean"
+            },
+            "complete_after": {
+              "type": "boolean"
+            },
+            "include_related_threads": {
+              "type": "boolean"
+            },
+            "source": {
+              "type": "object",
+              "properties": {
+                "generation": {
+                  "type": "string"
+                },
+                "size_bytes": {
+                  "type": "integer"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "generation",
+                "size_bytes"
+              ]
+            },
+            "diagnostics": {
+              "type": "object",
+              "properties": {
+                "truncated": {
+                  "type": "boolean"
+                },
+                "response_truncated": {
+                  "type": "boolean"
+                },
+                "parse_failures": {
+                  "type": "integer"
+                },
+                "invalid_utf8_replacements": {
+                  "type": "integer"
+                },
+                "records_examined": {
+                  "type": "integer"
+                },
+                "limitations": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "truncated",
+                "response_truncated",
+                "parse_failures",
+                "invalid_utf8_replacements",
+                "records_examined"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "entry_id",
+            "anchor",
+            "entries",
+            "before",
+            "after",
+            "returned",
+            "complete_before",
+            "complete_after",
+            "include_related_threads",
+            "source",
+            "diagnostics"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
     "LogEntries": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
@@ -1636,6 +2112,327 @@
       ],
       "additionalProperties": false
     },
+    "LogSearchResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "integer"
+            },
+            "entries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "entry_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "timestamp_ms": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "timestamp_date": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "timestamp_date_source": {
+                    "type": "string"
+                  },
+                  "timestamp_absolute": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "timestamp_timezone": {
+                    "type": "string"
+                  },
+                  "level": {
+                    "type": "string"
+                  },
+                  "logger": {
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "function": {
+                    "type": "string"
+                  },
+                  "subsystem": {
+                    "type": "string"
+                  },
+                  "addon": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "thread": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                      "name"
+                    ]
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "line_start": {
+                    "type": "integer"
+                  },
+                  "line_end": {
+                    "type": "integer"
+                  },
+                  "parse_status": {
+                    "type": "string"
+                  },
+                  "parse_notes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "derived_fields": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "exception": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "enrichment": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": {}
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "raw": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "entry_id",
+                  "timestamp_date_source",
+                  "timestamp_timezone",
+                  "level",
+                  "logger",
+                  "module",
+                  "function",
+                  "subsystem",
+                  "thread",
+                  "message",
+                  "line_start",
+                  "line_end",
+                  "parse_status"
+                ]
+              }
+            },
+            "page": {
+              "type": "object",
+              "properties": {
+                "returned": {
+                  "type": "integer"
+                },
+                "has_more": {
+                  "type": "boolean"
+                },
+                "next_cursor": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "limit": {
+                  "type": "integer"
+                },
+                "order": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "returned",
+                "has_more",
+                "limit",
+                "order"
+              ]
+            },
+            "source": {
+              "type": "object",
+              "properties": {
+                "generation": {
+                  "type": "string"
+                },
+                "size_bytes": {
+                  "type": "integer"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "generation",
+                "size_bytes"
+              ]
+            },
+            "diagnostics": {
+              "type": "object",
+              "properties": {
+                "truncated": {
+                  "type": "boolean"
+                },
+                "parse_failures": {
+                  "type": "integer"
+                },
+                "time_filter_precision": {
+                  "type": "string"
+                },
+                "scan_budget_exhausted": {
+                  "type": "boolean"
+                },
+                "response_truncated": {
+                  "type": "boolean"
+                },
+                "invalid_utf8_replacements": {
+                  "type": "integer"
+                },
+                "records_examined": {
+                  "type": "integer"
+                },
+                "matched_records": {
+                  "type": "integer"
+                },
+                "limitations": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "truncated",
+                "parse_failures",
+                "time_filter_precision",
+                "scan_budget_exhausted",
+                "response_truncated",
+                "invalid_utf8_replacements",
+                "records_examined",
+                "matched_records"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "entries",
+            "page",
+            "source",
+            "diagnostics"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
     "SetValueResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
@@ -1819,6 +2616,118 @@
             }
           },
           "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "LogSummaryResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "schema_version": {
+              "type": "integer"
+            },
+            "summary": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "coverage": {
+              "type": "object",
+              "properties": {
+                "records_examined": {
+                  "type": "integer"
+                },
+                "records_matched": {
+                  "type": "integer"
+                },
+                "complete": {
+                  "type": "boolean"
+                },
+                "time_budget_exhausted": {
+                  "type": "boolean"
+                },
+                "parse_failures": {
+                  "type": "integer"
+                },
+                "invalid_utf8_replacements": {
+                  "type": "integer"
+                },
+                "time_filter_precision": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "generation": {
+                  "type": "string"
+                },
+                "size_bytes": {
+                  "type": "integer"
+                },
+                "scan_ms": {
+                  "type": "number"
+                },
+                "group_by": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "limitations": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "records_examined",
+                "records_matched",
+                "complete",
+                "time_budget_exhausted",
+                "parse_failures",
+                "invalid_utf8_replacements",
+                "time_filter_precision",
+                "source",
+                "generation",
+                "size_bytes",
+                "scan_ms"
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "summary",
+            "coverage"
+          ]
         },
         "error": {
           "type": "object",
@@ -2507,6 +3416,522 @@
           "ancestorCount",
           "truncated",
           "ancestors"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "diagnostics",
+      "cancellationSupported": false,
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
+      "name": "get_log_context",
+      "version": "1.0.0",
+      "description": "Return the chronological native log records surrounding one entry_id found by search_logs. Expands evidence with bounded before/after counts or time windows, preserves thread and line information, and reports whether the window is complete.",
+      "category": "diagnostics",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "entry_id": {
+            "type": "string"
+          },
+          "before": {
+            "type": "integer"
+          },
+          "after": {
+            "type": "integer"
+          },
+          "include_related_threads": {
+            "type": "boolean"
+          },
+          "include_raw": {
+            "type": "boolean"
+          },
+          "before_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "after_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "entry_id"
+        ]
+      },
+      "outputType": "LogContextResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "integer"
+          },
+          "entry_id": {
+            "type": "string"
+          },
+          "anchor": {
+            "type": "object",
+            "properties": {
+              "entry_id": {
+                "type": "string"
+              },
+              "timestamp": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timestamp_ms": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timestamp_date": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timestamp_date_source": {
+                "type": "string"
+              },
+              "timestamp_absolute": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timestamp_timezone": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string"
+              },
+              "logger": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "function": {
+                "type": "string"
+              },
+              "subsystem": {
+                "type": "string"
+              },
+              "addon": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "thread": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "name"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "line_start": {
+                "type": "integer"
+              },
+              "line_end": {
+                "type": "integer"
+              },
+              "parse_status": {
+                "type": "string"
+              },
+              "parse_notes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "derived_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "exception": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "enrichment": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": {}
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "raw": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "entry_id",
+              "timestamp_date_source",
+              "timestamp_timezone",
+              "level",
+              "logger",
+              "module",
+              "function",
+              "subsystem",
+              "thread",
+              "message",
+              "line_start",
+              "line_end",
+              "parse_status"
+            ]
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entry_id": {
+                  "type": "string"
+                },
+                "timestamp": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_ms": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_date": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_date_source": {
+                  "type": "string"
+                },
+                "timestamp_absolute": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_timezone": {
+                  "type": "string"
+                },
+                "level": {
+                  "type": "string"
+                },
+                "logger": {
+                  "type": "string"
+                },
+                "module": {
+                  "type": "string"
+                },
+                "function": {
+                  "type": "string"
+                },
+                "subsystem": {
+                  "type": "string"
+                },
+                "addon": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "thread": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "name"
+                  ]
+                },
+                "message": {
+                  "type": "string"
+                },
+                "line_start": {
+                  "type": "integer"
+                },
+                "line_end": {
+                  "type": "integer"
+                },
+                "parse_status": {
+                  "type": "string"
+                },
+                "parse_notes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "derived_fields": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "exception": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "enrichment": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "raw": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "entry_id",
+                "timestamp_date_source",
+                "timestamp_timezone",
+                "level",
+                "logger",
+                "module",
+                "function",
+                "subsystem",
+                "thread",
+                "message",
+                "line_start",
+                "line_end",
+                "parse_status"
+              ]
+            }
+          },
+          "before": {
+            "type": "integer"
+          },
+          "after": {
+            "type": "integer"
+          },
+          "returned": {
+            "type": "integer"
+          },
+          "complete_before": {
+            "type": "boolean"
+          },
+          "complete_after": {
+            "type": "boolean"
+          },
+          "include_related_threads": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "generation": {
+                "type": "string"
+              },
+              "size_bytes": {
+                "type": "integer"
+              },
+              "source": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "generation",
+              "size_bytes"
+            ]
+          },
+          "diagnostics": {
+            "type": "object",
+            "properties": {
+              "truncated": {
+                "type": "boolean"
+              },
+              "response_truncated": {
+                "type": "boolean"
+              },
+              "parse_failures": {
+                "type": "integer"
+              },
+              "invalid_utf8_replacements": {
+                "type": "integer"
+              },
+              "records_examined": {
+                "type": "integer"
+              },
+              "limitations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "truncated",
+              "response_truncated",
+              "parse_failures",
+              "invalid_utf8_replacements",
+              "records_examined"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "entry_id",
+          "anchor",
+          "entries",
+          "before",
+          "after",
+          "returned",
+          "complete_before",
+          "complete_after",
+          "include_related_threads",
+          "source",
+          "diagnostics"
         ]
       },
       "constraints": {
@@ -4080,6 +5505,480 @@
       "supersededBy": null
     },
     {
+      "name": "search_logs",
+      "version": "1.0.0",
+      "description": "Search native NVDA logs by severity, logger/source, add-on, message, thread, time and explicit trace_id. Returns paginated structured records with stable entry_id references, original times and line ranges, and explicit completeness metadata. Use to locate warnings, errors, or subsystem activity; it does not determine root cause.",
+      "category": "diagnostics",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "levels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "min_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sources": {
+            "type": "object",
+            "properties": {
+              "include": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "exclude": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "addon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "type": "object",
+            "properties": {
+              "contains": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "regex": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "case_sensitive": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "last_seconds": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "start": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "end": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "threads": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "order": {
+            "type": "string",
+            "enum": [
+              "newest_first",
+              "oldest_first"
+            ]
+          },
+          "include_raw": {
+            "type": "boolean"
+          },
+          "max_scan_records": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "LogSearchResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "integer"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "entry_id": {
+                  "type": "string"
+                },
+                "timestamp": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_ms": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_date": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_date_source": {
+                  "type": "string"
+                },
+                "timestamp_absolute": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_timezone": {
+                  "type": "string"
+                },
+                "level": {
+                  "type": "string"
+                },
+                "logger": {
+                  "type": "string"
+                },
+                "module": {
+                  "type": "string"
+                },
+                "function": {
+                  "type": "string"
+                },
+                "subsystem": {
+                  "type": "string"
+                },
+                "addon": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "thread": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "name"
+                  ]
+                },
+                "message": {
+                  "type": "string"
+                },
+                "line_start": {
+                  "type": "integer"
+                },
+                "line_end": {
+                  "type": "integer"
+                },
+                "parse_status": {
+                  "type": "string"
+                },
+                "parse_notes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "derived_fields": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "exception": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "enrichment": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": {}
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "raw": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "entry_id",
+                "timestamp_date_source",
+                "timestamp_timezone",
+                "level",
+                "logger",
+                "module",
+                "function",
+                "subsystem",
+                "thread",
+                "message",
+                "line_start",
+                "line_end",
+                "parse_status"
+              ]
+            }
+          },
+          "page": {
+            "type": "object",
+            "properties": {
+              "returned": {
+                "type": "integer"
+              },
+              "has_more": {
+                "type": "boolean"
+              },
+              "next_cursor": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "order": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "returned",
+              "has_more",
+              "limit",
+              "order"
+            ]
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "generation": {
+                "type": "string"
+              },
+              "size_bytes": {
+                "type": "integer"
+              },
+              "source": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "generation",
+              "size_bytes"
+            ]
+          },
+          "diagnostics": {
+            "type": "object",
+            "properties": {
+              "truncated": {
+                "type": "boolean"
+              },
+              "parse_failures": {
+                "type": "integer"
+              },
+              "time_filter_precision": {
+                "type": "string"
+              },
+              "scan_budget_exhausted": {
+                "type": "boolean"
+              },
+              "response_truncated": {
+                "type": "boolean"
+              },
+              "invalid_utf8_replacements": {
+                "type": "integer"
+              },
+              "records_examined": {
+                "type": "integer"
+              },
+              "matched_records": {
+                "type": "integer"
+              },
+              "limitations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "truncated",
+              "parse_failures",
+              "time_filter_precision",
+              "scan_budget_exhausted",
+              "response_truncated",
+              "invalid_utf8_replacements",
+              "records_examined",
+              "matched_records"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "entries",
+          "page",
+          "source",
+          "diagnostics"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "diagnostics",
+      "cancellationSupported": false,
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
       "name": "set_value",
       "version": "1.0.0",
       "description": "Set a control's value by ref; an empty string clears it. Uses the platform value pattern when the control exposes one, otherwise focus + select-all + type; 'mode' says which. Reads the control back afterwards: 'verified' says the write landed, 'observed' carries what the control actually contains when it did not.",
@@ -4348,6 +6247,224 @@
       "supersededBy": null
     },
     {
+      "name": "summarize_logs",
+      "version": "1.0.0",
+      "description": "Compute bounded, deterministic statistics and repeated diagnostic patterns from native NVDA logs: severity/source distribution, normalized repeated messages, exception and warning groups, time buckets, noise share and anomaly candidates. Use when the relevant error, logger or subsystem is not yet known.",
+      "category": "diagnostics",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "levels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "min_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sources": {
+            "type": "object",
+            "properties": {
+              "include": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "exclude": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "addon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "last_seconds": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "start": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "end": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "threads": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "group_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "include": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "max_scan_records": {
+            "type": "integer"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "LogSummaryResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "schema_version": {
+            "type": "integer"
+          },
+          "summary": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "records_examined": {
+                "type": "integer"
+              },
+              "records_matched": {
+                "type": "integer"
+              },
+              "complete": {
+                "type": "boolean"
+              },
+              "time_budget_exhausted": {
+                "type": "boolean"
+              },
+              "parse_failures": {
+                "type": "integer"
+              },
+              "invalid_utf8_replacements": {
+                "type": "integer"
+              },
+              "time_filter_precision": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "string"
+              },
+              "size_bytes": {
+                "type": "integer"
+              },
+              "scan_ms": {
+                "type": "number"
+              },
+              "group_by": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "limitations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "records_examined",
+              "records_matched",
+              "complete",
+              "time_budget_exhausted",
+              "parse_failures",
+              "invalid_utf8_replacements",
+              "time_filter_precision",
+              "source",
+              "generation",
+              "size_bytes",
+              "scan_ms"
+            ]
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "schema_version",
+          "summary",
+          "coverage"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "diagnostics",
+      "cancellationSupported": false,
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
       "name": "wait_for_events",
       "version": "1.0.0",
       "description": "Block until the next coalesced UI transition (or timeout) and return the transition kinds. Use for idle waits instead of polling observe.",
@@ -4502,5 +6619,5 @@
       "supersededBy": null
     }
   ],
-  "count": 29
+  "count": 32
 }

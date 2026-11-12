@@ -111,6 +111,101 @@ class GetLogsInput:
 
 
 @dataclass(frozen=True)
+class LogSourceFilter:
+	"""Glob filters over the native logger/source string.
+
+	``include`` and ``exclude`` accept exact names, dotted prefixes and ``*`` /
+	``?`` globs. Exclusion wins. No regular expressions are evaluated here.
+	"""
+
+	include: list[str] = field(default_factory=list)
+	exclude: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class LogMessageFilter:
+	"""Substring or bounded-regex filtering of a record's message."""
+
+	contains: Optional[str] = None
+	regex: Optional[str] = None
+	case_sensitive: bool = False
+
+
+@dataclass(frozen=True)
+class LogTimeFilter:
+	"""Time-of-day relative or absolute range.
+
+	NVDA's native log header has no calendar date, so a bare ``HH:MM:SS``
+	filters time-of-day and reports that limitation. ISO values with a date are
+	used when a record carries a date.
+	"""
+
+	last_seconds: Optional[int] = None
+	start: Optional[str] = None
+	end: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class SearchLogsInput:
+	"""Search native NVDA log records with structured filters."""
+
+	levels: list[str] = field(default_factory=list)
+	min_level: Optional[str] = None
+	sources: LogSourceFilter = field(default_factory=LogSourceFilter)
+	addon: Optional[str] = None
+	message: LogMessageFilter = field(default_factory=LogMessageFilter)
+	time: LogTimeFilter = field(default_factory=LogTimeFilter)
+	threads: list[str] = field(default_factory=list)
+	trace_id: Optional[str] = None
+	limit: int = 50
+	cursor: Optional[str] = None
+	order: Literal["newest_first", "oldest_first"] = "newest_first"
+	include_raw: bool = False
+	max_scan_records: int = 500000
+
+
+@dataclass(frozen=True)
+class GetLogContextInput:
+	"""Return surrounding evidence for one previously found log entry."""
+
+	entry_id: str
+	before: int = 20
+	after: int = 30
+	include_related_threads: bool = True
+	include_raw: bool = False
+	before_ms: Optional[int] = None
+	after_ms: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class SummarizeLogsInput:
+	"""Compute bounded deterministic statistics over native log records."""
+
+	levels: list[str] = field(default_factory=list)
+	min_level: Optional[str] = None
+	sources: LogSourceFilter = field(default_factory=LogSourceFilter)
+	addon: Optional[str] = None
+	time: LogTimeFilter = field(default_factory=LogTimeFilter)
+	threads: list[str] = field(default_factory=list)
+	group_by: list[str] = field(
+		default_factory=lambda: ["source", "level", "message_pattern"]
+	)
+	include: list[str] = field(
+		default_factory=lambda: [
+			"counts",
+			"repeated_patterns",
+			"exceptions",
+			"warnings",
+			"top_sources",
+			"time_buckets",
+			"noise",
+		]
+	)
+	limit: int = 20
+	max_scan_records: int = 500000
+
+
+@dataclass(frozen=True)
 class ExecutePythonInput:
 	"""Execute Python code in NVDA."""
 
@@ -386,6 +481,154 @@ class LogEntries:
 	lines: list[str]
 	file_size: int
 	filter_level: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class LogThread:
+	"""The thread named by one native log header."""
+
+	name: str
+	id: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class LogEntry:
+	"""One native log record, parsed into structured evidence.
+
+	``timestamp`` is the observed clock time and ``timestamp_ms`` its
+	millisecond offset within the day. ``timestamp_date`` is populated only when
+	the header itself carried a date. ``raw`` is returned only on explicit
+	request; without it the exact bytes remain recoverable from the file by
+	``entry_id`` while the generation is unchanged.
+	"""
+
+	entry_id: str
+	timestamp: Optional[str]
+	timestamp_ms: Optional[int]
+	timestamp_date: Optional[str]
+	timestamp_date_source: str
+	timestamp_absolute: Optional[str]
+	timestamp_timezone: str
+	level: str
+	logger: str
+	module: str
+	function: str
+	subsystem: str
+	addon: Optional[str]
+	thread: LogThread
+	message: str
+	line_start: int
+	line_end: int
+	parse_status: str
+	parse_notes: list[str] = field(default_factory=list)
+	derived_fields: list[str] = field(default_factory=list)
+	exception: Optional[dict[str, Any]] = None
+	enrichment: Optional[dict[str, Any]] = None
+	raw: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class LogSearchPage:
+	"""One stable page of search results."""
+
+	returned: int
+	has_more: bool
+	next_cursor: Optional[str]
+	limit: int
+	order: str
+
+
+@dataclass(frozen=True)
+class LogSourceInfo:
+	"""Identity of the log generation a response was read from."""
+
+	generation: str
+	size_bytes: int
+	source: str = "nvda_native_log"
+
+
+@dataclass(frozen=True)
+class LogSearchDiagnostics:
+	"""Completeness and precision facts about one search."""
+
+	truncated: bool
+	parse_failures: int
+	time_filter_precision: str
+	scan_budget_exhausted: bool
+	response_truncated: bool
+	invalid_utf8_replacements: int
+	records_examined: int
+	matched_records: int
+	limitations: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class LogSearchResult:
+	"""Structured native log search response."""
+
+	schema_version: int
+	entries: list[LogEntry]
+	page: LogSearchPage
+	source: LogSourceInfo
+	diagnostics: LogSearchDiagnostics
+
+
+@dataclass(frozen=True)
+class LogContextDiagnostics:
+	"""Completeness facts about a context window."""
+
+	truncated: bool
+	response_truncated: bool
+	parse_failures: int
+	invalid_utf8_replacements: int
+	records_examined: int
+	limitations: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class LogContextResult:
+	"""A chronological window around one log entry."""
+
+	schema_version: int
+	entry_id: str
+	anchor: LogEntry
+	entries: list[LogEntry]
+	before: int
+	after: int
+	returned: int
+	complete_before: bool
+	complete_after: bool
+	include_related_threads: bool
+	source: LogSourceInfo
+	diagnostics: LogContextDiagnostics
+
+
+@dataclass(frozen=True)
+class LogSummaryCoverage:
+	"""What a summary examined and what it could not claim."""
+
+	records_examined: int
+	records_matched: int
+	complete: bool
+	time_budget_exhausted: bool
+	parse_failures: int
+	invalid_utf8_replacements: int
+	time_filter_precision: str
+	source: str
+	generation: str
+	size_bytes: int
+	scan_ms: float
+	group_by: list[str] = field(default_factory=list)
+	limitations: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class LogSummaryResult:
+	"""Deterministic summary of native log evidence."""
+
+	schema_version: int
+	summary: dict[str, Any]
+	coverage: LogSummaryCoverage
 
 
 @dataclass(frozen=True)

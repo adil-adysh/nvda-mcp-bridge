@@ -247,6 +247,80 @@ ALL_NVDA_TOOLS = [
             use_tail=input_obj.use_tail,
         ),
     ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="search_logs",
+            version="1.0.0",
+            description=(
+                "Search native NVDA logs by severity, logger/source, add-on, message, thread, time "
+                "and explicit trace_id. Returns paginated structured records with stable entry_id "
+                "references, original times and line ranges, and explicit completeness metadata. "
+                "Use to locate warnings, errors, or subsystem activity; it does not determine root cause."
+            ),
+            category="diagnostics",
+            read_only=True,
+            destructive=False,
+            idempotent=True,
+            side_effects=False,
+            required_permission="diagnostics",
+            allowed_nvda_states=("normal", "modal", "menu"),
+            expected_duration_ms=300,
+            retry_safe=True,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.SearchLogsInput,
+        models.LogSearchResult,
+        lambda input_obj, context: tool_handlers.search_logs(input_obj),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="get_log_context",
+            version="1.0.0",
+            description=(
+                "Return the chronological native log records surrounding one entry_id found by "
+                "search_logs. Expands evidence with bounded before/after counts or time windows, "
+                "preserves thread and line information, and reports whether the window is complete."
+            ),
+            category="diagnostics",
+            read_only=True,
+            destructive=False,
+            idempotent=True,
+            side_effects=False,
+            required_permission="diagnostics",
+            allowed_nvda_states=("normal", "modal", "menu"),
+            expected_duration_ms=250,
+            retry_safe=True,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.GetLogContextInput,
+        models.LogContextResult,
+        lambda input_obj, context: tool_handlers.get_log_context(input_obj),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="summarize_logs",
+            version="1.0.0",
+            description=(
+                "Compute bounded, deterministic statistics and repeated diagnostic patterns from "
+                "native NVDA logs: severity/source distribution, normalized repeated messages, "
+                "exception and warning groups, time buckets, noise share and anomaly candidates. "
+                "Use when the relevant error, logger or subsystem is not yet known."
+            ),
+            category="diagnostics",
+            read_only=True,
+            destructive=False,
+            idempotent=True,
+            side_effects=False,
+            required_permission="diagnostics",
+            allowed_nvda_states=("normal", "modal", "menu"),
+            expected_duration_ms=400,
+            retry_safe=True,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.SummarizeLogsInput,
+        models.LogSummaryResult,
+        lambda input_obj, context: tool_handlers.summarize_logs(input_obj),
+    ),
     TypedToolImpl.from_handler(
         ToolMetadata(
             name="execute_python",

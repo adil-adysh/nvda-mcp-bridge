@@ -210,7 +210,9 @@ because they carry the trace id. NVDA's own records do carry a prefix, which is
 what the time-window path relies on.
 
 The record never presents correlation as cause. `evidence.limitations` always
-contains at least the relevant caveats, including:* `projection_changed = false` means the fields the projector captures (focus,
+contains at least the relevant caveats, including:
+
+* `projection_changed = false` means the fields the projector captures (focus,
   its ancestor chain, window, dialog, selection) did not change. It is not proof
   that the rest of the UI was unchanged;
 * events inside the window are correlated with the action, not caused by it;
@@ -218,6 +220,18 @@ contains at least the relevant caveats, including:* `projection_changed = false`
   lines are best-effort;
 * MCP request ids are not forwarded, so `mcp_request_id` is `null`;
 * traces are in memory only and expire.
+
+### From a trace to the surrounding log
+
+`get_action_trace` keeps its best-effort native matches, but the full
+structured log surface is the sibling tools. `search_logs(trace_id="at-…")`
+returns native records that explicitly contain the id, with stable `entry_id`
+references; pass one to `get_log_context` to read what happened before and
+after. This is direct evidence for the record that carries the id, while the
+`time_window` matches in this trace remain temporal correlations. A nearby
+third-party exception is not, by itself, evidence that the action caused it.
+
+See [LOG_DIAGNOSTICS.md](LOG_DIAGNOSTICS.md).
 
 ## Bounds and retention
 
@@ -266,6 +280,7 @@ plain tool call and works whether or not a client subscribes to resources.
 | Path | Responsibility |
 | --- | --- |
 | `server/action_trace.py` | Record shape, sanitization, recorder, bounded store, assembler, log matching |
+| `server/log_diagnostics/` | Shared streaming parser, search, context and summary over the native log |
 | `server/http_bridge.py` | Opens the trace at the action boundary, finalizes it around the envelope |
 | `core/executor.py` | Stages: validation, dispatch, handler, output validation, serialization |
 | `server/settle.py` | Observation: event window, projection delta, budget, expectation |

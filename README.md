@@ -362,8 +362,28 @@ Every action returns `result.changed`, `result.delta` and `result.settled_ms`, s
 
 * `inspect_object`, `inspect_app_module`, `get_focus_lineage`
 * `walk_object_tree`, `list_loaded_addons`, `health_snapshot`, `get_logs`
+* `search_logs` — structured, paginated search over logical native-log records
+  (multiline tracebacks stay one record; unknown levels are preserved)
+* `get_log_context` — expand a result's `entry_id` into the surrounding
+  chronological evidence, across threads
+* `summarize_logs` — bounded, deterministic severity/source/pattern/exception
+  statistics, warning groups, time buckets, COM/UIA noise share and anomaly
+  candidates
 * `get_action_trace` — read back the diagnostic timeline of one action
 * `speak_text`, `show_message`
+
+The three log tools use NVDA's canonical active log, the existing bridge token
+and the `diagnostics` permission. They are read-only, stream the file, never
+accept a path, and never change NVDA's logging level. `get_logs` is retained
+unchanged for compatibility.
+
+Start an investigation with `summarize_logs` when the source is unknown, then
+`search_logs`, then `get_log_context`. For a known action, start with
+`get_action_trace` and use `search_logs(trace_id=...)` to find the native
+records that explicitly carry the id. See
+[docs/LOG_DIAGNOSTICS.md](docs/LOG_DIAGNOSTICS.md) for schemas, severity and
+source semantics, pagination/cursor rules, date limitations, redaction limits
+and worked examples.
 
 ### Diagnosing an action
 

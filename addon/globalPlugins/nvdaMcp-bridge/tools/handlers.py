@@ -94,6 +94,157 @@ def get_logs(
 	return nvda_bridge.get_logs(max_lines=max_lines, filter_level=filter_level, use_tail=use_tail)
 
 
+def _log_time_kwargs(time_filter: Any) -> dict[str, Any]:
+	return {
+		"last_seconds": getattr(time_filter, "last_seconds", None),
+		"start": getattr(time_filter, "start", None),
+		"end": getattr(time_filter, "end", None),
+	}
+
+
+def _log_filter_from_input(input_obj: Any) -> Any:
+	from ..server import log_diagnostics
+
+	sources = getattr(input_obj, "sources", None)
+	message = getattr(input_obj, "message", None)
+	return log_diagnostics.compile_filter(
+		levels=getattr(input_obj, "levels", None),
+		min_level=getattr(input_obj, "min_level", None),
+		source_include=getattr(sources, "include", None) if sources is not None else None,
+		source_exclude=getattr(sources, "exclude", None) if sources is not None else None,
+		addon=getattr(input_obj, "addon", None),
+		message_contains=getattr(message, "contains", None) if message is not None else None,
+		message_regex=getattr(message, "regex", None) if message is not None else None,
+		case_sensitive=bool(getattr(message, "case_sensitive", False)) if message is not None else False,
+		threads=getattr(input_obj, "threads", None),
+		trace_id=getattr(input_obj, "trace_id", None),
+		**_log_time_kwargs(getattr(input_obj, "time", None)),
+	)
+
+
+def _log_entry(payload: dict[str, Any]) -> Any:
+	from . import models
+
+	thread = payload.get("thread") or {}
+	return models.LogEntry(
+		entry_id=str(payload.get("entry_id", "")),
+		timestamp=payload.get("timestamp"),
+		timestamp_ms=payload.get("timestamp_ms"),
+		timestamp_date=payload.get("timestamp_date"),
+		timestamp_date_source=str(payload.get("timestamp_date_source", "unknown")),
+		timestamp_absolute=payload.get("timestamp_absolute"),
+		timestamp_timezone=str(payload.get("timestamp_timezone", "unknown")),
+		level=str(payload.get("level", "UNKNOWN")),
+		logger=str(payload.get("logger", "")),
+		module=str(payload.get("module", "")),
+		function=str(payload.get("function", "")),
+		subsystem=str(payload.get("subsystem", "unknown")),
+		addon=payload.get("addon"),
+		thread=models.LogThread(name=str(thread.get("name", "")), id=thread.get("id")),
+		message=str(payload.get("message", "")),
+		line_start=int(payload.get("line_start", 0)),
+		line_end=int(payload.get("line_end", 0)),
+		parse_status=str(payload.get("parse_status", "malformed")),
+		parse_notes=list(payload.get("parse_notes") or []),
+		derived_fields=list(payload.get("derived_fields") or []),
+		exception=payload.get("exception"),
+		enrichment=payload.get("enrichment"),
+		raw=payload.get("raw"),
+	)
+
+
+def search_logs(input_obj: Any) -> dict[str, Any]:
+	"""Run a paged native log search on the worker thread."""
+	from ..server import log_diagnostics
+	from . import models
+
+	log_diagnostics.load_bridge_secret_once()
+	snapshot = log_diagnostics.snapshot_log()
+	filters = _log_filter_from_input(input_obj)
+	payload = log_diagnostics.search_logs(
+		snapshot,
+		filters,
+		limit=input_obj.limit,
+		cursor=input_obj.cursor,
+		order=input_obj.order,
+		include_raw=input_obj.include_raw,
+		max_scan_records=input_obj.max_scan_records,
+	)
+	page = payload["page"]
+	source = payload["source"]
+	diagnostics = payload["diagnostics"]
+	return models.LogSearchResult(
+		schema_version=int(payload["schema_version"]),
+		entries=[_log_entry(entry) for entry in payload["entries"]],
+		page=models.LogSearchPage(
+			returned=int(page["returned"]),
+			has_more=bool(page["has_more"]),
+			next_cursor=page.get("next_cursor"),
+			limit=int(page["limit"]),
+			order=str(page["order"]),
+		),
+		source=models.LogSourceInfo(**source),
+		diagnostics=models.LogSearchDiagnostics(**diagnostics),
+	)
+
+
+def get_log_context(input_obj: Any) -> dict[str, Any]:
+	"""Return the surrounding records of one stable log entry reference."""
+	from ..server import log_diagnostics
+	from . import models
+
+	log_diagnostics.load_bridge_secret_once()
+	snapshot = log_diagnostics.snapshot_log()
+	payload = log_diagnostics.get_log_context(
+		snapshot,
+		entry_id=input_obj.entry_id,
+		before=input_obj.before,
+		after=input_obj.after,
+		include_related_threads=input_obj.include_related_threads,
+		include_raw=input_obj.include_raw,
+		before_ms=input_obj.before_ms,
+		after_ms=input_obj.after_ms,
+	)
+	diagnostics = payload["diagnostics"]
+	return models.LogContextResult(
+		schema_version=int(payload["schema_version"]),
+		entry_id=str(payload["entry_id"]),
+		anchor=_log_entry(payload["anchor"]),
+		entries=[_log_entry(entry) for entry in payload["entries"]],
+		before=int(payload["before"]),
+		after=int(payload["after"]),
+		returned=int(payload["returned"]),
+		complete_before=bool(payload["complete_before"]),
+		complete_after=bool(payload["complete_after"]),
+		include_related_threads=bool(payload["include_related_threads"]),
+		source=models.LogSourceInfo(**payload["source"]),
+		diagnostics=models.LogContextDiagnostics(**diagnostics),
+	)
+
+
+def summarize_logs(input_obj: Any) -> dict[str, Any]:
+	"""Compute deterministic, bounded log statistics."""
+	from ..server import log_diagnostics
+	from . import models
+
+	log_diagnostics.load_bridge_secret_once()
+	snapshot = log_diagnostics.snapshot_log()
+	filters = _log_filter_from_input(input_obj)
+	payload = log_diagnostics.summarize_logs(
+		snapshot,
+		filters,
+		group_by=input_obj.group_by,
+		include=input_obj.include,
+		limit=input_obj.limit,
+		max_scan_records=input_obj.max_scan_records,
+	)
+	return models.LogSummaryResult(
+		schema_version=int(payload["schema_version"]),
+		summary=payload["summary"],
+		coverage=models.LogSummaryCoverage(**payload["coverage"]),
+	)
+
+
 def execute_python(
 	code: str,
 	snapshot_vars: bool = False,
