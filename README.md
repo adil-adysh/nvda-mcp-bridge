@@ -46,8 +46,9 @@ A thread-safe NVDA add-on that exposes NVDA internals as an MCP-compatible inter
 ### 3. Configure Your MCP Client Automatically
 
 1. Open **NVDA Menu (`NVDA+N`) → Tools → NVDA MCP Bridge → Configure MCP Clients...**.
-2. The configurator automatically detects supported clients (Visual Studio Code, Claude Desktop, Cursor) and safely merges the `nvda` server entry.
+2. The configurator automatically detects supported clients (Visual Studio Code, Claude Desktop, Claude Code, Codex CLI, Cursor, Antigravity) and safely merges the `nvda` server entry.
 3. Existing settings and other MCP servers are completely preserved, and a timestamped backup (`.bak.<timestamp>`) is created before modifying any configuration.
+4. `python scripts/client_config_acceptance.py` checks the result against the clients themselves: it has each vendor's own command write an entry into a throwaway home directory and compares that with ours, then asks Claude Code to connect through the real file.
 
 ---
 
@@ -90,6 +91,44 @@ If configuring an MCP client manually, add the following to your client's MCP co
     }
   }
 }
+```
+
+#### Claude Code (CLI)
+
+Claude Code writes the entry itself when you run:
+
+```powershell
+claude mcp add -s user nvda -- "%LOCALAPPDATA%\Programs\NVDA MCP Bridge\bin\nvda-mcp-server.exe"
+```
+
+It records the server in the user-scope `mcpServers` object of `%USERPROFILE%\.claude.json`, alongside the account and history state that file already holds:
+
+```json
+{
+  "mcpServers": {
+    "nvda": {
+      "type": "stdio",
+      "command": "%LOCALAPPDATA%\\Programs\\NVDA MCP Bridge\\bin\\nvda-mcp-server.exe",
+      "args": [],
+      "env": {}
+    }
+  }
+}
+```
+
+#### Codex CLI
+
+The equivalent one-liner is:
+
+```powershell
+codex mcp add nvda -- "%LOCALAPPDATA%\Programs\NVDA MCP Bridge\bin\nvda-mcp-server.exe"
+```
+
+which adds this table to `%USERPROFILE%\.codex\config.toml`. Codex keeps its model, trust and plugin settings in that same file, so add the table rather than replacing the file:
+
+```toml
+[mcp_servers.nvda]
+command = 'the full path to nvda-mcp-server.exe'
 ```
 
 > **Note on Authentication:** You do **not** need to copy or paste authentication tokens into client configurations. The companion binary automatically discovers the bridge credential generated in `%APPDATA%\nvda\nvda-mcp-bridge\token.key` using Windows user security controls.

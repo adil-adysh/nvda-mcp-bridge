@@ -471,7 +471,7 @@ def configure_clients_interactive(parent: Any = None) -> Tuple[bool, str]:
 	detected = [c for c in clients if c.detected]
 
 	if not detected:
-		msg = "No supported MCP clients (VS Code, Claude Desktop, Cursor, Antigravity) were detected."
+		msg = "No supported MCP clients (VS Code, Claude Desktop, Claude Code, Codex CLI, Cursor, Antigravity) were detected."
 		if _GUI_AVAILABLE and wx and gui:
 			gui.messageBox(msg, "NVDA MCP Bridge", wx.ICON_INFORMATION, parent=parent)
 		return False, msg

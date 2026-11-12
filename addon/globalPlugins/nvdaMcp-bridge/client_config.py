@@ -3,6 +3,8 @@
 Provides accessible, safe detection, preview, and configuration of supported MCP clients:
 - Visual Studio Code (user mcp.json using official 'servers' schema)
 - Claude Desktop (using 'mcpServers' schema)
+- Claude Code (user-scope mcpServers in ~/.claude.json)
+- Codex CLI (mcp_servers tables in ~/.codex/config.toml)
 - Cursor (global and user-storage mcp.json)
 - VS Code Roo Code / Cline extension
 - Google Antigravity / Gemini CLI (global mcp_config.json)
@@ -10,17 +12,19 @@ Provides accessible, safe detection, preview, and configuration of supported MCP
 Security and safety guarantees:
 - Schema compliance tailored to each client's official specification
 - Explicit user approval and conflict confirmation before writing
-- Atomic JSON file writing via temporary files with round-trip verification
+- Atomic file writing via temporary files with round-trip verification
 - Automatic backups (.bak.<timestamp>) before modifying any existing configuration
 - Non-destructive merging: preserves all existing server configurations and settings
 - Never writes bridge authentication tokens into client configuration files
 - Uses the stable installed companion executable path
+- Refuses to write a file another process changed while it was being read
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import time
 from dataclasses import dataclass
@@ -28,6 +32,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import logHandler
+
+try:
+	import tomllib
+except ImportError:  # pragma: no cover - NVDA ships Python 3.11 or newer
+	tomllib = None
 
 
 @dataclass
@@ -57,12 +66,47 @@ class ConfigPreview:
 
 
 class BaseClientAdapter:
-	"""Base class for MCP client configuration format adapters."""
+	"""Base class for MCP client configuration format adapters.
+
+	The JSON clients share one implementation: parse the file, merge the 'nvda'
+	server into ``config_key``, serialise the whole document back. Clients whose
+	configuration is not JSON (Codex uses TOML) override ``load``, ``render`` and
+	``inspect`` and leave the dictionary helpers unused.
+	"""
+
+	config_format = "json"
 
 	def __init__(self, client_id: str, display_name: str, config_key: str):
 		self.client_id = client_id
 		self.display_name = display_name
 		self.config_key = config_key
+
+	def load(self, text: str) -> Dict[str, Any]:
+		"""Parse configuration text into a dictionary."""
+		if not text or not text.strip():
+			return {}
+		data = json.loads(text)
+		if not isinstance(data, dict):
+			raise ValueError("configuration top level is not a JSON object")
+		return data
+
+	def dump(self, data: Dict[str, Any]) -> str:
+		"""Serialise a configuration dictionary back to text."""
+		return json.dumps(data, indent=2)
+
+	def inspect(self, text: str, resolved_exe: str) -> Tuple[bool, bool, Optional[str]]:
+		"""Report whether the nvda server is present and correct in this text."""
+		return self.inspect_entry(self.load(text), resolved_exe)
+
+	def render(self, text: str, resolved_exe: str) -> str:
+		"""Return text with the nvda server definition inserted or updated."""
+		data = self.load(text)
+		self.apply_entry(data, resolved_exe)
+		return self.dump(data)
+
+	def format_entry(self, entry: Dict[str, Any]) -> str:
+		"""Render a server definition the way it will appear in this client's file."""
+		return json.dumps({self.config_key: {"nvda": entry}}, indent=2)
 
 	def build_entry(self, resolved_exe: str) -> Dict[str, Any]:
 		"""Build the server definition object for this client."""
@@ -147,9 +191,143 @@ class StandardMcpAdapter(BaseClientAdapter):
 		super().__init__(client_id, display_name, "mcpServers")
 
 
+class ClaudeCodeAdapter(StandardMcpAdapter):
+	"""Claude Code user-scope configuration (``~/.claude.json``).
+
+	Claude Code keeps every scope in one file: user-scope servers sit in the
+	top-level ``mcpServers`` object, local (project) scope under
+	``projects[<path>].mcpServers``, and project scope in a checked-in
+	``.mcp.json``. The entry is a stdio server, and the companion reads the bridge
+	token from disk itself, so no environment or headers belong in this file.
+
+	The file also holds account and history state and is rewritten by the client
+	while it runs, which is why ``configure_client`` refuses to replace a file
+	that changed under it.
+	"""
+
+	def __init__(self):
+		super().__init__("claude_code", "Claude Code (CLI)")
+
+	def build_entry(self, resolved_exe: str) -> Dict[str, Any]:
+		return {
+			"type": "stdio",
+			"command": resolved_exe,
+			"args": [],
+			"env": {},
+		}
+
+
+class CodexAdapter(BaseClientAdapter):
+	"""Codex CLI configuration (``~/.codex/config.toml``).
+
+	Codex defines servers as TOML tables::
+
+		[mcp_servers.nvda]
+		command = 'C:\\Users\\you\\nvda-mcp-server.exe'
+		args = []
+
+	That file also carries the user's model, project trust, plugin and shell
+	settings, and the standard library has no TOML writer. So this adapter edits
+	text rather than re-serialising a document: it replaces exactly the
+	``[mcp_servers.nvda]`` table (including any sub-tables such as
+	``[mcp_servers.nvda.env]``) or appends one, leaving every other byte - comments
+	included - untouched. The result is re-parsed before it is written.
+	"""
+
+	config_format = "toml"
+	_HEADER_RE = re.compile(r"^\s*\[([^\[\]]+)\]\s*(?:#.*)?$")
+	_TABLE = "mcp_servers.nvda"
+
+	def __init__(self):
+		super().__init__("codex", "Codex CLI", "mcp_servers")
+
+	def load(self, text: str) -> Dict[str, Any]:
+		if tomllib is None:
+			raise ValueError("This Python lacks tomllib, so Codex configuration cannot be parsed")
+		if not text or not text.strip():
+			return {}
+		return tomllib.loads(text)
+
+	def build_entry(self, resolved_exe: str) -> Dict[str, Any]:
+		return {"command": resolved_exe}
+
+	def inspect(self, text: str, resolved_exe: str) -> Tuple[bool, bool, Optional[str]]:
+		data = self.load(text)
+		servers = data.get("mcp_servers") if isinstance(data, dict) else None
+		entry = servers.get("nvda") if isinstance(servers, dict) else None
+		if not isinstance(entry, dict):
+			return False, False, None
+		cmd = str(entry.get("command", "")).strip()
+		if cmd.lower() == resolved_exe.lower():
+			return True, False, cmd
+		return False, bool(cmd), cmd
+
+	@staticmethod
+	def _toml_string(value: str) -> str:
+		"""Quote a value as a TOML string, preferring a literal string for paths."""
+		if "'" not in value and "\n" not in value:
+			return f"'{value}'"
+		escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+		return f'"{escaped}"'
+
+	def _block(self, resolved_exe: str) -> str:
+		return "\n".join(
+			[
+				f"[{self._TABLE}]",
+				f"command = {self._toml_string(resolved_exe)}",
+			]
+		)
+
+	def format_entry(self, entry: Dict[str, Any]) -> str:
+		return self._block(str(entry.get("command", "")))
+
+	def render(self, text: str, resolved_exe: str) -> str:
+		text = text or ""
+		lines = text.splitlines()
+		block = self._block(resolved_exe)
+
+		start = None
+		for index, line in enumerate(lines):
+			match = self._HEADER_RE.match(line)
+			if match and match.group(1).strip() == self._TABLE:
+				start = index
+				break
+
+		if start is None:
+			# A server defined with dotted keys or an inline table has no header to
+			# replace; rewriting it would need a real TOML writer, so say so instead.
+			data = self.load(text)
+			servers = data.get("mcp_servers") if isinstance(data, dict) else None
+			if isinstance(servers, dict) and "nvda" in servers:
+				raise ValueError(
+					"'mcp_servers.nvda' is defined without a table header; "
+					"edit the Codex configuration by hand"
+				)
+			body = text.rstrip("\n")
+			return (body + "\n\n" if body else "") + block + "\n"
+
+		# The table runs until the next header that is not one of its own sub-tables,
+		# so a stale [mcp_servers.nvda.env] goes with it instead of being orphaned
+		# onto the entry we just wrote.
+		end = len(lines)
+		for index in range(start + 1, len(lines)):
+			match = self._HEADER_RE.match(lines[index])
+			if not match:
+				continue
+			name = match.group(1).strip()
+			if name == self._TABLE or name.startswith(self._TABLE + "."):
+				continue
+			end = index
+			break
+
+		return "\n".join(lines[:start] + block.splitlines() + lines[end:]) + "\n"
+
+
 _CLIENT_ADAPTERS: Dict[str, BaseClientAdapter] = {
 	"vscode": VSCodeAdapter(),
 	"claude_desktop": StandardMcpAdapter("claude_desktop", "Claude Desktop"),
+	"claude_code": ClaudeCodeAdapter(),
+	"codex": CodexAdapter(),
 	"cursor": StandardMcpAdapter("cursor", "Cursor"),
 	"cursor_storage": StandardMcpAdapter("cursor_storage", "Cursor (App Storage)"),
 	"vscode_roo": StandardMcpAdapter("vscode_roo", "VS Code (Roo Code)"),
@@ -165,16 +343,20 @@ def get_adapter_for_client(client_id: str) -> BaseClientAdapter:
 def get_default_client_candidates(
 	appdata_override: Optional[Path] = None,
 	userprofile_override: Optional[Path] = None,
-) -> List[Tuple[str, str, Path]]:
+) -> List[Tuple[str, str, Path, Path]]:
 	"""Return candidates for supported MCP client configuration files.
 
 	Returns:
-		List of tuples: (client_id, display_name, config_path)
+		List of tuples: (client_id, display_name, config_path, probe_path).
+		The probe is what proves the client is installed: a configuration file, a
+		settings directory, or a marker directory the client creates. Probing the
+		parent of the config path is wrong for files that live directly in the
+		home directory, where that parent always exists.
 	"""
 	appdata = appdata_override or (Path(os.environ["APPDATA"]) if "APPDATA" in os.environ else None)
 	userprofile = userprofile_override or (Path(os.environ["USERPROFILE"]) if "USERPROFILE" in os.environ else Path.home())
 
-	candidates = []
+	candidates: List[Tuple[str, str, Path, Path]] = []
 
 	if appdata:
 		# Claude Desktop
@@ -182,6 +364,7 @@ def get_default_client_candidates(
 			"claude_desktop",
 			"Claude Desktop",
 			appdata / "Claude" / "claude_desktop_config.json",
+			appdata / "Claude",
 		))
 
 		# VS Code standard User MCP configuration
@@ -189,6 +372,7 @@ def get_default_client_candidates(
 			"vscode",
 			"Visual Studio Code",
 			appdata / "Code" / "User" / "mcp.json",
+			appdata / "Code" / "User",
 		))
 
 		# VS Code Roo Code / Cline extension MCP settings
@@ -196,6 +380,7 @@ def get_default_client_candidates(
 			"vscode_roo",
 			"VS Code (Roo Code)",
 			appdata / "Code" / "User" / "globalStorage" / "rooveterinaryinc.roo-cline" / "settings" / "cline_mcp_settings.json",
+			appdata / "Code" / "User" / "globalStorage" / "rooveterinaryinc.roo-cline" / "settings",
 		))
 
 		# Cursor user storage MCP settings
@@ -203,6 +388,7 @@ def get_default_client_candidates(
 			"cursor_storage",
 			"Cursor (App Storage)",
 			appdata / "Cursor" / "User" / "globalStorage" / "cursor.mcp" / "mcp.json",
+			appdata / "Cursor",
 		))
 
 	if userprofile:
@@ -211,6 +397,7 @@ def get_default_client_candidates(
 			"cursor",
 			"Cursor",
 			userprofile / ".cursor" / "mcp.json",
+			userprofile / ".cursor",
 		))
 
 		# Google Antigravity / Gemini global MCP configuration
@@ -218,6 +405,23 @@ def get_default_client_candidates(
 			"antigravity",
 			"Google Antigravity",
 			userprofile / ".gemini" / "config" / "mcp_config.json",
+			userprofile / ".gemini" / "config",
+		))
+
+		# Claude Code keeps user-scope servers in its main state file
+		candidates.append((
+			"claude_code",
+			"Claude Code (CLI)",
+			userprofile / ".claude.json",
+			userprofile / ".claude.json",
+		))
+
+		# Codex CLI configuration is TOML, next to its sessions and plugins
+		candidates.append((
+			"codex",
+			"Codex CLI",
+			userprofile / ".codex" / "config.toml",
+			userprofile / ".codex",
 		))
 
 	return candidates
@@ -234,9 +438,8 @@ def detect_supported_clients(
 
 	expected_cmd = str(expected_companion_exe.resolve()).lower() if expected_companion_exe else None
 
-	for client_id, display_name, config_path in candidates:
-		parent_dir = config_path.parent
-		is_detected = parent_dir.is_dir() or config_path.is_file()
+	for client_id, display_name, config_path, probe_path in candidates:
+		is_detected = probe_path.exists() or config_path.is_file()
 		adapter = get_adapter_for_client(client_id)
 
 		if not is_detected:
@@ -259,11 +462,9 @@ def detect_supported_clients(
 
 		if config_path.is_file():
 			try:
-				data = json.loads(config_path.read_text(encoding="utf-8"))
-				if isinstance(data, dict):
-					is_configured, has_conflict, existing_cmd = adapter.inspect_entry(
-						data, expected_cmd or ""
-					)
+				is_configured, has_conflict, existing_cmd = adapter.inspect(
+					config_path.read_text(encoding="utf-8"), expected_cmd or ""
+				)
 			except Exception as e:
 				logHandler.log.debug(f"Could not parse config at {config_path}: {e}")
 
@@ -326,11 +527,11 @@ def preview_client_configuration(
 
 	if target_path.is_file():
 		timestamp = int(time.time())
-		backup_path = target_path.with_suffix(f".json.bak.{timestamp}")
+		backup_path = target_path.with_name(f"{target_path.name}.bak.{timestamp}")
 		try:
-			data = json.loads(target_path.read_text(encoding="utf-8"))
-			if isinstance(data, dict):
-				_, has_conflict, existing_cmd = adapter.inspect_entry(data, resolved_exe)
+			_, has_conflict, existing_cmd = adapter.inspect(
+				target_path.read_text(encoding="utf-8"), resolved_exe
+			)
 		except Exception as e:
 			empty_preview = ConfigPreview(
 				client_id=client_id,
@@ -344,7 +545,7 @@ def preview_client_configuration(
 				proposed_entry={},
 				backup_path=None,
 			)
-			return False, empty_preview, f"Existing configuration contains invalid JSON: {e}"
+			return False, empty_preview, f"Existing configuration could not be parsed: {e}"
 
 	proposed = adapter.build_entry(resolved_exe)
 	preview = ConfigPreview(
@@ -380,7 +581,7 @@ def format_preview_text(preview: ConfigPreview) -> str:
 		lines.append(f"Backup File: {preview.backup_path.name}")
 
 	lines.append("Proposed Server Entry:")
-	lines.append(json.dumps({preview.target_key: {"nvda": preview.proposed_entry}}, indent=2))
+	lines.append(get_adapter_for_client(preview.client_id).format_entry(preview.proposed_entry))
 	return "\n".join(lines)
 
 
@@ -420,18 +621,20 @@ def configure_client(
 			return False, f"Unknown client ID: {client_id}"
 		target_path = matched[0][2]
 
-	data: Dict[str, Any] = {}
+	original_text = ""
+	original_stat = None
 	if target_path.is_file():
 		try:
-			raw_content = target_path.read_text(encoding="utf-8").strip()
-			if raw_content:
-				data = json.loads(raw_content)
-			if not isinstance(data, dict):
-				return False, f"Config at {target_path} is not a JSON object"
+			original_text = target_path.read_text(encoding="utf-8")
+			original_stat = target_path.stat()
 		except Exception as e:
-			return False, f"Failed to parse existing JSON at {target_path}: {e}"
+			return False, f"Failed to read existing configuration at {target_path}: {e}"
 
-	is_configured, has_conflict, existing_cmd = adapter.inspect_entry(data, resolved_exe)
+	try:
+		is_configured, has_conflict, existing_cmd = adapter.inspect(original_text, resolved_exe)
+	except Exception as e:
+		return False, f"Failed to parse existing configuration at {target_path}: {e}"
+
 	if is_configured:
 		return True, f"{target_path.name} is already configured to use this companion executable"
 
@@ -443,9 +646,9 @@ def configure_client(
 
 	# Create backup before modifying existing file
 	target_path.parent.mkdir(parents=True, exist_ok=True)
-	if target_path.is_file():
+	if original_stat is not None:
 		timestamp = int(time.time())
-		backup_path = target_path.with_suffix(f".json.bak.{timestamp}")
+		backup_path = target_path.with_name(f"{target_path.name}.bak.{timestamp}")
 		try:
 			shutil.copy2(target_path, backup_path)
 			logHandler.log.info(f"Created configuration backup at {backup_path}")
@@ -454,21 +657,29 @@ def configure_client(
 
 	# Apply client-specific configuration structure
 	try:
-		adapter.apply_entry(data, resolved_exe)
+		updated_text = adapter.render(original_text, resolved_exe)
 	except Exception as e:
 		return False, f"Failed to apply configuration schema: {e}"
 
-	# Atomic write: write to .tmp, validate JSON, then rename
-	tmp_path = target_path.with_suffix(".json.tmp")
+	# Atomic write: write to .tmp, validate it, then rename
+	tmp_path = target_path.with_name(target_path.name + ".tmp")
 	try:
-		serialized = json.dumps(data, indent=2)
-		# Validate in-memory before writing
-		json.loads(serialized)
-		tmp_path.write_text(serialized, encoding="utf-8")
+		if original_stat is not None:
+			current = target_path.stat()
+			if current.st_mtime_ns != original_stat.st_mtime_ns or current.st_size != original_stat.st_size:
+				return False, (
+					f"{target_path.name} changed while it was being read, most likely because the "
+					"client is running. Close the client and try again."
+				)
+
+		tmp_path.write_text(updated_text, encoding="utf-8")
 
 		# Validate read back from disk
-		verify_data = json.loads(tmp_path.read_text(encoding="utf-8"))
-		assert adapter.config_key in verify_data and "nvda" in verify_data[adapter.config_key]
+		verified, _, written = adapter.inspect(tmp_path.read_text(encoding="utf-8"), resolved_exe)
+		if not verified:
+			raise ValueError(
+				f"written configuration does not point at {resolved_exe} (found '{written}')"
+			)
 
 		tmp_path.replace(target_path)
 		logHandler.log.info(f"Successfully configured NVDA MCP companion in {target_path}")

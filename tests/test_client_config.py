@@ -6,9 +6,11 @@ import os
 import struct
 import sys
 import tempfile
+import tomllib
 import types
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _ADDON_DIR = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "addon", "globalPlugins", "nvdaMcp-bridge")
@@ -30,11 +32,11 @@ if _PACKAGE_NAME not in sys.modules:
     _package.__path__ = [_ADDON_DIR]
     sys.modules[_PACKAGE_NAME] = _package
 
+from nvdaMcpBridge import client_config  # noqa: E402
 from nvdaMcpBridge.client_config import (  # noqa: E402
     configure_client,
     detect_supported_clients,
     format_preview_text,
-    get_default_client_candidates,
     preview_client_configuration,
 )
 
@@ -229,7 +231,214 @@ class TestClientConfig(unittest.TestCase):
             userprofile_override=self.userprofile,
         )
         self.assertFalse(success)
-        self.assertIn("Failed to parse existing JSON", msg)
+        self.assertIn("Failed to parse existing configuration", msg)
+
+
+class TestCliAgentClients(unittest.TestCase):
+    """Claude Code and Codex CLI both keep other state in the file we edit."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.appdata = self.root / "AppData" / "Roaming"
+        self.userprofile = self.root / "UserProfile"
+        self.appdata.mkdir(parents=True)
+        self.userprofile.mkdir(parents=True)
+
+        self.mock_exe = self.root / "bin" / "nvda-mcp-server.exe"
+        self.mock_exe.parent.mkdir(parents=True)
+        self.mock_exe.write_bytes(make_mock_pe_binary())
+        self.resolved_exe = str(self.mock_exe.resolve())
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def configure(self, client_id: str, **kwargs):
+        return configure_client(
+            client_id=client_id,
+            companion_exe_path=self.mock_exe,
+            appdata_override=self.appdata,
+            userprofile_override=self.userprofile,
+            **kwargs,
+        )
+
+    def test_claude_code_writes_user_scope_entry_and_keeps_history(self):
+        """The top-level mcpServers object is user scope; everything else survives."""
+        claude_json = self.userprofile / ".claude.json"
+        original = {
+            "numStartups": 7,
+            "userID": "abc123",
+            "projects": {"D:/repo": {"mcpServers": {}}},
+        }
+        claude_json.write_text(json.dumps(original), encoding="utf-8")
+
+        success, msg = self.configure("claude_code")
+        self.assertTrue(success, msg)
+
+        updated = json.loads(claude_json.read_text(encoding="utf-8"))
+        self.assertEqual(updated["mcpServers"]["nvda"]["command"], self.resolved_exe)
+        self.assertEqual(updated["mcpServers"]["nvda"]["type"], "stdio")
+        self.assertEqual(updated["mcpServers"]["nvda"]["args"], [])
+        self.assertEqual(updated["mcpServers"]["nvda"]["env"], {})
+        self.assertEqual(updated["numStartups"], 7)
+        self.assertEqual(updated["userID"], "abc123")
+        self.assertEqual(updated["projects"]["D:/repo"]["mcpServers"], {})
+
+        backups = list(claude_json.parent.glob(".claude.json.bak.*"))
+        self.assertEqual(len(backups), 1)
+
+    def test_claude_code_detected_and_idempotent(self):
+        claude_json = self.userprofile / ".claude.json"
+        claude_json.write_text("{}", encoding="utf-8")
+
+        detected = detect_supported_clients(
+            appdata_override=self.appdata,
+            userprofile_override=self.userprofile,
+            expected_companion_exe=self.mock_exe,
+        )
+        claude_code = next(c for c in detected if c.client_id == "claude_code")
+        self.assertTrue(claude_code.detected)
+        self.assertFalse(claude_code.configured)
+
+        self.assertTrue(self.configure("claude_code")[0])
+        success, msg = self.configure("claude_code")
+        self.assertTrue(success)
+        self.assertIn("already configured", msg)
+
+        after = next(
+            c
+            for c in detect_supported_clients(
+                appdata_override=self.appdata,
+                userprofile_override=self.userprofile,
+                expected_companion_exe=self.mock_exe,
+            )
+            if c.client_id == "claude_code"
+        )
+        self.assertTrue(after.configured)
+
+    def test_codex_appends_table_and_preserves_other_settings(self):
+        config = self.userprofile / ".codex" / "config.toml"
+        config.parent.mkdir(parents=True)
+        config.write_text(
+            'model = "gpt-6.1-sol"\n'
+            "\n"
+            "# trust settings worth keeping\n"
+            "[projects.'d:\\repo']\n"
+            'trust_level = "trusted"\n'
+            "\n"
+            "[mcp_servers.other]\n"
+            "command = 'other.exe'\n",
+            encoding="utf-8",
+        )
+
+        success, msg = self.configure("codex")
+        self.assertTrue(success, msg)
+
+        text = config.read_text(encoding="utf-8")
+        self.assertIn('model = "gpt-6.1-sol"', text)
+        self.assertIn("# trust settings worth keeping", text)
+        self.assertIn("[mcp_servers.other]", text)
+
+        data = tomllib.loads(text)
+        self.assertEqual(data["mcp_servers"]["nvda"]["command"], self.resolved_exe)
+        self.assertNotIn("args", data["mcp_servers"]["nvda"])
+        self.assertEqual(data["mcp_servers"]["other"]["command"], "other.exe")
+        self.assertEqual(data["projects"]["d:\\repo"]["trust_level"], "trusted")
+        self.assertEqual(data["model"], "gpt-6.1-sol")
+
+    def test_codex_replaces_only_the_nvda_tables(self):
+        config = self.userprofile / ".codex" / "config.toml"
+        config.parent.mkdir(parents=True)
+        config.write_text(
+            "[mcp_servers.nvda]\n"
+            'command = "old-nvda.exe"\n'
+            'args = ["--stale"]\n'
+            "\n"
+            "[mcp_servers.nvda.env]\n"
+            'STALE = "1"\n'
+            "\n"
+            "[mcp_servers.other]\n"
+            "command = 'other.exe'\n",
+            encoding="utf-8",
+        )
+
+        success, msg = self.configure("codex", overwrite_conflict=True)
+        self.assertTrue(success, msg)
+
+        data = tomllib.loads(config.read_text(encoding="utf-8"))
+        self.assertEqual(data["mcp_servers"]["nvda"]["command"], self.resolved_exe)
+        self.assertNotIn("args", data["mcp_servers"]["nvda"])
+        self.assertNotIn("env", data["mcp_servers"]["nvda"])
+        self.assertEqual(data["mcp_servers"]["other"]["command"], "other.exe")
+
+    def test_codex_conflict_is_refused_without_overwrite(self):
+        config = self.userprofile / ".codex" / "config.toml"
+        config.parent.mkdir(parents=True)
+        original = "[mcp_servers.nvda]\ncommand = 'somewhere-else.exe'\n"
+        config.write_text(original, encoding="utf-8")
+
+        success, msg = self.configure("codex")
+        self.assertFalse(success)
+        self.assertIn("Conflict", msg)
+        self.assertEqual(config.read_text(encoding="utf-8"), original)
+
+    def test_codex_creates_file_when_only_the_directory_exists(self):
+        (self.userprofile / ".codex").mkdir(parents=True)
+
+        success, msg = self.configure("codex")
+        self.assertTrue(success, msg)
+
+        data = tomllib.loads((self.userprofile / ".codex" / "config.toml").read_text(encoding="utf-8"))
+        self.assertEqual(data["mcp_servers"]["nvda"]["command"], self.resolved_exe)
+
+    def test_codex_preview_renders_toml_not_json(self):
+        config = self.userprofile / ".codex" / "config.toml"
+        config.parent.mkdir(parents=True)
+        config.write_text('model = "gpt-6.1-sol"\n', encoding="utf-8")
+
+        ok, preview, msg = preview_client_configuration(
+            client_id="codex",
+            companion_exe_path=self.mock_exe,
+            appdata_override=self.appdata,
+            userprofile_override=self.userprofile,
+        )
+        self.assertTrue(ok, msg)
+        self.assertEqual(preview.name, "Codex CLI")
+        text = format_preview_text(preview)
+        self.assertIn("[mcp_servers.nvda]", text)
+        self.assertIn(f"command = '{self.resolved_exe}'", text)
+
+    def test_codex_invalid_toml_fails_closed(self):
+        config = self.userprofile / ".codex" / "config.toml"
+        config.parent.mkdir(parents=True)
+        config.write_text("[mcp_servers.nvda\ncommand = broken\n", encoding="utf-8")
+
+        success, msg = self.configure("codex")
+        self.assertFalse(success)
+        self.assertIn("Failed to parse existing configuration", msg)
+
+    def test_write_refused_when_file_changes_during_read(self):
+        """A client rewriting its own state file must not be clobbered."""
+        config = self.appdata / "Claude" / "claude_desktop_config.json"
+        config.parent.mkdir(parents=True)
+        config.write_text(json.dumps({"mcpServers": {}}), encoding="utf-8")
+
+        adapter = client_config.get_adapter_for_client("claude_desktop")
+        real_render = adapter.render
+
+        def racing_render(text, resolved_exe):
+            config.write_text('{"mcpServers": {}, "touched": true}', encoding="utf-8")
+            return real_render(text, resolved_exe)
+
+        with mock.patch.object(adapter, "render", side_effect=racing_render):
+            success, msg = self.configure("claude_desktop")
+
+        self.assertFalse(success)
+        self.assertIn("changed while it was being read", msg)
+        self.assertEqual(
+            json.loads(config.read_text(encoding="utf-8")),
+            {"mcpServers": {}, "touched": True},
+        )
 
 
 if __name__ == "__main__":
