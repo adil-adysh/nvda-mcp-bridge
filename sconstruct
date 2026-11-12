@@ -189,6 +189,10 @@ else:
 		companionSources,
 		Action(buildCompanionAction, "Building companion"),
 	)
+	# The staged binary is committed, not generated per checkout, so `scons -c`
+	# must not delete a tracked file: cleaning removes build output, and this is
+	# an input to the repository as well as to the archive.
+	env.NoClean(companion)
 	env.Depends(addon, companion)
 
 env.Depends(addon, manifest)
