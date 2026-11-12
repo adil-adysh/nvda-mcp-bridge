@@ -583,6 +583,61 @@ Notepad) and the `bridge.reading.*` log lines of those runs:
 | Notepad (no document) | `4205`, `browse_mode: false`, reason "the target is not inside a document that NVDA reads in browse mode" |
 | Focus in a page behind the window in front | refused with "the window in front does not hold the page focus; put focus in its page first (F6)" — after F6 the read succeeds |
 
+#### Scale: what the reading tools cost on a big document
+
+`scripts/measure_reading_scale.py` generates a page with a known number of links
+and headings, opens it, and times each call from the client. The whole operation
+runs in one `context.dispatch` hop, so a call's own `elapsed_ms` is main-thread
+time — time NVDA could not spend on anything else. Reproduce with
+`python scripts/measure_reading_scale.py --links 2000 --headings 400` and
+`... --links 800 --headings 100 --browser firefox`.
+
+| Call | Edge, 2,000 links | Firefox, 800 links |
+| --- | --- | --- |
+| `list_reading_targets(link, limit=1)` | 29.0 ms | 25.4 ms |
+| `list_reading_targets(link, limit=50)` | 786.6 ms | 1012.3 ms |
+| `list_reading_targets(heading, limit=50)` | 537.4 ms | 769.4 ms |
+| `navigate_reading(link, last)` | **refused** after scanning 2,000 positions: `4205`, "holds more than 2000 link positions" (370.9 ms wall) | `reached: 800`, 119.3 ms |
+| `navigate_reading(heading, last)` | `reached: 401`, 108.1 ms | `reached: 101`, 89.7 ms |
+| `navigate_reading(link, next, steps=20)` | 1253.9 ms | 1330.4 ms |
+
+What the numbers say, in order of how much they matter:
+
+* **One position costs 0.15-0.17 ms** in both browser implementations, so the
+  `MAX_SCAN` ceiling on `last` is a bounded ~0.3-0.4 s, not the multi-second
+  freeze a code-level reading of a 2,000-iteration loop suggests. And when the
+  document really holds more than the cap, `last` refuses instead of reporting a
+  wrong position.
+* **`steps` is the expensive parameter**, and it is bounded by the request, not
+  the document: ~65 ms per step, so `MAX_STEPS=20` is ~1.3 s of main-thread
+  work. This is the one call in the reading surface that can visibly stall the
+  screen reader.
+* **`list_reading_targets(limit=50)` costs 0.8-1.0 s**, six to eight times its
+  declared `expected_duration_ms=120`. The declaration is metadata, not a
+  timeout, but it is still a claim the tool makes about itself and is wrong.
+* `locate` already solves this shape with `max_nodes=400` plus
+  `timeout_ms=500` — a node cap *and* an elapsed-time budget, with the reply
+  saying which stopped it. The reading tools have no deadline at all, which is
+  an inconsistency, not a design decision.
+
+Two defects the measurements exposed, both unfixed:
+
+* `last` on a document holding exactly `MAX_SCAN` positions is refused as
+  "more than 2000" — `_pick` stops at the cap and so cannot tell "exactly the
+  cap" from "more". One extra advance would.
+* Main-thread cost is declared for `list_reading_targets` (120 ms) and
+  `navigate_reading` (400 ms) as if it were a bound; measured worst cases are
+  ~1 s and ~1.3 s.
+
+One environment note from the same runs: after a browser is started by
+`Popen`, `GetForegroundWindow()` can report the new window while NVDA's own
+foreground model still names the previous one — `activate_window` correctly
+answers `method: "already-foreground"` (it verifies with Win32) while `observe`
+and the reading tools, which use `api.getForegroundObject()`, still see the old
+window and refuse. A real Alt+Tab makes NVDA process the foreground event and the
+two agree again. The bridge should not be able to report a window as in front
+while its own observation disagrees.
+
 Two corrections to assumptions made before measuring, both from the runs above:
 Chromium *does* support landmark quick nav (the assumption came from the wrong
 file: `webKit.py`, not `gecko_ia2.py`), and a browser page can be read through
