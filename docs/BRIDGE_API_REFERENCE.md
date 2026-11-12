@@ -4,13 +4,14 @@ This document describes the current bridge behavior implemented in `nvda_http_br
 
 * Bridge protocol: `nvda-bridge-protocol`
 * Protocol version: `1.0.0`
-* API level: `2` (advertises `supported_api_levels: [1, 2]`)
-* Bridge docs maturity: v1 payloads below, plus the v2 additions in
-  [Protocol 2](#protocol-2-api_level-2) at the end
+* API level: `4` (advertises `supported_api_levels: [2, 3, 4]`)
+* Bridge docs maturity: v1 payloads below, plus the level-2, level-3 and
+  level-4 additions at the end
 
 The JSON examples in this document are v1 responses. API level 2 adds fields
-without changing the v1 shape, so a v1 client keeps working; the additions are
-listed at the end and specified in `docs/IMPLEMENTATION_PLAN.md` §4.1.
+without changing the v1 shape, so a v1 client keeps working; levels 3 and 4 are
+subtractive in places, and every removal is listed at the end with its
+replacement.
 
 ## Transport and Auth
 
@@ -145,13 +146,13 @@ Error envelope:
 
 ## Action Names
 
-The bridge exposes discoverable actions via `GET /tools`, 26 of them at
-api_level 3. The surface is organised by what a tool answers:
+The bridge exposes discoverable actions via `GET /tools`, 27 of them at
+api_level 4. The surface is organised by what a tool answers:
 
 * **reading a screen**: `observe`
 * **finding something**: `locate`, `list_reading_targets`
 * **acting**: `invoke`, `set_value`, `focus`, `press`, `navigate`,
-  `navigate_reading`, `scroll`, `dismiss`, `click_at`
+  `navigate_reading`, `start_browse_mode`, `scroll`, `dismiss`, `click_at`
 * **windows**: `activate_window`
 * **waiting**: `wait_for_events`
 * **the user's own output**: `speak_text`, `show_message`
@@ -191,11 +192,25 @@ changes nothing, the tool retries once with keystrokes — some editors accept
 foreground, restoring it if minimised, and reports `method` (`foreground`,
 `already-foreground`), `previous_title` and whether it was `restored`. The
 returned `ref` points at the window, so it can be used as `within` for `locate`.
+`focus_in_window` answers a different question: Windows can move the foreground
+without moving the keyboard focus, so a window can be in front while the screen
+reader is still reading the previous one. `false` means that happened, and
+`focus_window` names where the focus actually is; `null` means it could not be
+determined.
 Titles are matched case- and whitespace-insensitively, ignoring zero-width
 characters; a title with no match is `4205 TARGET_UNAVAILABLE` with the available
 titles in `details`.
 
-`list_reading_targets(item, limit=20, within?, create=false)` enumerates a
+`start_browse_mode(within?)` builds the document model NVDA+space would build,
+for documents NVDA reads in focus mode — Word, and PDF readers that declare no
+tree interceptor. It is an action, not a flag on a read: it changes the user's
+session, and a `read_only` caller must not be able to do it. `created` says
+whether this call built the model or one was already there, so asking twice is
+one document; `interface` names the implementation that now answers, which is
+what the reading tools will report next. A document that has no browse mode even
+when asked is `4205`, with `created: false`.
+
+`list_reading_targets(item, limit=20, within?, timeout_ms=1000)` enumerates a
 document's positions of one kind — `heading`, `heading1`…`heading6`, `link`,
 `landmark`, `formfield`, `button`, `edit`, `list`, `listitem`, `table`,
 `graphic`, `checkbox`, `radiobutton`, `combobox`, `frame`, `annotation`,
@@ -210,18 +225,26 @@ that was learned: `probed` (the implementation's own type table), `attempted`
 (measured by asking, which is what a refused type triggers), or `declared` (read
 out of NVDA's source for documents that cannot be asked).
 
-`navigate_reading(item, direction, steps=1, within?, create=false)` moves the
+Both reading tools run on NVDA's main thread, so both take `timeout_ms` (default
+1000, at most 5000) and both answer with `stopped`: `end` (the document ran out),
+`limit` (the requested number of targets was reached), `steps` (all the moves
+were made), `stalled` (the search came back to where it already was) or
+`timeout` (the budget expired). A list cut by the budget is still
+`truncated: true`, and `scanned` says how many positions were visited: a partial
+answer is never reported as a complete one. This is the same shape as `locate`'s
+`max_nodes` plus `timeout_ms`, and it exists because measured cost is
+0.15-0.17 ms per position, `steps=20` is about 1.3 s, and a 50-target list on a
+2,000-link page is about 0.8 s — real work, on a thread the screen reader needs.
+
+`navigate_reading(item, direction, steps=1, within?, timeout_ms=1000)` moves the
 reading position the way the quick nav key would: `next`, `previous`, `first`,
 `last`. `steps` skips ahead — three headings is one call — and the cursor is
 moved between steps, because a document searched from a position can yield a
 single match. `reached` reports how many moves actually happened, which is how a
-document that ends first is told apart from a completed move. It is an action:
-the screen reader announces the new position and the reply settles.
-
-`create` starts browse mode for a document NVDA is reading in focus mode — a
-Word document, by default — the way NVDA+space does. It is opt-in because it
-changes the user's session, and the model it creates is reused for the same
-application and window rather than rebuilt per call.
+document that ends first is told apart from a completed move. `last` scans to the
+end of the document, up to 2000 positions, and refuses — rather than guessing —
+when there are more than that or when the budget expires. It is an action: the
+screen reader announces the new position and the reply settles.
 
 Both tools are about *documents*: browsers, Word and PDF viewers have a document
 model, and an ordinary application does not. A document with no browse mode, or
@@ -266,8 +289,9 @@ Additive only. A client that asks for api level 1 sees the v1 payloads above.
 
 ## Protocol 3 (api_level 3)
 
-The first *subtractive* level. `supported_api_levels` is `[2, 3]`: a client that
-speaks 3 uses the catalog above, and the bridge no longer serves 1 or 2.
+The first *subtractive* level. At this level `supported_api_levels` was `[2, 3]`:
+a client that speaks 3 uses the catalog above, and the bridge no longer serves
+1 or 2. (Level 4 widened it again; see the last section.)
 
 * **Seven v1 tools removed**: `get_current_focus`, `get_navigator_object`,
   `read_current_line`, `move_focus`, `send_keyboard`, `get_desktop_object` and
@@ -281,3 +305,34 @@ speaks 3 uses the catalog above, and the bridge no longer serves 1 or 2.
 * **What a retirement owes a client**: a level bump, a documented replacement,
   and an error that names the replacement rather than the absence. The aliases
   were given a full cycle at level 2 before this one removed them.
+
+## Protocol 4 (api_level 4)
+
+`supported_api_levels` is `[2, 3, 4]`: a companion speaking any of those levels is
+accepted, and one speaking a level the bridge does not list is refused with a
+message naming both. The companion compares against the bridge's advertised list
+rather than demanding equality, which is what the field was always for — the
+previous exact-match rule meant a level-3 companion and a level-4 bridge refused
+each other and the client saw an empty tool list.
+
+* **`create` removed from both reading tools.** It became `start_browse_mode`, an
+  action. A tool that is `read_only` and `side_effects: false` must not be able to
+  change NVDA's browse-mode state, and the metadata was the only thing saying it
+  could not.
+* **`timeout_ms` and `stopped` added to both reading tools**, so a call that runs
+  out of main-thread budget reports a partial answer instead of blocking the
+  reader. `list_reading_targets(limit=50)` on a 2,000-link page measures ~0.8 s;
+  `navigate_reading(steps=20)` measures ~1.3 s. Both now stop at the budget.
+* **`last` no longer refuses a document holding exactly 2000 positions.** The scan
+  stops at the cap, so it can only tell "exactly the cap" from "more" by reaching
+  one position further, which it now does.
+* **`/events` carries `journal_id` and pages from the oldest unseen entry.**
+  `to_version` is a cursor to the last event returned, not the journal's head;
+  `has_more` says to poll again immediately. Following the old cursor skipped
+  every event between the page and the head, with no record that it happened.
+  `journal_id` changes when NVDA restarts, which is how the companion knows its
+  cursor is meaningless rather than merely quiet.
+* **`expected_duration_ms` corrected** for the reading tools (300 and 400 ms,
+  against measured handler times of ~0.8 s and ~1.3 s worst cases). It is
+  internal metadata and is not published in `/tools`, so no client was misled by
+  the old numbers — but a declaration next to the code should be about right.

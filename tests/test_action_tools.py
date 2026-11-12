@@ -113,6 +113,8 @@ def _fake_activate_window(title="", handle=0, exact=False):
 		"restored": False,
 		"waited_ms": 18.0,
 		"matches": 1,
+		"focus_in_window": True,
+		"focus_window": "",
 		"object": "window-object",
 	}
 
@@ -457,6 +459,7 @@ class HandlerTests(unittest.TestCase):
 			title_matches=lambda candidate, wanted, exact=False: "harness" in candidate.casefold(),
 			is_minimized=lambda handle: False,
 			object_for_handle=lambda handle: "window-object",
+			focus_window=lambda: (657444, "DeepSeek Harness — Microsoft Edge"),
 		)
 		original = _fake_bridge.windows
 		_fake_bridge.windows = fake_windows
@@ -475,7 +478,56 @@ class HandlerTests(unittest.TestCase):
 		self.assertEqual(result["method"], "already-foreground")
 		self.assertEqual(result["handle"], 657444)
 		self.assertEqual(result["ref"], "n1")
+		self.assertTrue(result["focus_in_window"])
 		self.assertFalse(any(isinstance(call, tuple) and call[0] == "settle" for call in context.calls))
+
+	def test_activate_window_reports_when_the_focus_did_not_follow(self):
+		"""A raised window is not the same fact as a screen reader reading it.
+
+		Windows moved the foreground, the keyboard focus stayed in the previous
+		window, and an agent that read "activated" as "we are there now" would go
+		on to search the wrong window.
+		"""
+
+		def diverged(title="", handle=0, exact=False):
+			return {
+				"activated": True,
+				"handle": 4242,
+				"title": title or "Notepad",
+				"previous_title": "DeepSeek Harness — Microsoft Edge",
+				"method": "foreground",
+				"restored": False,
+				"waited_ms": 21.0,
+				"matches": 1,
+				"focus_in_window": False,
+				"focus_window": "DeepSeek Harness — Microsoft Edge",
+				"object": "window-object",
+			}
+
+		fake_windows = types.SimpleNamespace(
+			activate=diverged,
+			foreground_handle=lambda: 657444,
+			foreground_title=lambda: "DeepSeek Harness — Microsoft Edge",
+			title_matches=lambda candidate, wanted, exact=False: False,
+			is_minimized=lambda handle: False,
+			focus_window=lambda: (657444, "DeepSeek Harness — Microsoft Edge"),
+		)
+		original = _fake_bridge.windows
+		_fake_bridge.windows = fake_windows
+		try:
+			result = handlers.activate_window(
+				title="Notepad",
+				handle=0,
+				exact=False,
+				expect=None,
+				context=FakeContext(),
+			)
+		finally:
+			_fake_bridge.windows = original
+
+		self.assertTrue(result["activated"])
+		self.assertFalse(result["focus_in_window"])
+		self.assertEqual(result["focus_window"], "DeepSeek Harness — Microsoft Edge")
 
 	def test_dismiss_tries_escape_then_the_default_button(self):
 		# First settle leaves a dialog, second one removes it.

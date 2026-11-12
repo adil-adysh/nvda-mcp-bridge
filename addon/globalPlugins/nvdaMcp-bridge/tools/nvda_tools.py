@@ -340,6 +340,37 @@ ALL_NVDA_TOOLS = [
     ),
     TypedToolImpl.from_coordinator(
         ToolMetadata(
+            name="start_browse_mode",
+            version="1.0.0",
+            description=(
+                "Start browse mode for a document NVDA is reading in focus mode, the way "
+                "NVDA+space does, and report the implementation that now answers. The reading "
+                "tools need this: Word and some PDF readers keep documents in focus mode until "
+                "asked, so list_reading_targets and navigate_reading refuse until a model "
+                "exists. Changes the user's session; 'created' is false when one was already "
+                "there, so asking twice is harmless."
+            ),
+            category="action",
+            read_only=False,
+            destructive=False,
+            idempotent=True,
+            side_effects=True,
+            required_permission="input_control",
+            allowed_nvda_states=("normal",),
+            expected_duration_ms=800,
+            retry_safe=True,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.StartBrowseModeInput,
+        models.StartBrowseModeResult,
+        lambda input_obj, context: tool_handlers.start_browse_mode(
+            within=input_obj.within,
+            expect=input_obj.expect,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
             name="list_reading_targets",
             version="1.0.0",
             description=(
@@ -347,7 +378,8 @@ ALL_NVDA_TOOLS = [
                 "landmarks, form fields, tables, and so on — without moving the cursor. This is "
                 "the screen reader's Elements List as data: one call gives the structure of a "
                 "page or document, with refs where a control backs the position. 'available' "
-                "says what this document can be searched by (browsers, Word and PDFs only)."
+                "says what this document can be searched by (browsers, Word and PDFs only); "
+                "'stopped' and 'truncated' say why the list ends where it does."
             ),
             category="observation",
             read_only=True,
@@ -356,7 +388,7 @@ ALL_NVDA_TOOLS = [
             side_effects=False,
             required_permission="read_only",
             allowed_nvda_states=("normal", "modal", "menu"),
-            expected_duration_ms=120,
+            expected_duration_ms=300,
             retry_safe=True,
             execution_mode=ExecutionMode.COORDINATOR,
         ),
@@ -366,7 +398,7 @@ ALL_NVDA_TOOLS = [
             item=input_obj.item,
             limit=input_obj.limit,
             within=input_obj.within,
-            create=input_obj.create,
+            timeout_ms=input_obj.timeout_ms,
             context=context,
         ),
     ),
@@ -378,7 +410,8 @@ ALL_NVDA_TOOLS = [
                 "Move a document's reading position like the screen reader's quick nav key: "
                 "'next' heading, 'previous' link, 'first', 'last'. 'steps' skips ahead (three "
                 "headings is one call). Works in browse-mode documents only — browsers, Word, "
-                "PDFs — and moves the real cursor, so the screen reader announces it."
+                "PDFs — and moves the real cursor, so the screen reader announces it. 'reached' "
+                "and 'stopped' report a move that ended early instead of pretending it finished."
             ),
             category="action",
             read_only=False,
@@ -398,7 +431,7 @@ ALL_NVDA_TOOLS = [
             direction=input_obj.direction,
             steps=input_obj.steps,
             within=input_obj.within,
-            create=input_obj.create,
+            timeout_ms=input_obj.timeout_ms,
             expect=input_obj.expect,
             context=context,
         ),
@@ -493,7 +526,9 @@ ALL_NVDA_TOOLS = [
             description=(
                 "Bring a top-level window to the foreground by title (or handle), and verify "
                 "it took. Raises the window itself; the returned ref points at the window so "
-                "it can be searched with 'within'."
+                "it can be searched with 'within'. 'focus_in_window' says whether the screen "
+                "reader's focus followed: a window can be in front while the keyboard focus, "
+                "and so the reader, is still in the previous one."
             ),
             category="action",
             read_only=False,

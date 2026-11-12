@@ -17,8 +17,8 @@ TOKEN_HEADER = "X-NVDA-Bridge-Token"
 BRIDGE_VERSION = "1.0.0"
 PROTOCOL = "nvda-bridge-protocol"
 PROTOCOL_VERSION = "1.0.0"
-API_LEVEL = 3
-SUPPORTED_API_LEVELS = (2, 3)
+API_LEVEL = 4
+SUPPORTED_API_LEVELS = (2, 3, 4)
 MAX_REQUEST_BODY_SIZE = 1048576
 MAX_REQUEST_ID_LENGTH = 128
 
@@ -127,6 +127,7 @@ class BridgeToolsResponse:
     protocol_version: str = field(default="")
     bridge_version: str = field(default="")
     api_level: int = field(default=0)
+    supported_api_levels: Optional[list[int]] = field(default=None)
     types: Dict[str, Any] = field(default_factory=dict)
     tools: list[Dict[str, Any]] = field(default_factory=list)
     count: int = field(default=0)
@@ -178,6 +179,9 @@ def validate_tools_discovery_payload(payload: Dict[str, Any]) -> None:
         raise RuntimeError("tools payload has invalid protocol_version")
     if payload.get("api_level") != API_LEVEL:
         raise RuntimeError("tools payload has invalid api_level")
+    supported = payload.get("supported_api_levels")
+    if supported is not None and API_LEVEL not in supported:
+        raise RuntimeError("tools payload does not support its own api_level")
 
     types = payload.get("types")
     tools = payload.get("tools")
@@ -232,6 +236,7 @@ def build_tools_payload(tools: list[Dict[str, Any]], types: Dict[str, Any]) -> D
         "protocol_version": PROTOCOL_VERSION,
         "bridge_version": BRIDGE_VERSION,
         "api_level": API_LEVEL,
+        "supported_api_levels": list(SUPPORTED_API_LEVELS),
         "types": filtered_types,
         "tools": tools,
         "count": len(tools),

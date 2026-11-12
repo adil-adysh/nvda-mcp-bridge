@@ -113,5 +113,62 @@ class ActivateArgumentTests(unittest.TestCase):
 		self.assertEqual(caught.exception.protocol_code, 4205)
 
 
+class FocusWindowTests(unittest.TestCase):
+	"""Windows can move the foreground without moving the keyboard focus.
+
+	``activate`` proves the first, because that is what it can change. This is
+	the second answer, so a caller is never told the screen reader is somewhere
+	it is not.
+	"""
+
+	def install(self, focus):
+		previous = sys.modules.get("api")
+		sys.modules["api"] = types.SimpleNamespace(getFocusObject=focus)
+		self.addCleanup(self.restore, previous)
+
+	def restore(self, previous):
+		if previous is None:
+			sys.modules.pop("api", None)
+		else:
+			sys.modules["api"] = previous
+
+	def test_the_focused_control_reports_the_window_that_owns_it(self):
+		window = types.SimpleNamespace(role="WINDOW", windowHandle=4242)
+		control = types.SimpleNamespace(role="BUTTON", parent=window)
+		self.install(lambda: control)
+
+		self.assertEqual(windows.focus_window()[0], 4242)
+
+	def test_a_dialog_reports_its_own_window(self):
+		window = types.SimpleNamespace(role="WINDOW", parent=None, windowHandle=99)
+		dialog = types.SimpleNamespace(role="DIALOG", windowHandle=77, parent=window)
+		control = types.SimpleNamespace(role="BUTTON", parent=dialog)
+		self.install(lambda: control)
+
+		self.assertEqual(windows.focus_window()[0], 77)
+
+	def test_an_object_model_that_fails_is_no_answer_rather_than_an_error(self):
+		def explode():
+			raise RuntimeError("no desktop")
+
+		self.install(explode)
+		self.assertEqual(windows.focus_window(), (0, ""))
+
+	def test_a_focus_with_no_window_ancestor_is_no_answer(self):
+		self.install(lambda: types.SimpleNamespace(role="DOCUMENT", parent=None))
+		self.assertEqual(windows.focus_window(), (0, ""))
+
+	def test_a_dead_object_stops_the_walk(self):
+		class Exploding:
+			role = "DOCUMENT"
+
+			@property
+			def parent(self):
+				raise RuntimeError("gone")
+
+		self.install(lambda: Exploding())
+		self.assertEqual(windows.focus_window(), (0, ""))
+
+
 if __name__ == "__main__":
 	unittest.main()

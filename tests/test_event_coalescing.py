@@ -96,6 +96,72 @@ class JournalTests(unittest.TestCase):
 		self.assertTrue(page["truncated"])
 		self.assertEqual(page["dropped"], 2)
 
+	def test_each_journal_has_an_identity_of_its_own(self):
+		"""A version number only means something inside the journal that issued it.
+
+		NVDA restarts begin again at zero, so a client has to be able to tell
+		"nothing happened" apart from "the journal I was reading is gone".
+		"""
+		first = events.EventJournal()
+		second = events.EventJournal()
+
+		self.assertTrue(first.journal_id)
+		self.assertNotEqual(first.journal_id, second.journal_id)
+		self.assertEqual(first.snapshot()["journal_id"], first.journal_id)
+
+	def test_paging_returns_the_oldest_unseen_entries(self):
+		journal = events.EventJournal()
+		for index in range(5):
+			journal.record_transition("focus", name=f"e{index}")
+
+		page = journal.snapshot(since=0, limit=2)
+
+		self.assertEqual([entry["name"] for entry in page["events"]], ["e0", "e1"])
+		self.assertEqual(page["to_version"], page["events"][-1]["version"])
+		self.assertEqual(page["state_version"], 5)
+		self.assertTrue(page["has_more"])
+
+	def test_paging_to_the_end_says_there_is_no_more(self):
+		journal = events.EventJournal()
+		for index in range(4):
+			journal.record_transition("focus", name=f"e{index}")
+
+		first = journal.snapshot(since=0, limit=2)
+		second = journal.snapshot(since=first["to_version"], limit=2)
+
+		self.assertEqual([entry["name"] for entry in second["events"]], ["e2", "e3"])
+		self.assertFalse(second["has_more"])
+		self.assertEqual(second["to_version"], 4)
+
+	def test_a_cursor_never_advances_past_an_entry_it_was_not_given(self):
+		"""The old contract returned the newest page and a cursor at the head.
+
+		Following that cursor skipped everything between, with no record that it
+		happened. Paging now walks the journal, one page at a time.
+		"""
+		journal = events.EventJournal()
+		for index in range(7):
+			journal.record_transition("focus", name=f"e{index}")
+
+		seen = []
+		cursor = 0
+		for _ in range(10):
+			page = journal.snapshot(since=cursor, limit=3)
+			seen.extend(entry["name"] for entry in page["events"])
+			cursor = page["to_version"]
+			if not page["has_more"]:
+				break
+
+		self.assertEqual(seen, [f"e{index}" for index in range(7)])
+
+	def test_an_empty_page_does_not_move_the_cursor(self):
+		journal = events.EventJournal()
+		page = journal.snapshot(since=42)
+
+		self.assertEqual(page["events"], [])
+		self.assertEqual(page["to_version"], 42)
+		self.assertFalse(page["has_more"])
+
 
 class CoalescerTests(unittest.TestCase):
 	def test_a_burst_becomes_one_transition(self):

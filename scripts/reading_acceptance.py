@@ -221,10 +221,29 @@ def check_document(bridge: Bridge, report: Report, title: str, name: str, landma
 		return
 
 	# --- navigation, on one backend, so a failure names the move that broke ---
+	# Nothing here activates a window, so a page that lost the focus to another
+	# window would make every move land somewhere else. One check that the
+	# document in front is still the acceptance page is worth more than a dozen
+	# confusing label mismatches.
+	current = bridge.call("list_reading_targets", {"item": "heading", "limit": 1})
+	focused = str(data(current).get("document", ""))
+	if not focused.lower().startswith(title.lower()):
+		report.check(
+			f"{name}: the document in front is still the acceptance page",
+			False,
+			focused or "no document",
+		)
+		return
+
 	first = bridge.call("navigate_reading", {"item": "heading", "direction": "first"})
 	report.check(f"{name}: 'first' lands on the first heading", data(first).get("label") == title, str(data(first).get("label")))
 	report.check(f"{name}: the move reports how far it went", data(first).get("reached") == 1, str(data(first).get("reached")))
 	report.check(f"{name}: the move reports a settle outcome", "changed" in result(first), json.dumps(result(first))[:160])
+	report.check(
+		f"{name}: a completed move says it made every step",
+		data(first).get("stopped") == "steps",
+		str(data(first).get("stopped")),
+	)
 
 	steps = bridge.call("navigate_reading", {"item": "heading", "direction": "next", "steps": 2})
 	report.check(f"{name}: two steps skip two headings", data(steps).get("label") == "Background", str(data(steps).get("label")))
@@ -235,6 +254,11 @@ def check_document(bridge: Bridge, report: Report, title: str, name: str, landma
 
 	last = bridge.call("navigate_reading", {"item": "heading", "direction": "last"})
 	report.check(f"{name}: 'last' lands on the final heading", data(last).get("label") == "Results", str(data(last).get("label")))
+	report.check(
+		f"{name}: 'last' says the document ended",
+		data(last).get("stopped") == "end",
+		str(data(last).get("stopped")),
+	)
 
 	link_first = bridge.call("navigate_reading", {"item": "link", "direction": "first"})
 	link_ref = str(data(link_first).get("ref") or "")
@@ -306,8 +330,9 @@ def check_without_a_document(bridge: Bridge, report: Report) -> None:
 def check_word(bridge: Bridge, report: Report, word: str) -> None:
 	"""A word processor is not a page: NVDA reads it in focus mode until asked.
 
-	`create` is the opt-in that turns browse mode on, the way NVDA+space does.
-	Without it the document is honestly reported as having no browse mode.
+	`start_browse_mode` is the opt-in that turns browse mode on, the way
+	NVDA+space does. Without it the document is honestly reported as having no
+	browse mode, and it is a separate action because it changes the session.
 	"""
 	report.section("reading a Word document")
 	fixture = REPO / ".probe" / "word_reading.docx"
@@ -358,15 +383,28 @@ def check_word(bridge: Bridge, report: Report, word: str) -> None:
 		f"{error_code(without)} {error_details(without).get('reason', '')}"[:200],
 	)
 
+	started = bridge.call("start_browse_mode")
+	report.check(
+		"browse mode can be started for a focus-mode document",
+		ok(started) and data(started).get("created") is True,
+		f"{error_code(started)} {json.dumps(data(started))[:160]}",
+	)
+	again = bridge.call("start_browse_mode")
+	report.check(
+		"asking twice does not create a second document",
+		ok(again) and data(again).get("created") is False,
+		json.dumps(data(again))[:160],
+	)
+
 	response = None
 	for attempt in range(4):
-		response = bridge.call("list_reading_targets", {"item": "heading", "limit": 10, "create": True})
+		response = bridge.call("list_reading_targets", {"item": "heading", "limit": 10})
 		if ok(response):
 			break
 		bridge.call("press", {"keys": "control+home"})
 		time.sleep(1.0)
 	block = data(response)
-	report.check("a Word document can be read with create", ok(response), str(error_code(response)))
+	report.check("a Word document can be read after starting browse mode", ok(response), str(error_code(response)))
 	if not ok(response):
 		close_titled_window("word_reading")
 		return
@@ -384,10 +422,10 @@ def check_word(bridge: Bridge, report: Report, word: str) -> None:
 	)
 	report.check("the document is named after its file", "word_reading" in str(block.get("document")), str(block.get("document")))
 
-	move = bridge.call("navigate_reading", {"item": "heading", "direction": "next", "steps": 2, "create": True})
+	move = bridge.call("navigate_reading", {"item": "heading", "direction": "next", "steps": 2})
 	report.check("moving in a Word document works", data(move).get("label") == "Background", str(data(move).get("label")))
 
-	reference = bridge.call("list_reading_targets", {"item": "reference", "limit": 3, "create": True})
+	reference = bridge.call("list_reading_targets", {"item": "reference", "limit": 3})
 	report.check(
 		"Word offers the types a word processor has",
 		ok(reference) and "reference" in (data(reference).get("available") or []),

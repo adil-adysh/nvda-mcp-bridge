@@ -30,7 +30,7 @@ reimplementation of browse mode:
 from __future__ import annotations
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 import api
 import logHandler
@@ -135,34 +135,35 @@ def _recall_created(obj: Any) -> Any:
 	return created
 
 
-def _create_interceptor(obj: Any) -> Any:
+def _create_interceptor(obj: Any) -> tuple[Any, bool]:
 	"""Ask NVDA to build a document model for ``obj``, as NVDA+space does.
 
 	Some documents are not read in browse mode until asked: a Word document
 	declares ``shouldCreateTreeInterceptor = False``, so NVDA keeps it in focus
 	mode and the quick navigation machinery never exists. Turning it on is a
-	real change to the user's session, which is why it is opt-in rather than
-	automatic.
+	real change to the user's session, which is why it is its own tool rather
+	than a flag on a read.
 
 	The model is remembered per application and window, so a caller that asks
-	again gets the same document rather than a second model of it.
+	again gets the same document rather than a second model of it. Returns
+	``(model, built_now)``: a remembered model is not a change made by this call.
 	"""
 	import treeInterceptorHandler
 
 	recalled = _recall_created(obj)
 	if recalled is not None:
-		return recalled
+		return recalled, False
 	try:
 		created = treeInterceptorHandler.update(obj, force=True)
 	except Exception as error:  # noqa: BLE001 — not every object has a document
 		logHandler.log.debug(f"bridge.reading.create_failed {type(error).__name__}: {error}")
-		return None
+		return None, False
 	if created is not None:
 		_CREATED[_document_key(obj)] = created
 	logHandler.log.info(
 		f"bridge.reading.created interface={_interface(created) if created is not None else '-'}",
 	)
-	return created
+	return created, created is not None
 
 
 def _interceptor(root: Any = None, create: bool = False) -> tuple[Any, str]:
@@ -179,19 +180,28 @@ def _interceptor(root: Any = None, create: bool = False) -> tuple[Any, str]:
 	read a document behind the window in front or to guess among tabs. The
 	reason names the fix, which is one keystroke.
 
-	``create`` asks NVDA to build the model for a document that is being read in
-	focus mode. Without it, nothing is created: forcing a document model is a
-	change to the user's session, not a side effect of a question.
+	``create`` builds a model for a document that is being read in focus mode.
+	Only ``create_document`` (the ``start_browse_mode`` action) passes it: forcing
+	a document model changes the user's session, so it is not a side effect of a
+	question.
 	"""
 	if root is not None:
 		tree_interceptor = _document_interceptor(root)
 		if tree_interceptor is not None:
 			return tree_interceptor, ""
 		if create:
-			tree_interceptor = _create_interceptor(root)
+			tree_interceptor, _built = _create_interceptor(root)
 			if tree_interceptor is not None:
 				return tree_interceptor, ""
-		return None, "the target is not inside a document that NVDA reads in browse mode"
+		# A model this bridge started stays usable for the read that follows:
+		# reusing it is not a session change, it is remembering our own work.
+		tree_interceptor = _recall_created(root)
+		if tree_interceptor is not None:
+			return tree_interceptor, ""
+		return None, (
+			"the target is not inside a document that NVDA reads in browse mode; "
+			"if it is a document NVDA is reading in focus mode, start browse mode first"
+		)
 
 	try:
 		focus = api.getFocusObject()
@@ -204,7 +214,11 @@ def _interceptor(root: Any = None, create: bool = False) -> tuple[Any, str]:
 
 	focus_document = _document_interceptor(focus)
 	if focus_document is None and create and focus is not None:
-		focus_document = _create_interceptor(focus)
+		focus_document, _built = _create_interceptor(focus)
+	if focus_document is None and focus is not None:
+		# The model may be one this bridge started in an earlier call; using it
+		# again is the point of starting it.
+		focus_document = _recall_created(focus)
 	logHandler.log.debug(
 		f"bridge.reading.resolve focus={_safe_get(focus, 'name')!r} pid={_safe_get(focus, 'processID')!r} "
 		f"app={_application_name(focus)!r} foreground={_safe_get(foreground, 'name')!r} "
@@ -216,7 +230,10 @@ def _interceptor(root: Any = None, create: bool = False) -> tuple[Any, str]:
 			return None, "there is no focus object to read from"
 		if create:
 			return None, "this object does not support browse mode, even when asked to start it"
-		return None, "the target is not inside a document that NVDA reads in browse mode"
+		return None, (
+			"the target is not inside a document that NVDA reads in browse mode; "
+			"if it is a document NVDA is reading in focus mode, start browse mode first"
+		)
 
 	if foreground is None or _same_application(focus_document, foreground):
 		return focus_document, ""
@@ -380,18 +397,60 @@ def _advance(iterator: Any, tree_interceptor: Any, public_name: str) -> Any:
 		) from error
 
 
-def _pick(iterator: Any, tree_interceptor: Any, public_name: str, count: int) -> tuple[Any, int, bool]:
-	"""Keep the ``count``-th position; report how many were reached and whether
-	the document ended first."""
+#: Why ``_pick`` stopped, for the caller that has to explain it.
+_PICK_COMPLETE = "complete"
+
+
+class _Budget:
+	"""How long one call may spend inside NVDA's main thread.
+
+	Checking between document operations — not inside one, which cannot be
+	interrupted — is what keeps a big document from blocking the screen reader:
+	an implementation that takes a second per position still yields after the
+	first one, with an honest partial answer.
+
+	The deadline is monotonic, so a clock change cannot extend it.
+	"""
+
+	def __init__(self, timeout_ms: int) -> None:
+		self.started = time.monotonic()
+		self.timeout_ms = max(1, int(timeout_ms))
+		self.deadline = self.started + self.timeout_ms / 1000.0
+
+	def expired(self) -> bool:
+		return time.monotonic() >= self.deadline
+
+	def elapsed_ms(self) -> float:
+		return round((time.monotonic() - self.started) * 1000.0, 1)
+
+	def remaining_ms(self) -> int:
+		return max(0, int((self.deadline - time.monotonic()) * 1000.0))
+
+
+def _pick(
+	iterator: Any,
+	tree_interceptor: Any,
+	public_name: str,
+	count: int,
+	budget: _Budget,
+) -> tuple[Any, int, str]:
+	"""Keep the ``count``-th position; say how many were reached and why it stopped.
+
+	``complete`` means ``count`` positions were reached and more may follow,
+	``end`` that the document ran out, and ``timeout`` that the budget expired
+	first — which is a refusal, not a partial answer about "last".
+	"""
 	chosen = None
 	reached = 0
 	while reached < count:
+		if budget.expired():
+			return chosen, reached, rules.STOP_TIMEOUT
 		candidate = _advance(iterator, tree_interceptor, public_name)
 		if candidate is None:
-			return chosen, reached, True
+			return chosen, reached, rules.STOP_END
 		chosen = candidate
 		reached += 1
-	return chosen, reached, False
+	return chosen, reached, _PICK_COMPLETE
 
 
 def _object_of(item: Any, tree_interceptor: Any = None) -> Any:
@@ -555,16 +614,83 @@ def capabilities(root: Any = None, create: bool = False) -> dict[str, Any]:
 	}
 
 
-def targets(item: str, limit: int = 20, root: Any = None, create: bool = False) -> tuple[dict[str, Any], list[Any]]:
+def create_document(root: Any = None) -> dict[str, Any]:
+	"""Build the document model NVDA+space would build, and report it.
+
+	Some documents are not read in browse mode until asked: a Word document
+	declares ``shouldCreateTreeInterceptor = False``, so NVDA keeps it in focus
+	mode and the quick navigation machinery never exists. Creating the model is a
+	change to the user's session, so it is an action of its own — a read must not
+	be able to do it, and the reply says whether this call is what changed
+	anything (``created``) or a model was already there.
+
+	Returns a payload rather than an object: the useful next step is to ask the
+	document a question, not to hold a reference to it.
+	"""
+	started = time.monotonic()
+	target = root
+	if target is None:
+		try:
+			target = api.getFocusObject()
+		except Exception:  # noqa: BLE001
+			target = None
+	if target is None:
+		raise DomainUnavailableError(
+			"there is no focused object to start browse mode on",
+			details={"created": False, "browse_mode": False},
+		)
+
+	existing = _document_interceptor(target)
+	if existing is not None:
+		created, built = existing, False
+	else:
+		created, built = _create_interceptor(target)
+	if created is None:
+		raise DomainUnavailableError(
+			"this object does not support browse mode, even when asked to start it",
+			details={
+				"created": False,
+				"browse_mode": False,
+				"document": rules.clip(_safe_get(target, "name") or "", 120),
+			},
+		)
+
+	elapsed_ms = round((time.monotonic() - started) * 1000.0, 1)
+	logHandler.log.debug(
+		f"bridge.reading.create_document document={_document(created)!r} "
+		f"interface={_interface(created)} created={built} elapsed_ms={elapsed_ms}",
+	)
+	return {
+		"created": bool(built),
+		"browse_mode": True,
+		"document": _document(created),
+		"interface": _interface(created),
+		"pass_through": _pass_through(created),
+		"elapsed_ms": elapsed_ms,
+	}
+
+
+def targets(
+	item: str,
+	limit: int = 20,
+	root: Any = None,
+	timeout_ms: int = rules.DEFAULT_TIMEOUT_MS,
+) -> tuple[dict[str, Any], list[Any]]:
 	"""Enumerate positions of one kind, in document order, without moving.
 
 	Returns ``(payload, objects)``; ``objects[i]`` backs ``payload["targets"][i]``
 	and is ``None`` when the position is plain text rather than a control. The
 	caller attaches references, exactly as ``locate`` does.
+
+	``timeout_ms`` bounds the work done on NVDA's main thread. ``stopped`` says
+	why the list ends where it does: ``end`` of the document, the requested
+	``limit``, or the ``timeout``. A list cut by the budget still says
+	``truncated``, so a partial answer can never be mistaken for the whole
+	document.
 	"""
-	started = time.monotonic()
 	public_name = rules.normalize_item(item)
-	tree_interceptor, reason = _interceptor(root, create=create)
+	budget = _Budget(timeout_ms)
+	tree_interceptor, reason = _interceptor(root)
 	if tree_interceptor is None:
 		raise DomainUnavailableError(
 			"there is no document to read here",
@@ -575,25 +701,43 @@ def targets(item: str, limit: int = 20, root: Any = None, create: bool = False) 
 	records: list[dict[str, Any]] = []
 	objects: list[Any] = []
 	truncated = False
+	scanned = 0
+	stopped = rules.STOP_END
 
 	iterator = _iterator(tree_interceptor, public_name, "next", None)
-	while True:
+	while len(records) < limit:
+		if budget.expired():
+			truncated = True
+			stopped = rules.STOP_TIMEOUT
+			break
 		candidate = _advance(iterator, tree_interceptor, public_name)
 		if candidate is None:
+			stopped = rules.STOP_END
 			break
-		if len(records) >= limit:
-			# One extra position was pulled on purpose: it is what tells
-			# "exactly the limit" apart from "the list was cut here".
-			truncated = True
-			break
+		scanned += 1
 		record = _describe(candidate, public_name, tree_interceptor)
 		objects.append(_object_of(candidate, tree_interceptor))
 		records.append(record)
 
-	elapsed_ms = round((time.monotonic() - started) * 1000.0, 1)
+	if len(records) >= limit and stopped != rules.STOP_TIMEOUT:
+		# One extra position is pulled on purpose: it is what tells "exactly the
+		# limit" apart from "the list was cut here".
+		if budget.expired():
+			truncated = True
+			stopped = rules.STOP_TIMEOUT
+		else:
+			extra = _advance(iterator, tree_interceptor, public_name)
+			if extra is None:
+				stopped = rules.STOP_END
+			else:
+				scanned += 1
+				truncated = True
+				stopped = rules.STOP_LIMIT
+
+	elapsed_ms = budget.elapsed_ms()
 	logHandler.log.debug(
-		f"bridge.reading.targets item={public_name} found={len(records)} "
-		f"truncated={truncated} elapsed_ms={elapsed_ms}",
+		f"bridge.reading.targets item={public_name} found={len(records)} scanned={scanned} "
+		f"truncated={truncated} stopped={stopped} elapsed_ms={elapsed_ms}",
 	)
 	return {
 		"item": public_name,
@@ -605,6 +749,9 @@ def targets(item: str, limit: int = 20, root: Any = None, create: bool = False) 
 		"source": source,
 		"targets": records,
 		"truncated": truncated,
+		"stopped": stopped,
+		"scanned": scanned,
+		"timeout_ms": int(timeout_ms),
 		"elapsed_ms": elapsed_ms,
 	}, objects
 
@@ -614,7 +761,7 @@ def navigate(
 	direction: str = "next",
 	steps: int = 1,
 	root: Any = None,
-	create: bool = False,
+	timeout_ms: int = rules.DEFAULT_TIMEOUT_MS,
 ) -> tuple[dict[str, Any], Any]:
 	"""Move the document's reading position, and report where it landed.
 
@@ -623,11 +770,17 @@ def navigate(
 	cursor stops at the last one — ``reached`` says how many moves happened,
 	``steps`` how many were asked for. ``first`` starts at the top of the
 	document, so ``first`` with ``steps=3`` asks for the third position in it.
+
+	``stopped`` says why the move ended: ``steps`` (all of them were made),
+	``end`` (the document ran out), ``stalled`` (the search came back to where
+	it already was) or ``timeout`` (the budget expired between steps). Landing
+	short is reported, never retried blindly — the cursor really did move that
+	far, and the screen reader announced it.
 	"""
-	started = time.monotonic()
 	public_name = rules.normalize_item(item)
 	move = rules.normalize_direction(direction)
-	tree_interceptor, reason = _interceptor(root, create=create)
+	budget = _Budget(timeout_ms)
+	tree_interceptor, reason = _interceptor(root)
 	if tree_interceptor is None:
 		raise DomainUnavailableError(
 			"there is no document to read here",
@@ -638,15 +791,32 @@ def navigate(
 	focus_mode = _pass_through(tree_interceptor)
 	wanted = max(1, int(steps))
 	iteration = "previous" if move == "previous" else "next"
+	stopped = rules.STOP_STEPS
 
 	if move == "last":
-		candidate, reached, exhausted = _pick(
+		# One position past the cap is what tells "exactly MAX_SCAN" apart from
+		# "more than MAX_SCAN": the scan stops at the cap, so it can only tell
+		# them apart by reaching one further.
+		candidate, reached, why = _pick(
 			_iterator(tree_interceptor, public_name, "next", None),
 			tree_interceptor,
 			public_name,
-			rules.MAX_SCAN,
+			rules.MAX_SCAN + 1,
+			budget,
 		)
-		if candidate is not None and not exhausted:
+		if why == rules.STOP_TIMEOUT:
+			raise DomainUnavailableError(
+				f"could not find the last {public_name} within {int(timeout_ms)} ms "
+				f"({reached} positions scanned); the document is too long to scan",
+				details={
+					"item": public_name,
+					"direction": move,
+					"scanned": reached,
+					"timeout_ms": int(timeout_ms),
+					"interface": _interface(tree_interceptor),
+				},
+			)
+		if why == _PICK_COMPLETE:
 			raise DomainUnavailableError(
 				f"this document holds more than {rules.MAX_SCAN} {public_name} positions; "
 				"ask for 'next' from the start instead of 'last'",
@@ -657,6 +827,7 @@ def navigate(
 					"interface": _interface(tree_interceptor),
 				},
 			)
+		stopped = rules.STOP_END
 	else:
 		# One search per step, moving in between. A document model that is
 		# searched *from a position* can yield a single match — NVDA's UIA
@@ -667,6 +838,9 @@ def navigate(
 		reached = 0
 		landed_label = None
 		for _ in range(wanted):
+			if budget.expired():
+				stopped = rules.STOP_TIMEOUT
+				break
 			start = None if move == "first" and reached == 0 else _selection(tree_interceptor)
 			found = _advance(
 				_iterator(tree_interceptor, public_name, iteration, start),
@@ -676,10 +850,12 @@ def navigate(
 			if found is None:
 				# The document ended first: the cursor stays where the last
 				# successful move put it, exactly as repeated key presses would.
+				stopped = rules.STOP_END
 				break
 			label = _safe_get(found, "label")
 			if isinstance(label, str) and label == landed_label:
 				# No progress: the search came back to where it already is.
+				stopped = rules.STOP_STALLED
 				break
 			landed_label = label
 			candidate = found
@@ -700,16 +876,17 @@ def navigate(
 	if move == "last":
 		_move_to(candidate, tree_interceptor, public_name)
 	record = _describe(candidate, public_name, tree_interceptor)
-	elapsed_ms = round((time.monotonic() - started) * 1000.0, 1)
+	elapsed_ms = budget.elapsed_ms()
 	logHandler.log.debug(
 		f"bridge.reading.navigate item={public_name} direction={move} "
-		f"steps={steps} reached={reached} elapsed_ms={elapsed_ms}",
+		f"steps={steps} reached={reached} stopped={stopped} elapsed_ms={elapsed_ms}",
 	)
 	payload = {
 		"item": public_name,
 		"direction": move,
 		"steps": int(steps),
 		"reached": int(reached),
+		"stopped": stopped,
 		"ref": "",
 		**record,
 		"landed": True,
@@ -717,6 +894,7 @@ def navigate(
 		"document": _document(tree_interceptor),
 		"interface": _interface(tree_interceptor),
 		"pass_through": focus_mode,
+		"timeout_ms": int(timeout_ms),
 		"elapsed_ms": elapsed_ms,
 	}
 	return payload, _landing_object(candidate, tree_interceptor)

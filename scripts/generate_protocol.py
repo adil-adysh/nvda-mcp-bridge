@@ -188,6 +188,9 @@ def generate_python(defn: Dict[str, Any]) -> str:
     lines.append('        raise RuntimeError("tools payload has invalid protocol_version")')
     lines.append('    if payload.get("api_level") != API_LEVEL:')
     lines.append('        raise RuntimeError("tools payload has invalid api_level")')
+    lines.append('    supported = payload.get("supported_api_levels")')
+    lines.append("    if supported is not None and API_LEVEL not in supported:")
+    lines.append('        raise RuntimeError("tools payload does not support its own api_level")')
     lines.append("")
     lines.append('    types = payload.get("types")')
     lines.append('    tools = payload.get("tools")')
@@ -244,6 +247,7 @@ def generate_python(defn: Dict[str, Any]) -> str:
     lines.append('        "protocol_version": PROTOCOL_VERSION,')
     lines.append('        "bridge_version": BRIDGE_VERSION,')
     lines.append('        "api_level": API_LEVEL,')
+    lines.append('        "supported_api_levels": list(SUPPORTED_API_LEVELS),')
     lines.append('        "types": filtered_types,')
     lines.append('        "tools": tools,')
     lines.append('        "count": len(tools),')
@@ -397,15 +401,26 @@ def generate_rust(defn: Dict[str, Any]) -> str:
     lines.append("// ── Validation ──")
     lines.append("")
     lines.append("/// Validate a /tools discovery response against the protocol contract.")
+    lines.append("///")
+    lines.append("/// The bridge advertises the API levels it can serve. This companion speaks")
+    lines.append("/// exactly one level, so an exact match is not required: it is enough that the")
+    lines.append("/// bridge lists this companion's level as supported. A bridge too old to send")
+    lines.append("/// the list is held to the stricter rule, because nothing else is known about it.")
     lines.append("pub fn validate_tools_payload(protocol: &str, protocol_version: &str,")
-    lines.append("    bridge_version: &str, api_level: u32, count: usize, actual_count: usize,")
+    lines.append("    bridge_version: &str, api_level: u32, supported_api_levels: &[u32],")
+    lines.append("    count: usize, actual_count: usize,")
     lines.append(") -> Result<(), String> {")
     lines.append('    if protocol != PROTOCOL_NAME {')
     proto_name_str = proto["name"]
     lines.append(f'        return Err(format!("Bridge protocol mismatch: expected \\"{proto_name_str}\\", got {{}}", protocol));')
     lines.append("    }")
-    lines.append("    if api_level != API_LEVEL {")
-    lines.append('        return Err(format!("Bridge API level mismatch: expected {}, got {}", API_LEVEL, api_level));')
+    lines.append("    let accepted = api_level == API_LEVEL")
+    lines.append("        || supported_api_levels.contains(&API_LEVEL);")
+    lines.append("    if !accepted {")
+    lines.append('        return Err(format!(')
+    lines.append('            "Bridge API level {} does not support this companion\'s level {} (bridge supports {:?})",')
+    lines.append("            api_level, API_LEVEL, supported_api_levels,")
+    lines.append("        ));")
     lines.append("    }")
     lines.append("    if protocol_version.trim().is_empty() {")
     lines.append('        return Err("Bridge protocol_version cannot be empty".into());')
@@ -525,6 +540,15 @@ def generate_tool_discovery_schema(defn: Dict[str, Any]) -> Dict[str, Any]:
             "protocol_version": {"const": defn["protocol"]["version"]},
             "bridge_version": {"$ref": "common.schema.json#/$defs/semver"},
             "api_level": {"const": defn["protocol"]["api_level"]},
+            "supported_api_levels": {
+                "type": "array",
+                "items": {"type": "integer", "minimum": 1},
+                "minItems": 1,
+                "description": (
+                    "API levels this bridge serves. Optional: a bridge older than the "
+                    "field is assumed to speak only its own api_level."
+                ),
+            },
             "types": {
                 "type": "object",
                 "minProperties": 1,

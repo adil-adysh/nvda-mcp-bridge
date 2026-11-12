@@ -175,11 +175,36 @@ def locate(
 	return _dispatch(context, perform)
 
 
+def start_browse_mode(within: str | None, expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
+	"""Build the document model the reading tools need, as NVDA+space does.
+
+	Word and some PDF readers keep documents in focus mode and declare that no
+	tree interceptor should be created; the quick navigation machinery the
+	reading tools use does not exist until one is. That is a change to the
+	user's session — afterwards the document is read in browse mode — so it is
+	its own action instead of a flag a read can flip.
+	"""
+	from ..nvda_bridge import reading
+
+	captured: dict[str, Any] = {}
+
+	def perform() -> dict[str, Any]:
+		def act() -> dict[str, Any]:
+			root = context.resolve(within) if within else None
+			captured.update(reading.create_document(root))
+			return captured
+
+		return context.dispatch(act)
+
+	context.settle(perform, expect=expect)
+	return dict(captured)
+
+
 def list_reading_targets(
 	item: str,
 	limit: int,
 	within: str | None,
-	create: bool,
+	timeout_ms: int,
 	context: Any,
 ) -> dict[str, Any]:
 	"""Enumerate a document's headings, links, form fields, and so on.
@@ -191,23 +216,21 @@ def list_reading_targets(
 
 	The whole thing runs in one main-thread hop for the same reason ``locate``
 	does: a second round trip would let the page change between enumerating and
-	registering the references.
-
-	``create`` starts browse mode for a document that NVDA is reading in focus
-	mode — a Word document, by default — the way NVDA+space does. It is opt-in
-	because it changes the user's session.
+	registering the references. ``timeout_ms`` is what stops that hop from
+	outlasting the reader's patience on a document with thousands of positions.
 	"""
 	from ..server import reading as rules
 
 	item_type = rules.normalize_item(item)
 	if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= rules.MAX_TARGETS:
 		raise ValueError(f"'limit' must be an integer between 1 and {rules.MAX_TARGETS}")
+	timeout = rules.normalize_timeout(timeout_ms)
 
 	def perform() -> dict[str, Any]:
 		from ..nvda_bridge import reading
 
 		root = context.resolve(within) if within else None
-		payload, objects = reading.targets(item=item_type, limit=limit, root=root, create=create)
+		payload, objects = reading.targets(item=item_type, limit=limit, root=root, timeout_ms=timeout)
 		for record, obj in zip(payload["targets"], objects):
 			record["ref"] = context.register(obj) if obj is not None else ""
 		return payload
@@ -220,7 +243,7 @@ def navigate_reading(
 	direction: str,
 	steps: int,
 	within: str | None,
-	create: bool,
+	timeout_ms: int,
 	expect: dict[str, Any] | None,
 	context: Any,
 ) -> dict[str, Any]:
@@ -238,6 +261,7 @@ def navigate_reading(
 		raise ValueError(f"'steps' must be an integer between 1 and {rules.MAX_STEPS}")
 	if move == "last" and steps != 1:
 		raise ValueError("'steps' must be 1 when 'direction' is 'last'")
+	timeout = rules.normalize_timeout(timeout_ms)
 
 	captured: dict[str, Any] = {}
 
@@ -247,7 +271,11 @@ def navigate_reading(
 
 			root = context.resolve(within) if within else None
 			payload, obj = reading.navigate(
-				item=item_type, direction=move, steps=steps, root=root, create=create
+				item=item_type,
+				direction=move,
+				steps=steps,
+				root=root,
+				timeout_ms=timeout,
 			)
 			if obj is not None:
 				payload["ref"] = context.register(obj)
@@ -395,6 +423,10 @@ def activate_window(
 					ref = context.register(window_object)
 				except Exception:  # noqa: BLE001
 					ref = ""
+			try:
+				focus_handle, focus_title = context.dispatch(windows.focus_window)
+			except Exception:  # noqa: BLE001 — "cannot tell" is an answer too
+				focus_handle, focus_title = 0, ""
 			return {
 				"activated": True,
 				"handle": current_handle,
@@ -405,6 +437,8 @@ def activate_window(
 				"restored": False,
 				"waited_ms": 0.0,
 				"matches": 1,
+				"focus_in_window": (focus_handle == current_handle) if focus_handle else None,
+				"focus_window": focus_title if focus_handle and focus_handle != current_handle else "",
 			}
 
 	captured: dict[str, Any] = {}
@@ -418,7 +452,7 @@ def activate_window(
 		context.dispatch(act)
 		return {key: value for key, value in captured.items() if key != "object"}
 
-	outcome = context.settle(perform, expect=expect)
+	context.settle(perform, expect=expect)
 
 	window_object = captured.get("object")
 	ref = ""
@@ -438,6 +472,8 @@ def activate_window(
 		"restored": bool(captured.get("restored", False)),
 		"waited_ms": float(captured.get("waited_ms", 0.0)),
 		"matches": int(captured.get("matches", 1)),
+		"focus_in_window": captured.get("focus_in_window"),
+		"focus_window": str(captured.get("focus_window", "")),
 	}
 
 
@@ -672,5 +708,6 @@ def wait_for_events(
 		"to_version": int(result.get("to_version", since)),
 		"events": list(result.get("events", [])),
 		"truncated": bool(result.get("truncated", False)),
+		"has_more": bool(result.get("has_more", False)),
 		"timed_out": int(result.get("to_version", since)) <= since,
 	}

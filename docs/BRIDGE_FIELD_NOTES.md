@@ -158,9 +158,11 @@ What the exercise changed:
    `interface` field is what lets a caller tell them apart.
 3. **Word is not browsable until asked.** `WordDocument` declares
    `shouldCreateTreeInterceptor = False`, so NVDA reads it in focus mode and
-   there is no quick navigation to drive. `create: true` starts browse mode the
-   way NVDA+space does, and the model is reused for the same application and
-   window rather than rebuilt per call.
+   there is no quick navigation to drive. `start_browse_mode` starts browse mode
+   the way NVDA+space does, and the model is reused for the same application and
+   window rather than rebuilt per call. It is an action rather than a flag on a
+   read because it changes the user's session, and a `read_only` client must not
+   be able to do that.
 4. **Stepping is not iterating.** A UIA document searched *from a position*
    yields a single match, so `steps` moves the cursor between searches. That
    also means `navigate_reading` speaks the intermediate positions, exactly as
@@ -170,12 +172,29 @@ What the exercise changed:
    document per tab, and nothing says which tab is showing. The tool now refuses
    when the focus is not in the window in front, and the refusal names the fix
    (F6, then ask again).
+6. **A raised window is not a focused one.** Windows can move the foreground
+   without moving the keyboard focus; a program that launches a browser gets the
+   first and often not the second. `activate_window` now answers both questions:
+   `activated` and `method` describe what it verified with Win32, and
+   `focus_in_window` says whether the screen reader's focus came along — `false`
+   means the reading tools will still see the previous window until something
+   gives the new one keyboard focus (a click, or F6 in a browser). Before the
+   field existed, "activated" read like "we are there now" and the next call
+   answered about the wrong window.
+7. **One position's worth of slack.** Twice in a few hundred acceptance checks,
+   `navigate_reading(next, steps=2)` landed one heading further than the previous
+   move reported. The call that lands is checked against its own `label` and
+   `reached`, and both were right; the *start* of the next search was one
+   position ahead, which is NVDA's virtual cursor updating on its own schedule
+   after `moveTo()`. It is not fixed here — the honest check is the landing
+   label, which every call reports, and the acceptance suite re-checks the
+   document in front before it starts moving.
 
 ## The surface, weighed (api_level 3)
 
 Asked whether the reading tools should replace the old ones, the answer came
 from measuring the catalog rather than from taste. Nothing overlapped — and the
-reading tools call the others (ctivate_window, ead, invoke) — but the
+reading tools call the others (activate_window, read, invoke) — but the
 catalog itself was 33 tools, 41 KB of definitions, a 120 KB `/tools` payload.
 Every session paid that before doing anything.
 
@@ -183,6 +202,13 @@ So the aliases went, and only the aliases: `get_current_focus`,
 `get_navigator_object`, `read_current_line`, `move_focus`,
 `send_keyboard`, `get_desktop_object` and `get_window_title`. 26 tools at
 api_level 3, `supported_api_levels: [2, 3]`.
+
+At api_level 4 the surface is 27: `start_browse_mode` was added as the honest
+home for the reading tools' `create` flag, and both reading tools gained
+`timeout_ms` and `stopped` so a call that outruns its main-thread budget says
+where it stopped instead of blocking the reader. `supported_api_levels` is
+`[2, 3, 4]`, and the companion now checks membership rather than equality — the
+exact-match rule had made the field decorative.
 
 Two things make the next removal cheaper than this one:
 

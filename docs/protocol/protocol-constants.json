@@ -6,10 +6,11 @@
     "name": "nvda-bridge-protocol",
     "version": "1.0.0",
     "bridge_version": "1.0.0",
-    "api_level": 3,
+    "api_level": 4,
     "supported_api_levels": [
       2,
-      3
+      3,
+      4
     ],
     "default_bridge_token": "",
     "token_header": "X-NVDA-Bridge-Token",
@@ -539,6 +540,13 @@
           "serde_default": false,
           "python_type": "int",
           "python_default": "0"
+        },
+        {
+          "name": "supported_api_levels",
+          "type": "Option<Vec<u32>>",
+          "serde_default": true,
+          "python_type": "Optional[list[int]]",
+          "python_default": "None"
         },
         {
           "name": "types",

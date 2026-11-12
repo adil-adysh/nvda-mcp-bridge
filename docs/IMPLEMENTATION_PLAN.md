@@ -471,13 +471,16 @@ tree order, UIA visibility rules, no hierarchy, one search per level. The two ar
 not the same question, so this is a new capability rather than a cheaper path to
 an existing one.
 
-* `list_reading_targets(item, limit?, within?, create?)` — enumerate positions of
-  one kind in reading order, without moving the cursor. The Elements List as
-  data: label, text, role, heading level, and a `ref` when a control backs the
-  position.
-* `navigate_reading(item, direction, steps?, within?, create?)` — move the
-  reading position (`next`/`previous`/`first`/`last`), reporting where it landed
-  and how many moves actually happened.
+* `list_reading_targets(item, limit?, within?, timeout_ms?)` — enumerate
+  positions of one kind in reading order, without moving the cursor. The Elements
+  List as data: label, text, role, heading level, and a `ref` when a control
+  backs the position. `stopped` says why the list ends where it does.
+* `navigate_reading(item, direction, steps?, within?, timeout_ms?)` — move the
+  reading position (`next`/`previous`/`first`/`last`), reporting where it landed,
+  how many moves actually happened, and what stopped it.
+* `start_browse_mode(within?)` — the opt-in that makes a focus-mode document
+  readable, as its own action. It changes the user's session, so a read must not
+  be able to do it.
 * The interceptor's own iterator does the work (`_iterNodesByType`); nothing
   re-implements ordering. Keystrokes are deliberately *not* synthesised: driving
   `script_nextHeading` through a gesture would route through NVDA's focus and the
@@ -490,7 +493,7 @@ reading order with levels `[1, 2, 3, 2, 2]`; `navigate_reading(next, steps=2)`
 lands on the third heading and reports `reached: 2`; a type the document does not
 support is `4205` with the supported list; an application with no document is
 `4205` with `browse_mode: false`; Word — which NVDA reads in focus mode by
-default — is readable once `create: true` asks for browse mode.
+default — is readable once `start_browse_mode` has built its document model.
 
 ---
 
@@ -507,7 +510,7 @@ reason, because a plan that quietly changes is worse than one that is updated.
 | P4 | `api_level: 2` with `supported_api_levels: [1, 2]`, `result` block, `outputSchema`, `schema_hash`, `deprecated`/`supersededBy`, companion catalog refresh | The companion's catalog capability was static, so for a while a swap was silent and a connected client kept the surface it saw at connect time — an add-on update could leave a session offering the old tool set. Fixed: it now advertises `tools.listChanged` and sends `notifications/tools/list_changed`, which is what makes a client re-list. |
 | P5 | `server/locate.py` (match rules), `nvda_bridge/locate.py` (UIA search + bounded walk), `nvda_bridge/uia.py` (Invoke/Value/Toggle/SelectionItem/ExpandCollapse), `nvda_bridge/targets.py` (one dispatch seam), `locate` tool | A located target is an `IUIAutomationElement`, not an NVDA object: `NVDAObjects.UIA.UIA(UIAElement=…)` rejects a live element with `E_INVALIDARG`, and hit-testing only works while the element is on screen. So references now record their `target_kind` and the action layer routes by it; `navigate` refuses a located target and says so. The default search root is the foreground window, because a top-level dialog (Notepad's Save As) is not an ancestor of the focus. |
 | P5.1 | `nvda_bridge/windows.py`, `activate_window`, verified `set_value` (`verified`/`observed`/`value_source`), empty-string writes, `4103` for handler `ValueError`s | `set_value` used to stop at "the input was dispatched": a keyboard write could report `units: 17` while the field stayed empty. It now reads the control back and sets `uncertain` when the value did not land, retrying once with keystrokes only when the platform write changed nothing. `activate_window` exists because Windows refuses `SetForegroundWindow` from an external process: raising a covered window was the one common task the tool surface could not start, so every such job needed a script. |
-| P5.2 | `server/reading.py` (vocabulary), `nvda_bridge/reading.py` (interceptor resolution, enumeration, stepping), `list_reading_targets`, `navigate_reading`, `create` on both | The first design resolved "the document in front" from the foreground window. Measured otherwise: one browser window holds a document per tab, and nothing in the document model says which tab is showing, so the honest rule is "the focused document, and only when it belongs to the window in front; otherwise refuse and say to press F6". `create` exists because Word declares `shouldCreateTreeInterceptor = False` — browse mode there is opt-in (NVDA+space), and a tool that cannot ask for it can only report that Word has no document. |
+| P5.2 | `server/reading.py` (vocabulary), `nvda_bridge/reading.py` (interceptor resolution, enumeration, stepping), `list_reading_targets`, `navigate_reading`, `start_browse_mode` | The first design resolved "the document in front" from the foreground window. Measured otherwise: one browser window holds a document per tab, and nothing in the document model says which tab is showing, so the honest rule is "the focused document, and only when it belongs to the window in front; otherwise refuse and say to press F6". Word declares `shouldCreateTreeInterceptor = False`, so browse mode there is opt-in (NVDA+space) and a tool that cannot ask for it can only report that Word has no document — but asking is a session change, so at api_level 4 it is the `start_browse_mode` action rather than a `create` flag on a `read_only` tool. |
 
 Live observations from `scripts/live_acceptance.py` (44/44 checks, 1
 environmental skip) and `scripts/bridge_acceptance.py` (69/70 behavioural,
@@ -578,7 +581,7 @@ Notepad) and the `bridge.reading.*` log lines of those runs:
 | `navigate_reading(first / next, steps=2 / previous / last)` | `Reading Acceptance …` → `Background` (`reached: 2`) → `Introduction` → `Results`; `changed: false`, `settled_ms` 871-1165 ms |
 | A link position's ref | `LINK n16`, `read` on it returns `Intro` |
 | No such type present (`table` on a page without one) | `4205`, message names the move ("there is no next table in this document") |
-| Word document (4 headings, levels 1-3-2) | without `create`: `4205` ("not inside a document NVDA reads in browse mode"); with `create: true`: `interface: WordBrowseModeDocument`, headings in order with levels `[1, 2, 3, 2]`, `available` includes `reference` and `annotation`, `source: declared` |
+| Word document (4 headings, levels 1-3-2) | before `start_browse_mode`: `4205` ("not inside a document NVDA reads in browse mode"); after it (`created: true`, then `false` on the second call): `interface: WordBrowseModeDocument`, headings in order with levels `[1, 2, 3, 2]`, `available` includes `reference` and `annotation`, `source: declared` |
 | Word stepping | `next` from the top yields one position per search — NVDA's UIA iterator does not advance on its own — so `steps` moves the cursor between searches, as repeated key presses do |
 | Notepad (no document) | `4205`, `browse_mode: false`, reason "the target is not inside a document that NVDA reads in browse mode" |
 | Focus in a page behind the window in front | refused with "the window in front does not hold the page focus; put focus in its page first (F6)" — after F6 the read succeeds |
@@ -597,7 +600,7 @@ time — time NVDA could not spend on anything else. Reproduce with
 | `list_reading_targets(link, limit=1)` | 29.0 ms | 25.4 ms |
 | `list_reading_targets(link, limit=50)` | 786.6 ms | 1012.3 ms |
 | `list_reading_targets(heading, limit=50)` | 537.4 ms | 769.4 ms |
-| `navigate_reading(link, last)` | **refused** after scanning 2,000 positions: `4205`, "holds more than 2000 link positions" (370.9 ms wall) | `reached: 800`, 119.3 ms |
+| `navigate_reading(link, last)` | `reached: 2000` (the last link), 258.6 ms — used to refuse at the cap | `reached: 800`, 119.3 ms |
 | `navigate_reading(heading, last)` | `reached: 401`, 108.1 ms | `reached: 101`, 89.7 ms |
 | `navigate_reading(link, next, steps=20)` | 1253.9 ms | 1330.4 ms |
 
@@ -620,14 +623,24 @@ What the numbers say, in order of how much they matter:
   saying which stopped it. The reading tools have no deadline at all, which is
   an inconsistency, not a design decision.
 
-Two defects the measurements exposed, both unfixed:
+Two defects the measurements exposed, both fixed at api_level 4:
 
-* `last` on a document holding exactly `MAX_SCAN` positions is refused as
-  "more than 2000" — `_pick` stops at the cap and so cannot tell "exactly the
-  cap" from "more". One extra advance would.
-* Main-thread cost is declared for `list_reading_targets` (120 ms) and
-  `navigate_reading` (400 ms) as if it were a bound; measured worst cases are
-  ~1 s and ~1.3 s.
+* `last` on a document holding exactly `MAX_SCAN` positions was refused as
+  "more than 2000", because `_pick` stopped at the cap and so could not tell
+  "exactly the cap" from "more". It now advances one position past the cap, and
+  a 2,000-link page reads to its last link (measured 258.6 ms, server side).
+* Main-thread cost was declared for `list_reading_targets` (120 ms) and
+  `navigate_reading` (400 ms) as if it were a bound. Both now take `timeout_ms`
+  (default 1000, max 5000), mirroring `locate`'s `max_nodes` plus time budget,
+  and the declarations are 300 and 400 ms against measured worst cases of ~0.8 s
+  and ~1.3 s.
+
+What the budget does when it bites, measured on the same pages:
+`list_reading_targets(limit=50, timeout_ms=100)` returns 8 targets with
+`truncated: true, stopped: "timeout"` in 114.7 ms, and
+`navigate_reading(steps=20, timeout_ms=250)` reaches 4 positions and says
+`stopped: "timeout"`. The work stops between positions, so the overrun is one
+position's cost, not the request's.
 
 One environment note from the same runs: after a browser is started by
 `Popen`, `GetForegroundWindow()` can report the new window while NVDA's own
@@ -669,7 +682,9 @@ measuring the surface instead of by taste:
 * So the aliases went. `get_current_focus`, `get_navigator_object`,
   `read_current_line`, `move_focus`, `send_keyboard`, `get_desktop_object` and
   `get_window_title` were removed at **api_level 3** after a full cycle as
-  deprecated names: 26 tools now, and `supported_api_levels` is `[2, 3]`.
+  deprecated names. The reading tools' `create` flag became the
+  `start_browse_mode` action at **api_level 4**: 27 tools now, and
+  `supported_api_levels` is `[2, 3, 4]`.
 * `GET /tools?category=` filters the rest. `action,observation` is 58 KB of 101
   KB; `NVDA_BRIDGE_CATEGORIES` lets a companion ask for only that. An unknown
   category is `4103` with the known list rather than an empty catalog.

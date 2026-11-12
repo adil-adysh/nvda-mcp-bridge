@@ -24,7 +24,16 @@
       "$ref": "common.schema.json#/$defs/semver"
     },
     "api_level": {
-      "const": 3
+      "const": 4
+    },
+    "supported_api_levels": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "minItems": 1,
+      "description": "API levels this bridge serves. Optional: a bridge older than the field is assumed to speak only its own api_level."
     },
     "types": {
       "type": "object",

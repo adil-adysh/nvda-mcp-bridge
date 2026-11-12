@@ -2,7 +2,7 @@
   "protocol": "nvda-bridge-protocol",
   "protocol_version": "1.0.0",
   "bridge_version": "1.0.0",
-  "api_level": 3,
+  "api_level": 4,
   "types": {
     "ActivateWindowResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -41,6 +41,19 @@
             },
             "matches": {
               "type": "integer"
+            },
+            "focus_in_window": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "focus_window": {
+              "type": "string"
             }
           },
           "additionalProperties": false,
@@ -891,6 +904,15 @@
             "truncated": {
               "type": "boolean"
             },
+            "stopped": {
+              "type": "string"
+            },
+            "scanned": {
+              "type": "integer"
+            },
+            "timeout_ms": {
+              "type": "integer"
+            },
             "elapsed_ms": {
               "type": "number"
             }
@@ -1101,6 +1123,9 @@
             "reached": {
               "type": "integer"
             },
+            "stopped": {
+              "type": "string"
+            },
             "ref": {
               "type": "string"
             },
@@ -1130,6 +1155,9 @@
             },
             "pass_through": {
               "type": "boolean"
+            },
+            "timeout_ms": {
+              "type": "integer"
             },
             "elapsed_ms": {
               "type": "number"
@@ -1686,6 +1714,60 @@
       ],
       "additionalProperties": false
     },
+    "StartBrowseModeResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "created": {
+              "type": "boolean"
+            },
+            "browse_mode": {
+              "type": "boolean"
+            },
+            "document": {
+              "type": "string"
+            },
+            "interface": {
+              "type": "string"
+            },
+            "pass_through": {
+              "type": "boolean"
+            },
+            "elapsed_ms": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
     "WaitEventsResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
@@ -1711,6 +1793,9 @@
               }
             },
             "truncated": {
+              "type": "boolean"
+            },
+            "has_more": {
               "type": "boolean"
             },
             "timed_out": {
@@ -1805,7 +1890,7 @@
     {
       "name": "activate_window",
       "version": "1.0.0",
-      "description": "Bring a top-level window to the foreground by title (or handle), and verify it took. Raises the window itself; the returned ref points at the window so it can be searched with 'within'.",
+      "description": "Bring a top-level window to the foreground by title (or handle), and verify it took. Raises the window itself; the returned ref points at the window so it can be searched with 'within'. 'focus_in_window' says whether the screen reader's focus followed: a window can be in front while the keyboard focus, and so the reader, is still in the previous one.",
       "category": "action",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -1865,6 +1950,19 @@
           },
           "matches": {
             "type": "integer"
+          },
+          "focus_in_window": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "focus_window": {
+            "type": "string"
           }
         },
         "additionalProperties": false,
@@ -2856,7 +2954,7 @@
     {
       "name": "list_reading_targets",
       "version": "1.0.0",
-      "description": "List a document's positions of one kind in reading order \u2014 headings, links, landmarks, form fields, tables, and so on \u2014 without moving the cursor. This is the screen reader's Elements List as data: one call gives the structure of a page or document, with refs where a control backs the position. 'available' says what this document can be searched by (browsers, Word and PDFs only).",
+      "description": "List a document's positions of one kind in reading order \u2014 headings, links, landmarks, form fields, tables, and so on \u2014 without moving the cursor. This is the screen reader's Elements List as data: one call gives the structure of a page or document, with refs where a control backs the position. 'available' says what this document can be searched by (browsers, Word and PDFs only); 'stopped' and 'truncated' say why the list ends where it does.",
       "category": "observation",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -2878,8 +2976,8 @@
               }
             ]
           },
-          "create": {
-            "type": "boolean"
+          "timeout_ms": {
+            "type": "integer"
           }
         },
         "additionalProperties": false
@@ -2939,6 +3037,15 @@
           },
           "truncated": {
             "type": "boolean"
+          },
+          "stopped": {
+            "type": "string"
+          },
+          "scanned": {
+            "type": "integer"
+          },
+          "timeout_ms": {
+            "type": "integer"
           },
           "elapsed_ms": {
             "type": "number"
@@ -3207,7 +3314,7 @@
     {
       "name": "navigate_reading",
       "version": "1.0.0",
-      "description": "Move a document's reading position like the screen reader's quick nav key: 'next' heading, 'previous' link, 'first', 'last'. 'steps' skips ahead (three headings is one call). Works in browse-mode documents only \u2014 browsers, Word, PDFs \u2014 and moves the real cursor, so the screen reader announces it.",
+      "description": "Move a document's reading position like the screen reader's quick nav key: 'next' heading, 'previous' link, 'first', 'last'. 'steps' skips ahead (three headings is one call). Works in browse-mode documents only \u2014 browsers, Word, PDFs \u2014 and moves the real cursor, so the screen reader announces it. 'reached' and 'stopped' report a move that ended early instead of pretending it finished.",
       "category": "action",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -3232,8 +3339,8 @@
               }
             ]
           },
-          "create": {
-            "type": "boolean"
+          "timeout_ms": {
+            "type": "integer"
           },
           "expect": {
             "anyOf": [
@@ -3266,6 +3373,9 @@
           "reached": {
             "type": "integer"
           },
+          "stopped": {
+            "type": "string"
+          },
           "ref": {
             "type": "string"
           },
@@ -3295,6 +3405,9 @@
           },
           "pass_through": {
             "type": "boolean"
+          },
+          "timeout_ms": {
+            "type": "integer"
           },
           "elapsed_ms": {
             "type": "number"
@@ -4002,6 +4115,83 @@
       "supersededBy": null
     },
     {
+      "name": "start_browse_mode",
+      "version": "1.0.0",
+      "description": "Start browse mode for a document NVDA is reading in focus mode, the way NVDA+space does, and report the implementation that now answers. The reading tools need this: Word and some PDF readers keep documents in focus mode until asked, so list_reading_targets and navigate_reading refuse until a model exists. Changes the user's session; 'created' is false when one was already there, so asking twice is harmless.",
+      "category": "action",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "within": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "StartBrowseModeResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "boolean"
+          },
+          "browse_mode": {
+            "type": "boolean"
+          },
+          "document": {
+            "type": "string"
+          },
+          "interface": {
+            "type": "string"
+          },
+          "pass_through": {
+            "type": "boolean"
+          },
+          "elapsed_ms": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": true,
+      "requiredPermission": "input_control",
+      "cancellationSupported": false,
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
       "name": "wait_for_events",
       "version": "1.0.0",
       "description": "Block until the next coalesced UI transition (or timeout) and return the transition kinds. Use for idle waits instead of polling observe.",
@@ -4051,6 +4241,9 @@
             }
           },
           "truncated": {
+            "type": "boolean"
+          },
+          "has_more": {
             "type": "boolean"
           },
           "timed_out": {
@@ -4153,5 +4346,5 @@
       "supersededBy": null
     }
   ],
-  "count": 27
+  "count": 28
 }

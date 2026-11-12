@@ -25,6 +25,7 @@ it is safe to record from NVDA's event chain. Nothing here may block.
 from __future__ import annotations
 
 import collections
+import secrets
 import threading
 import time
 from typing import Any, Dict, Iterable, List, Optional
@@ -135,6 +136,13 @@ class EventJournal:
 		self._version = 0
 		self._dropped = 0
 		self._capacity = capacity
+		#: Identifies this journal for as long as it exists.
+		#:
+		#: A version number only means something inside the journal that issued
+		#: it. NVDA restarts begin again at zero, so a client holding a cursor
+		#: from before the restart would ignore everything until the new sequence
+		#: outgrew the old: comparing this id is how it knows to reset instead.
+		self.journal_id = secrets.token_hex(8)
 		#: Set false to skip recording entirely (idle cost: one attribute read).
 		self.enabled = True
 		#: Raw per-event history is a debugging aid, not a change feed.
@@ -209,7 +217,18 @@ class EventJournal:
 		kinds: Optional[Iterable[str]] = None,
 		raw: bool = False,
 	) -> Dict[str, Any]:
-		"""Return entries after ``since``, plus whether history was lost."""
+		"""Return entries after ``since``, oldest first, plus what they mean.
+
+		``limit`` pages from the *oldest* unseen entry, not the newest: returning
+		the newest would hand back a ``to_version`` at the head of the journal
+		while dropping everything between ``since`` and it, so a client that
+		polled with ``since = to_version`` would skip events with no record that
+		it had. The caller continues with ``since = to_version`` while
+		``has_more`` is true.
+
+		``truncated`` is a different fact: history *before* the cursor was lost
+		because the ring buffer had already dropped it.
+		"""
 		wanted = {kind for kind in (kinds or ()) if kind}
 		source = self._raw if raw else self._transitions
 		with self._condition:
@@ -227,17 +246,22 @@ class EventJournal:
 			]
 			oldest_raw = source[0]["version"] if source else current + 1
 			dropped = self._dropped
+			journal_id = self.journal_id
+		visible = entries[:limit] if limit > 0 else entries
+		has_more = len(visible) < len(entries)
 		# A cursor older than the oldest surviving *matched* entry means history
 		# was lost. When nothing matched, there is nothing to have lost.
 		truncated = since + 1 < oldest_raw and bool(entries)
 		return {
+			"journal_id": journal_id,
 			"from_version": since,
-			"to_version": current,
+			"to_version": visible[-1]["version"] if visible else since,
 			"state_version": current,
 			"truncated": truncated,
+			"has_more": has_more,
 			"dropped": dropped,
 			"source": "raw" if raw else "transitions",
-			"events": entries[-limit:] if limit > 0 else entries,
+			"events": visible,
 		}
 
 	def wait(

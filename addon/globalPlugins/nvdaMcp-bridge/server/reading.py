@@ -74,8 +74,40 @@ MAX_STEPS = 20
 #: is reported rather than silently answered with the wrong position.
 MAX_SCAN = 2000
 
+#: Main-thread time one enumeration or move may spend, by default.
+#:
+#: Measured cost is 0.15-0.17 ms per position (Edge ``ChromeVBuf``, Firefox
+#: ``Gecko_ia2``), so 1 s is several times the slowest measured request — a
+#: 50-target list on a 2,000-link page — and it still bounds the worst case.
+#: Without it the only limit is the size of the document: ``steps=20`` costs
+#: ~1.3 s and ``last`` costs ~0.35 s per 2,000 positions, on NVDA's main thread,
+#: where a screen reader cannot answer anything else.
+DEFAULT_TIMEOUT_MS = 1000
+
+#: Ceiling for a caller-supplied budget. A reading call that needs more than
+#: this is better split into several calls than left to block the UI.
+MAX_TIMEOUT_MS = 5000
+
+#: Why an answer stopped short of the whole document.
+STOP_END = "end"
+STOP_LIMIT = "limit"
+STOP_STEPS = "steps"
+STOP_STALLED = "stalled"
+STOP_TIMEOUT = "timeout"
+
 #: Longest label or text returned per target. A table's label is its whole text.
 MAX_TEXT = 200
+
+
+def normalize_timeout(timeout_ms: Optional[int]) -> int:
+	"""Return a usable main-thread budget, or raise with the valid range."""
+	if timeout_ms is None:
+		return DEFAULT_TIMEOUT_MS
+	if isinstance(timeout_ms, bool) or not isinstance(timeout_ms, int):
+		raise ValueError(f"'timeout_ms' must be an integer between 1 and {MAX_TIMEOUT_MS}")
+	if not 1 <= timeout_ms <= MAX_TIMEOUT_MS:
+		raise ValueError(f"'timeout_ms' must be an integer between 1 and {MAX_TIMEOUT_MS}")
+	return timeout_ms
 
 
 def normalize_item(name: Optional[str]) -> str:

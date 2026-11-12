@@ -14,8 +14,8 @@ pub const PROTOCOL_NAME: &str = "nvda-bridge-protocol";
 pub const PROTOCOL_VERSION: &str = "1.0.0";
 #[allow(dead_code)]
 pub const BRIDGE_VERSION: &str = "1.0.0";
-pub const API_LEVEL: u32 = 3;
-pub const SUPPORTED_API_LEVELS: &[u32] = &[2, 3];
+pub const API_LEVEL: u32 = 4;
+pub const SUPPORTED_API_LEVELS: &[u32] = &[2, 3, 4];
 pub const TOKEN_HEADER: &str = "X-NVDA-Bridge-Token";
 #[allow(dead_code)]
 pub const MAX_REQUEST_ID_LENGTH: usize = 128;
@@ -164,6 +164,8 @@ pub struct BridgeToolsResponse {
     pub protocol_version: String,
     pub bridge_version: String,
     pub api_level: u32,
+    #[serde(default)]
+    pub supported_api_levels: Option<Vec<u32>>,
     pub types: Map<String, Value>,
     pub tools: Vec<BridgeToolDef>,
     pub count: usize,
@@ -174,14 +176,25 @@ pub struct BridgeToolsResponse {
 // ── Validation ──
 
 /// Validate a /tools discovery response against the protocol contract.
+///
+/// The bridge advertises the API levels it can serve. This companion speaks
+/// exactly one level, so an exact match is not required: it is enough that the
+/// bridge lists this companion's level as supported. A bridge too old to send
+/// the list is held to the stricter rule, because nothing else is known about it.
 pub fn validate_tools_payload(protocol: &str, protocol_version: &str,
-    bridge_version: &str, api_level: u32, count: usize, actual_count: usize,
+    bridge_version: &str, api_level: u32, supported_api_levels: &[u32],
+    count: usize, actual_count: usize,
 ) -> Result<(), String> {
     if protocol != PROTOCOL_NAME {
         return Err(format!("Bridge protocol mismatch: expected \"nvda-bridge-protocol\", got {}", protocol));
     }
-    if api_level != API_LEVEL {
-        return Err(format!("Bridge API level mismatch: expected {}, got {}", API_LEVEL, api_level));
+    let accepted = api_level == API_LEVEL
+        || supported_api_levels.contains(&API_LEVEL);
+    if !accepted {
+        return Err(format!(
+            "Bridge API level {} does not support this companion's level {} (bridge supports {:?})",
+            api_level, API_LEVEL, supported_api_levels,
+        ));
     }
     if protocol_version.trim().is_empty() {
         return Err("Bridge protocol_version cannot be empty".into());

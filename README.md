@@ -158,7 +158,9 @@ them `scons` stops with a message that names both options — install Rust, or
 build with `companion=0` — rather than producing an add-on whose bundled
 companion is stale. That failure mode is real: the add-on once shipped a
 companion speaking api_level 2 next to a bridge speaking 3, and the companion
-refused the catalog and offered no tools at all.
+refused the catalog and offered no tools at all. The companion now accepts a
+bridge that lists its level in `supported_api_levels`, and refuses one that does
+not — with a message naming both, instead of silence.
 
 ---
 
@@ -290,10 +292,18 @@ and a `schema_hash` that changes whenever the contract does.
 
 ### Reading a document (browsers, Word, PDFs)
 
+* `start_browse_mode` — build the document model NVDA+space would build, for
+  documents read in focus mode (Word, some PDF readers). An action of its own
+  because it changes the session; `created: false` when one already existed
 * `list_reading_targets` — headings, links, landmarks, form fields and tables in
   reading order, without moving, with heading levels
 * `navigate_reading` — move the reading position like the quick nav key, with
   `steps`, and report where it landed
+
+Both reading calls take `timeout_ms` (default 1000) because they run on NVDA's
+main thread, where a big document is otherwise the only limit. They answer with
+`stopped` — `end`, `limit`, `steps`, `stalled` or `timeout` — so a partial
+answer is never presented as a complete one.
 
 ### Action (by `ref`, settled)
 
@@ -316,6 +326,14 @@ Every action returns `result.changed`, `result.delta` and `result.settled_ms`, s
 ### Development
 
 * `execute_python`
+
+### Removed at api_level 4
+
+`list_reading_targets` and `navigate_reading` no longer take `create`. A read is
+not allowed to start browse mode — a `read_only` client could otherwise change
+the user's session — so it became its own action:
+
+* `create: true` on either reading tool → `start_browse_mode`
 
 ### Removed at api_level 3
 

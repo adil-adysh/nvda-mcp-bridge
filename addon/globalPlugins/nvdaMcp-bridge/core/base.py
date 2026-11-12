@@ -130,7 +130,13 @@ class ToolMetadata:
 	"""NVDA runtime states in which this tool is permitted (e.g., normal, modal, menu, secure_desktop)."""
 
 	expected_duration_ms: int = 50
-	"""Expected execution duration in milliseconds."""
+	"""Typical handler duration in milliseconds, excluding a settle round.
+
+	Internal metadata, not published in ``/tools``: nothing times a call with
+	it. It exists so a tool's cost is declared next to its code, and the reading
+	tools' measurements (0.8 s for a 50-target list on a 2,000-link page) are why
+	theirs is not a two-digit number.
+	"""
 
 	cancellation_supported: bool = False
 	"""Whether long-running executions can be cancelled."""

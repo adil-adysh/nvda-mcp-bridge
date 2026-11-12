@@ -22,6 +22,7 @@ from ctypes import wintypes
 from typing import Any
 
 from .errors import DomainUnavailableError
+from ..server.state import _enum_name, _safe_get
 
 _SW_RESTORE = 9
 _HWND_TOPMOST = -1
@@ -111,6 +112,35 @@ def title_matches(candidate: str, wanted: str, exact: bool = False) -> bool:
 def is_minimized(handle: int) -> bool:
 	"""Whether the window is minimised (and therefore not really in front)."""
 	return bool(handle) and bool(_user32.IsIconic(handle))
+
+
+def focus_window() -> tuple[int, str]:
+	"""The top-level window that NVDA's focus is in, and its title.
+
+	Windows can move the foreground without moving the keyboard focus — a window
+	launched by a program is the common case — and then the two answers disagree.
+	``activate`` verifies with Win32, because that is the state it can change;
+	this is the other answer, so the caller can tell when the screen reader will
+	still be reading the previous window.
+	"""
+	try:
+		import api
+
+		node = api.getFocusObject()
+	except Exception:  # noqa: BLE001 — no object model means no answer
+		return 0, ""
+	chosen = None
+	for _ in range(10):
+		if node is None:
+			break
+		if _enum_name(_safe_get(node, "role")) in ("WINDOW", "DIALOG"):
+			chosen = node
+			break
+		node = _safe_get(node, "parent")
+	handle = _safe_get(chosen, "windowHandle")
+	if not isinstance(handle, int) or isinstance(handle, bool) or handle <= 0:
+		return 0, ""
+	return int(handle), window_title(int(handle))
 
 
 def object_for_handle(handle: int) -> Any:
@@ -296,6 +326,11 @@ def activate(
 			},
 		)
 
+	# The OS foreground and the screen reader's focus are two different facts, and
+	# a window can be raised without its content ever taking the keyboard. The
+	# reply carries both, so "activated" is not read as "the reader is there now".
+	focus_handle, focus_title = focus_window()
+	focus_followed = None if not focus_handle else focus_handle == hwnd
 	return {
 		"activated": True,
 		"handle": hwnd,
@@ -305,5 +340,7 @@ def activate(
 		"restored": restored,
 		"waited_ms": round((time.monotonic() - started) * 1000.0, 1),
 		"matches": matched,
+		"focus_in_window": focus_followed,
+		"focus_window": "" if focus_followed in (None, True) else focus_title,
 		"object": chosen["object"],
 	}

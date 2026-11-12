@@ -18,6 +18,7 @@ through the real module, with only NVDA's `api`/`logHandler` standing in.
 import importlib
 import os
 import sys
+import time
 import types
 import unittest
 
@@ -397,7 +398,7 @@ class HandlerTests(unittest.TestCase):
 		document = ProbingDocument([Item("plain"), Item("a link", obj=link)])
 		context = FakeContext({"d1": Host(document)})
 
-		payload = handlers.list_reading_targets("heading", 10, "d1", False, context)
+		payload = handlers.list_reading_targets("heading", 10, "d1", 1000, context)
 
 		self.assertEqual([target["ref"] for target in payload["targets"]], ["", "n1"])
 		self.assertEqual(context.issued, [("n1", link)])
@@ -407,19 +408,19 @@ class HandlerTests(unittest.TestCase):
 		context = FakeContext()
 		for limit in (0, 51, -1, True, "5"):
 			with self.assertRaises(ValueError) as caught:
-				handlers.list_reading_targets("heading", limit, None, False, context)
+				handlers.list_reading_targets("heading", limit, None, 1000, context)
 			self.assertIn("limit", str(caught.exception), limit)
 
 	def test_the_steps_are_bounded(self):
 		context = FakeContext()
 		for steps in (0, 21, -3, True):
 			with self.assertRaises(ValueError) as caught:
-				handlers.navigate_reading("heading", "next", steps, None, False, None, context)
+				handlers.navigate_reading("heading", "next", steps, None, 1000, None, context)
 			self.assertIn("steps", str(caught.exception), steps)
 
 	def test_last_does_not_take_steps(self):
 		with self.assertRaises(ValueError) as caught:
-			handlers.navigate_reading("heading", "last", 2, None, False, None, FakeContext())
+			handlers.navigate_reading("heading", "last", 2, None, 1000, None, FakeContext())
 		self.assertIn("last", str(caught.exception))
 
 	def test_navigation_settles_and_reports_the_landing(self):
@@ -427,7 +428,7 @@ class HandlerTests(unittest.TestCase):
 		document = ProbingDocument([heading("Intro", 1), Item("Body", role="HEADING", level=1, obj=target)])
 		context = FakeContext({"d1": Host(document)})
 
-		payload = handlers.navigate_reading("heading", "next", 2, "d1", False, {"ref": "anything"}, context)
+		payload = handlers.navigate_reading("heading", "next", 2, "d1", 1000, {"ref": "anything"}, context)
 
 		self.assertEqual(payload["reached"], 2)
 		self.assertEqual(payload["label"], "Body")
@@ -440,7 +441,7 @@ class HandlerTests(unittest.TestCase):
 		# The cursor's object is the document itself, which is not a control.
 		document.currentNVDAObject = document.rootNVDAObject
 		context = FakeContext({"d1": Host(document)})
-		payload = handlers.navigate_reading("heading", "next", 1, "d1", False, None, context)
+		payload = handlers.navigate_reading("heading", "next", 1, "d1", 1000, None, context)
 
 		self.assertEqual(payload["ref"], "")
 		self.assertTrue(payload["landed"])
@@ -451,13 +452,13 @@ class HandlerTests(unittest.TestCase):
 		document = ProbingDocument([Item("plain")])
 		document.currentNVDAObject = control
 		context = FakeContext({"d1": Host(document)})
-		payload = handlers.navigate_reading("heading", "next", 1, "d1", False, None, context)
+		payload = handlers.navigate_reading("heading", "next", 1, "d1", 1000, None, context)
 
 		self.assertEqual(payload["ref"], "n1")
 		self.assertEqual(context.issued, [("n1", control)])
 
-	def test_create_reaches_the_reading_layer(self):
-		"""Starting browse mode is opt-in, and the flag has to arrive intact."""
+	def test_the_timeout_reaches_the_reading_layer(self):
+		"""The budget has to arrive intact; it is what bounds the main-thread hop."""
 		seen: dict = {}
 		original = reading.targets
 
@@ -474,6 +475,9 @@ class HandlerTests(unittest.TestCase):
 					"source": "probed",
 					"targets": [],
 					"truncated": False,
+					"stopped": "end",
+					"scanned": 0,
+					"timeout_ms": kwargs.get("timeout_ms"),
 					"elapsed_ms": 0.0,
 				},
 				[],
@@ -481,12 +485,234 @@ class HandlerTests(unittest.TestCase):
 
 		reading.targets = fake
 		try:
-			handlers.list_reading_targets("heading", 5, None, True, FakeContext())
+			handlers.list_reading_targets("heading", 5, None, 750, FakeContext())
 		finally:
 			reading.targets = original
 
-		self.assertTrue(seen["create"])
+		self.assertEqual(seen["timeout_ms"], 750)
 		self.assertIsNone(seen["root"])
+
+	def test_a_timeout_outside_the_range_is_refused(self):
+		for timeout in (0, -5, rules.MAX_TIMEOUT_MS + 1, True, "500"):
+			with self.assertRaises(ValueError) as caught:
+				handlers.list_reading_targets("heading", 5, None, timeout, FakeContext())
+			self.assertIn("timeout_ms", str(caught.exception), timeout)
+			with self.assertRaises(ValueError):
+				handlers.navigate_reading("heading", "next", 1, None, timeout, None, FakeContext())
+
+
+class SlowDocument(Document):
+	"""A document whose iterator costs time, the way a slow provider does.
+
+	The budget is checked between positions, not inside one, so the only way to
+	test it without a real browser is a document that makes each position
+	expensive.
+	"""
+
+	def __init__(self, items, delay=0.01, **kwargs):
+		super().__init__(items, **kwargs)
+		self.delay = delay
+
+	def _iterNodesByType(self, itemType, direction="next", pos=None):
+		source = super()._iterNodesByType(itemType, direction, pos)
+
+		def stream():
+			for item in source:
+				time.sleep(self.delay)
+				yield item
+
+		return stream()
+
+
+# ============================================================================
+# The main-thread budget
+# ============================================================================
+
+
+class BudgetTests(unittest.TestCase):
+	"""A call that runs out of time says so instead of running long."""
+
+	def test_a_slow_document_is_cut_and_says_it_ran_out_of_time(self):
+		document = SlowDocument([heading(f"H{index}") for index in range(40)])
+		payload, _objects = reading.targets("heading", limit=40, root=Host(document), timeout_ms=45)
+
+		self.assertTrue(payload["truncated"])
+		self.assertEqual(payload["stopped"], rules.STOP_TIMEOUT)
+		self.assertGreater(len(payload["targets"]), 0)
+		self.assertLess(len(payload["targets"]), 40)
+		self.assertGreater(payload["elapsed_ms"], 0)
+		self.assertEqual(payload["timeout_ms"], 45)
+
+	def test_a_list_cut_by_the_limit_says_which_limit(self):
+		document = ProbingDocument([heading(f"H{index}") for index in range(10)])
+		payload, _objects = reading.targets("heading", limit=3, root=Host(document))
+
+		self.assertEqual(len(payload["targets"]), 3)
+		self.assertEqual(payload["stopped"], rules.STOP_LIMIT)
+		self.assertTrue(payload["truncated"])
+		self.assertEqual(payload["scanned"], 4)
+
+	def test_a_list_that_is_the_whole_document_is_not_truncated(self):
+		document = ProbingDocument([heading("Only")])
+		payload, _objects = reading.targets("heading", limit=1, root=Host(document))
+
+		self.assertEqual(payload["stopped"], rules.STOP_END)
+		self.assertFalse(payload["truncated"])
+
+	def test_a_move_that_runs_out_of_time_reports_the_steps_it_made(self):
+		document = SlowDocument([heading(f"H{index}") for index in range(30)])
+		payload, _obj = reading.navigate(
+			"heading", "next", steps=20, root=Host(document), timeout_ms=60
+		)
+
+		self.assertEqual(payload["stopped"], rules.STOP_TIMEOUT)
+		self.assertGreater(payload["reached"], 0)
+		self.assertLess(payload["reached"], 20)
+		self.assertTrue(payload["landed"])
+
+	def test_last_refuses_rather_than_guessing_when_the_budget_expires(self):
+		document = SlowDocument([heading(f"H{index}") for index in range(50)])
+
+		with self.assertRaises(errors.DomainUnavailableError) as caught:
+			reading.navigate("heading", "last", root=Host(document), timeout_ms=30)
+
+		self.assertIn("within 30 ms", str(caught.exception))
+		self.assertEqual(caught.exception.details["timeout_ms"], 30)
+		self.assertGreater(caught.exception.details["scanned"], 0)
+
+	def test_a_move_that_makes_every_step_says_so(self):
+		document = ProbingDocument([heading(f"H{index}") for index in range(5)])
+		payload, _obj = reading.navigate("heading", "next", steps=2, root=Host(document))
+
+		self.assertEqual(payload["reached"], 2)
+		self.assertEqual(payload["stopped"], rules.STOP_STEPS)
+
+	def test_a_move_that_the_document_ends_first_says_so(self):
+		document = ProbingDocument([heading(f"H{index}") for index in range(2)])
+		payload, _obj = reading.navigate("heading", "next", steps=9, root=Host(document))
+
+		self.assertEqual(payload["reached"], 2)
+		self.assertEqual(payload["stopped"], rules.STOP_END)
+
+
+class ScanCapTests(unittest.TestCase):
+	"""`last` scans to the end; the cap is a refusal, and it must be exact."""
+
+	def test_a_document_holding_exactly_the_cap_can_be_read_to_the_end(self):
+		items = [heading(f"H{index:04d}") for index in range(rules.MAX_SCAN)]
+		payload, _obj = reading.navigate("heading", "last", root=Host(ProbingDocument(items)))
+
+		self.assertEqual(payload["reached"], rules.MAX_SCAN)
+		self.assertEqual(payload["label"], f"H{rules.MAX_SCAN - 1:04d}")
+		self.assertEqual(payload["stopped"], rules.STOP_END)
+
+	def test_one_position_past_the_cap_is_refused_by_name(self):
+		items = [heading(f"H{index:04d}") for index in range(rules.MAX_SCAN + 1)]
+
+		with self.assertRaises(errors.DomainUnavailableError) as caught:
+			reading.navigate("heading", "last", root=Host(ProbingDocument(items)))
+
+		self.assertIn(str(rules.MAX_SCAN), str(caught.exception))
+		self.assertEqual(caught.exception.details["scanned"], rules.MAX_SCAN + 1)
+
+
+# ============================================================================
+# Starting browse mode
+# ============================================================================
+
+
+class CreationTests(unittest.TestCase):
+	"""Creating a document is its own call, and it knows what it did."""
+
+	def setUp(self):
+		self._had = "treeInterceptorHandler" in sys.modules
+		self._previous = sys.modules.get("treeInterceptorHandler")
+		reading._CREATED.clear()
+
+	def tearDown(self):
+		if self._had:
+			sys.modules["treeInterceptorHandler"] = self._previous
+		else:
+			sys.modules.pop("treeInterceptorHandler", None)
+		reading._CREATED.clear()
+
+	def install(self, update):
+		sys.modules["treeInterceptorHandler"] = types.SimpleNamespace(update=update)
+
+	def test_a_document_already_in_browse_mode_is_not_created_again(self):
+		document = ProbingDocument(HEADINGS)
+		payload = reading.create_document(Host(document))
+
+		self.assertFalse(payload["created"])
+		self.assertTrue(payload["browse_mode"])
+		self.assertEqual(payload["interface"], "ProbingDocument")
+
+	def test_a_focus_mode_document_is_created_once_and_then_remembered(self):
+		document = ProbingDocument(HEADINGS)
+		# A document model knows whether it is still alive; the bridge reuses a
+		# remembered one only while it is.
+		document.isAlive = True
+		calls = []
+		self.install(lambda obj, force=False: (calls.append((obj, force)), document)[1])
+		target = types.SimpleNamespace(
+			treeInterceptor=None,
+			windowHandle=4242,
+			appModule=types.SimpleNamespace(appName="Word"),
+		)
+
+		first = reading.create_document(target)
+		second = reading.create_document(target)
+
+		self.assertTrue(first["created"])
+		self.assertFalse(second["created"])
+		self.assertEqual(len(calls), 1)
+		self.assertEqual(calls[0][1], True, "the model has to be forced, as NVDA+space does")
+		self.assertEqual(first["interface"], "ProbingDocument")
+
+	def test_an_object_that_cannot_be_a_document_says_so(self):
+		self.install(lambda obj, force=False: None)
+
+		with self.assertRaises(errors.DomainUnavailableError) as caught:
+			reading.create_document(types.SimpleNamespace(treeInterceptor=None, name="Notepad"))
+
+		self.assertIn("does not support browse mode", str(caught.exception))
+		self.assertFalse(caught.exception.details["created"])
+
+	def test_a_document_started_earlier_is_found_by_the_next_read(self):
+		"""Starting browse mode and then reading it are two calls.
+
+		The focused object is a fresh proxy each time, so the model has to be
+		remembered across them — otherwise every read would start a new document.
+		"""
+		document = ProbingDocument(HEADINGS)
+		document.isAlive = True
+		self.install(lambda obj, force=False: document)
+		target = types.SimpleNamespace(
+			treeInterceptor=None,
+			windowHandle=77,
+			appModule=types.SimpleNamespace(appName="Word"),
+		)
+		reading.create_document(target)
+		later = types.SimpleNamespace(
+			treeInterceptor=None,
+			windowHandle=77,
+			appModule=types.SimpleNamespace(appName="Word"),
+		)
+
+		payload, _objects = reading.targets("heading", limit=5, root=later)
+
+		self.assertEqual(len(payload["targets"]), 3)
+		self.assertEqual(payload["interface"], "ProbingDocument")
+
+	def test_the_handler_resolves_within_and_settles(self):
+		document = ProbingDocument(HEADINGS)
+		context = FakeContext({"w1": Host(document)})
+
+		payload = handlers.start_browse_mode("w1", {"ref": "x"}, context)
+
+		self.assertFalse(payload["created"])
+		self.assertEqual(context.resolved, ["w1"])
+		self.assertEqual(context.settled, [{"ref": "x"}])
 
 
 class OutputModelTests(unittest.TestCase):
@@ -495,7 +721,7 @@ class OutputModelTests(unittest.TestCase):
 	def test_enumeration_payload_matches_its_model(self):
 		document = ProbingDocument(HEADINGS)
 		payload = handlers.list_reading_targets(
-			"heading", 5, "d1", False, FakeContext({"d1": Host(document)})
+			"heading", 5, "d1", 1000, FakeContext({"d1": Host(document)})
 		)
 		model = validator.validate_and_map(payload, models.ListReadingTargetsResult, strict=True)
 
@@ -506,7 +732,7 @@ class OutputModelTests(unittest.TestCase):
 	def test_navigation_payload_matches_its_model(self):
 		document = ProbingDocument(HEADINGS)
 		payload = handlers.navigate_reading(
-			"heading", "next", 1, "d1", False, None, FakeContext({"d1": Host(document)})
+			"heading", "next", 1, "d1", 1000, None, FakeContext({"d1": Host(document)})
 		)
 		model = validator.validate_and_map(payload, models.NavigateReadingResult, strict=True)
 

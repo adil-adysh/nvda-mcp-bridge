@@ -142,6 +142,7 @@ def timed(bridge: Bridge, action: str, params: dict) -> dict:
 		"server_ms": block.get("elapsed_ms"),
 		"count": len(block.get("targets") or []) if block.get("targets") is not None else None,
 		"truncated": block.get("truncated"),
+		"stopped": block.get("stopped"),
 		"reached": block.get("reached"),
 	}
 
@@ -199,6 +200,14 @@ def main() -> int:
 			timed(bridge, "navigate_reading", {"item": "link", "direction": "next", "steps": 5}),
 			timed(bridge, "navigate_reading", {"item": "link", "direction": "next", "steps": 10}),
 			timed(bridge, "navigate_reading", {"item": "link", "direction": "next", "steps": 20}),
+			# The same calls with a budget too small to finish: the answer has to
+			# say where it stopped, and a list cut this way is never "complete".
+			timed(bridge, "list_reading_targets", {"item": "link", "limit": 50, "timeout_ms": 100}),
+			timed(
+				bridge,
+				"navigate_reading",
+				{"item": "link", "direction": "next", "steps": 20, "timeout_ms": 250},
+			),
 		]
 	finally:
 		if not args.keep:
@@ -220,7 +229,8 @@ def main() -> int:
 		if row["ok"]:
 			print(
 				f"{label:<34} wall={row['wall_ms']:>8.1f} ms  server={row['server_ms']!s:>7} ms"
-				f"  n={row['count']} truncated={row['truncated']} reached={row['reached']}"
+				f"  n={row['count']} truncated={row['truncated']} "
+				f"stopped={row['stopped']} reached={row['reached']}"
 			)
 		else:
 			print(f"{label:<34} wall={row['wall_ms']:>8.1f} ms  error {row['code']}: {row['error']}")

@@ -5,6 +5,7 @@ Checks, in order:
   2. a normal action stays fast while a long-poll is in flight (no starvation)
   3. two concurrent long-polls both work and an action still lands
   4. the cursor contract reports the fields a consumer needs to resync
+  5. paging with a limit returns a cursor at the last entry, not the head
 
 Run: python scripts/validate_event_transport.py
 """
@@ -60,7 +61,7 @@ def main() -> int:
 
     # 2. The long-poll must not stall ordinary calls: it runs on an HTTP worker
     #    thread, never on NVDA's main thread.
-    baseline, _ = action("get_current_focus")
+    baseline, _ = action("observe")
     baseline_ms = baseline.get("duration_ms", 0)
 
     holder: dict = {}
@@ -72,7 +73,7 @@ def main() -> int:
     worker.start()
     time.sleep(0.4)  # let the poll block
 
-    during, _ = action("get_current_focus")
+    during, _ = action("observe")
     during_ms = during.get("duration_ms", 0)
     worker.join(timeout=10)
 
@@ -90,18 +91,42 @@ def main() -> int:
     for w in workers:
         w.start()
     time.sleep(0.3)
-    concurrent_action, _ = action("get_current_focus")
+    concurrent_action, _ = action("observe")
     for w in workers:
         w.join(timeout=10)
     print(f"3. two waiters + action: waiters={len(results)} action_ok={concurrent_action.get('success')}")
     failures += 0 if len(results) == 2 and concurrent_action.get("success") else 1
 
-    # 4. Cursor fields a consumer needs to detect lost history and resync.
+    # 4. Cursor fields a consumer needs: a journal identity to detect a restart,
+    #    a cursor that never jumps over unseen events, and a flag saying a page
+    #    was cut so the consumer keeps polling instead of assuming it is caught up.
     current, _ = get("/events?since=0&timeout_ms=0")
-    required = {"state_version", "from_version", "to_version", "truncated", "dropped", "events"}
+    required = {
+        "journal_id",
+        "state_version",
+        "from_version",
+        "to_version",
+        "truncated",
+        "has_more",
+        "dropped",
+        "events",
+    }
     missing = required - set(current)
-    print(f"4. cursor contract: missing={sorted(missing)} state_version={current.get('state_version')}")
+    print(f"4. cursor contract: missing={sorted(missing)} journal={current.get('journal_id')} "
+          f"state_version={current.get('state_version')}")
     failures += 0 if not missing else 1
+
+    # 4b. Paging must not skip: with a limit of one, the cursor has to point at
+    #     the entry that was returned, never at the head of the journal.
+    page_one, _ = get("/events?since=0&timeout_ms=0&limit=1")
+    events_one = page_one.get("events") or []
+    paged_right = (
+        not events_one
+        or page_one.get("to_version") == events_one[-1].get("version")
+    )
+    print(f"4b. paged cursor: events={len(events_one)} to_version={page_one.get('to_version')} "
+          f"head={page_one.get('state_version')} has_more={page_one.get('has_more')}")
+    failures += 0 if paged_right else 1
 
     # 5. A cursor at head must return immediately with an empty page.
     head = current.get("state_version", 0)

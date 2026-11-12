@@ -485,6 +485,12 @@ class ActivateWindowResult:
 
 	``matches`` counts the windows whose title matched, so a caller that passed a
 	loose title can tell whether the choice was ambiguous.
+
+	``focus_in_window`` answers a different question from ``activated``: Windows
+	can move the foreground without moving the keyboard focus, so a window can be
+	in front while the screen reader is still reading the previous one. ``None``
+	means the question could not be answered; ``False`` means it was, and
+	``focus_window`` names where the focus actually is.
 	"""
 
 	activated: bool
@@ -496,6 +502,8 @@ class ActivateWindowResult:
 	restored: bool = False
 	waited_ms: float = 0.0
 	matches: int = 1
+	focus_in_window: Optional[bool] = None
+	focus_window: str = ""
 
 
 @dataclass(frozen=True)
@@ -567,12 +575,19 @@ class ClickAtResult:
 
 @dataclass(frozen=True)
 class WaitEventsResult:
-	"""Coalesced transitions observed while waiting."""
+	"""Coalesced transitions observed while waiting.
+
+	``to_version`` is the cursor for the next call — the version of the last
+	transition returned, not the journal's head. When more transitions are
+	already waiting than one page holds, ``has_more`` says to poll again
+	immediately with ``since = to_version``; nothing is skipped by paging.
+	"""
 
 	from_version: int
 	to_version: int
 	events: list[dict[str, Any]] = field(default_factory=list)
 	truncated: bool = False
+	has_more: bool = False
 	timed_out: bool = False
 
 
@@ -645,15 +660,16 @@ class ListReadingTargetsInput:
 	``frame``, ``annotation``, ``reference``. A document that cannot answer
 	reports what it can.
 
-	``create`` starts browse mode for a document that is being read in focus
-	mode — a Word document, by default — the way NVDA+space does. It changes the
-	user's session, so it is off unless asked for.
+	``timeout_ms`` bounds the work done on NVDA's main thread, because a large
+	document is otherwise the only limit: the call returns what it reached and
+	says it was cut. Starting browse mode for a document read in focus mode is a
+	separate action — ``start_browse_mode`` — not something a read does for you.
 	"""
 
 	item: str = "heading"
 	limit: int = 20
 	within: Optional[str] = None
-	create: bool = False
+	timeout_ms: int = 1000
 
 
 @dataclass(frozen=True)
@@ -691,6 +707,12 @@ class ListReadingTargetsResult:
 
 	``pass_through`` is focus mode: the move is available to a tool either way,
 	but a user's keyboard would not do it while focus mode is on.
+
+	``truncated`` says the list is not the whole document. ``stopped`` says why
+	it ends where it does: ``end`` (the document ran out), ``limit`` (the
+	requested number was reached) or ``timeout`` (the main-thread budget
+	expired). A list that stopped on ``timeout`` is still truncated — a partial
+	answer is never presented as a complete one.
 	"""
 
 	item: str = "heading"
@@ -702,6 +724,45 @@ class ListReadingTargetsResult:
 	source: str = ""
 	targets: list[ReadingTarget] = field(default_factory=list)
 	truncated: bool = False
+	stopped: str = ""
+	scanned: int = 0
+	timeout_ms: int = 0
+	elapsed_ms: float = 0.0
+
+
+@dataclass(frozen=True)
+class StartBrowseModeInput:
+	"""Start browse mode for a document NVDA is reading in focus mode.
+
+	The same thing NVDA+space does: it builds the document model the reading
+	tools need, which some applications — Word, by default — only create when
+	asked. ``within`` names the window or document to start it for; without it
+	the focused object is used.
+
+	This is an action: it changes the user's session, so it is not a flag on a
+	read and a read-only client cannot do it.
+	"""
+
+	within: Optional[str] = None
+	expect: Optional[dict[str, Any]] = None
+
+
+@dataclass(frozen=True)
+class StartBrowseModeResult:
+	"""The document that is now readable, and whether this call created it.
+
+	``created`` is false when a model was already there, which makes the call
+	idempotent: asking twice is asking once, and the reply says which one
+	happened. ``interface`` names the implementation that answers — the same
+	distinction the reading tools report — so the next call's expectations are
+	not a guess.
+	"""
+
+	created: bool = False
+	browse_mode: bool = False
+	document: str = ""
+	interface: str = ""
+	pass_through: bool = False
 	elapsed_ms: float = 0.0
 
 
@@ -711,14 +772,16 @@ class NavigateReadingInput:
 
 	``direction`` is ``next``, ``previous`` (relative to where the document's
 	cursor is now), or ``first``/``last`` (absolute). ``steps`` skips ahead —
-	three headings forward is one call, not three.
+	three headings forward is one call, not three. ``timeout_ms`` bounds the
+	main-thread work; a move that runs out of budget reports how far it got
+	instead of continuing.
 	"""
 
 	item: str = "heading"
 	direction: str = "next"
 	steps: int = 1
 	within: Optional[str] = None
-	create: bool = False
+	timeout_ms: int = 1000
 	expect: Optional[dict[str, Any]] = None
 
 
@@ -728,7 +791,9 @@ class NavigateReadingResult:
 
 	``reached`` is how many positions were actually passed over; when the
 	document ends first the cursor stops at the last one, exactly as pressing the
-	key repeatedly would, and ``reached`` is lower than ``steps``.
+	key repeatedly would, and ``reached`` is lower than ``steps``. ``stopped``
+	says which of those happened: ``steps``, ``end``, ``stalled`` or ``timeout``
+	— a move that ran out of budget really did move the cursor that far.
 
 	``ref`` is empty when the position is text rather than a control.
 	"""
@@ -737,6 +802,7 @@ class NavigateReadingResult:
 	direction: str = "next"
 	steps: int = 1
 	reached: int = 0
+	stopped: str = ""
 	ref: str = ""
 	role: str = ""
 	label: str = ""
@@ -747,4 +813,5 @@ class NavigateReadingResult:
 	document: str = ""
 	interface: str = ""
 	pass_through: bool = False
+	timeout_ms: int = 0
 	elapsed_ms: float = 0.0

@@ -22,7 +22,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 
 mod protocol;
 use protocol::{
-    API_LEVEL, PROTOCOL_NAME, TOKEN_HEADER,
+    API_LEVEL, PROTOCOL_NAME, SUPPORTED_API_LEVELS, TOKEN_HEADER,
     BridgeActionEnvelope, BridgeError, BridgeMeta,
     BridgeToolDef, BridgeToolsResponse,
     ErrorCode, NvdaStatusSnapshot,
@@ -283,6 +283,7 @@ impl BridgeClient {
             &payload.protocol_version,
             &payload.bridge_version,
             payload.api_level,
+            payload.supported_api_levels.as_deref().unwrap_or(&[]),
             payload.count,
             payload.tools.len(),
         ).map_err(|msg| anyhow!("{}", msg))?;
@@ -1090,7 +1091,48 @@ fn catalog_refresh_period() -> Option<Duration> {
     (secs > 0).then(|| Duration::from_secs(secs))
 }
 
+/// What one polled page means for the cursor.
+#[derive(Debug, PartialEq, Eq)]
+enum PumpStep {
+    /// The journal was replaced, or the cursor outlived it: start over from the
+    /// page's head and tell subscribers to re-read the state.
+    Restart,
+    /// The same journal, moving forward.
+    Advance,
+    /// Nothing new.
+    Idle,
+}
+
+/// Decide what to do with one polled page.
+///
+/// A sequence number only means something inside the journal that produced it.
+/// An NVDA restart begins again at zero, so carrying the old cursor across one
+/// would suppress every notification until the new sequence outgrew the old.
+/// The journal's id is what makes that detectable; a version that goes backwards
+/// is the same fact when the bridge is too old to send an id.
+fn pump_step(previous_journal: Option<&str>, seen_journal: Option<&str>, version: i64, cursor: i64) -> PumpStep {
+    let replaced = matches!(
+        (previous_journal, seen_journal),
+        (Some(known), Some(seen)) if known != seen
+    );
+    if replaced || version < cursor {
+        PumpStep::Restart
+    } else if version > cursor {
+        PumpStep::Advance
+    } else {
+        PumpStep::Idle
+    }
+}
+
 /// One shared `/events` long-poll loop feeding every `listen()` subscriber.
+///
+/// The cursor is a sequence number, and a sequence number only means anything
+/// inside the journal that produced it: an NVDA restart begins again at zero,
+/// so a cursor carried across one would suppress every notification until the
+/// new sequence outgrew the old — minutes of silence, and no way to tell it
+/// apart from an idle screen reader. The journal's id is what makes the reset
+/// detectable, and a version that goes backwards is the same fact when the
+/// bridge is too old to send an id.
 fn spawn_event_pump(
     bridge_client: BridgeClient,
     subscription_tx: broadcast::Sender<i64>,
@@ -1098,6 +1140,7 @@ fn spawn_event_pump(
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut cursor = 0_i64;
+        let mut journal_id: Option<String> = None;
         while !shutdown.load(Ordering::SeqCst) {
             let events_path = format!("/events?since={cursor}&timeout_ms=1000");
             match bridge_client.get_json(&events_path).await {
@@ -1106,11 +1149,35 @@ fn spawn_event_pump(
                         .get("state_version")
                         .and_then(Value::as_i64)
                         .unwrap_or(cursor);
-                    if version > cursor {
-                        // The bridge persists the journal, so advancing the cursor
-                        // is the store; the broadcast is just fan-out.
-                        cursor = version;
-                        let _ = subscription_tx.send(version);
+                    let seen_id = page
+                        .get("journal_id")
+                        .and_then(Value::as_str)
+                        .filter(|id| !id.is_empty())
+                        .map(str::to_string);
+                    match pump_step(journal_id.as_deref(), seen_id.as_deref(), version, cursor) {
+                        PumpStep::Restart => {
+                            warn!(
+                                previous = ?journal_id,
+                                current = ?seen_id,
+                                previous_cursor = cursor,
+                                new_head = version,
+                                "Bridge event journal restarted; resetting the cursor"
+                            );
+                            cursor = version;
+                            // Subscribers have to re-read the state: the events
+                            // across the restart are not in this journal.
+                            let _ = subscription_tx.send(version);
+                        }
+                        PumpStep::Advance => {
+                            // The bridge persists the journal, so advancing the
+                            // cursor is the store; the broadcast is just fan-out.
+                            cursor = version;
+                            let _ = subscription_tx.send(version);
+                        }
+                        PumpStep::Idle => {}
+                    }
+                    if seen_id.is_some() {
+                        journal_id = seen_id;
                     }
                 }
                 Err(err) => {
@@ -1569,6 +1636,7 @@ mod tests {
             &payload.protocol_version,
             &payload.bridge_version,
             payload.api_level,
+            payload.supported_api_levels.as_deref().unwrap_or(&[]),
             payload.count,
             payload.tools.len(),
         )
@@ -1669,6 +1737,7 @@ mod tests {
             protocol_version: "1.0.0".to_string(),
             bridge_version: "1.0.0".to_string(),
             api_level: API_LEVEL,
+            supported_api_levels: SUPPORTED_API_LEVELS.to_vec().into(),
             // Deliberately empty: the output type is not in the types map.
             types: Map::new(),
             tools: vec![BridgeToolDef {
@@ -1701,6 +1770,56 @@ mod tests {
         assert!(schema_hash_changed(Some("a"), Some("b")));
         assert!(schema_hash_changed(None, Some("a")));
         assert!(schema_hash_changed(Some("a"), None));
+    }
+
+    #[test]
+    fn pump_advances_within_one_journal() {
+        assert_eq!(pump_step(Some("a"), Some("a"), 5, 4), PumpStep::Advance);
+        assert_eq!(pump_step(Some("a"), Some("a"), 4, 4), PumpStep::Idle);
+    }
+
+    #[test]
+    fn pump_resets_when_the_journal_is_replaced() {
+        // NVDA restarted: its journal begins at zero, and the old cursor is
+        // meaningless. Without the id this page would look idle.
+        assert_eq!(pump_step(Some("a"), Some("b"), 0, 900), PumpStep::Restart);
+    }
+
+    #[test]
+    fn pump_resets_when_the_version_goes_backwards() {
+        // A bridge too old to send journal_id still has to be caught.
+        assert_eq!(pump_step(None, None, 3, 900), PumpStep::Restart);
+        assert_eq!(pump_step(Some("a"), Some("a"), 3, 900), PumpStep::Restart);
+    }
+
+    #[test]
+    fn pump_does_not_reset_on_the_first_page() {
+        assert_eq!(pump_step(None, Some("a"), 7, 0), PumpStep::Advance);
+        assert_eq!(pump_step(None, Some("a"), 0, 0), PumpStep::Idle);
+    }
+
+    #[test]
+    fn api_level_is_accepted_when_the_bridge_lists_it() {
+        // A newer bridge that still serves this companion's level.
+        let accepted = validate_tools_payload(
+            PROTOCOL_NAME, "1.0.0", "1.0.0", API_LEVEL + 1, &[2, 3, API_LEVEL], 1, 1,
+        );
+        assert!(accepted.is_ok(), "{accepted:?}");
+
+        // The same level, announced as its own.
+        let exact = validate_tools_payload(
+            PROTOCOL_NAME, "1.0.0", "1.0.0", API_LEVEL, &[], 1, 1,
+        );
+        assert!(exact.is_ok(), "{exact:?}");
+    }
+
+    #[test]
+    fn api_level_is_refused_when_the_bridge_cannot_serve_it() {
+        let refused = validate_tools_payload(
+            PROTOCOL_NAME, "1.0.0", "1.0.0", 2, &[1, 2], 1, 1,
+        );
+        let message = refused.expect_err("a bridge serving only level 2 cannot satisfy level 3");
+        assert!(message.contains("does not support"), "{message}");
     }
 
     #[test]
