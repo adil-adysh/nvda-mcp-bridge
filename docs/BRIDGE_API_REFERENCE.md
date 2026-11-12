@@ -171,7 +171,8 @@ still present, is:
 The observation and action surface added with api level 2:
 
 * `observe`, `locate`, `invoke`, `set_value`, `focus`, `activate_window`, `press`,
-  `read`, `navigate`, `scroll`, `dismiss`, `click_at`, `wait_for_events`
+  `read`, `navigate`, `scroll`, `dismiss`, `click_at`, `wait_for_events`,
+  `list_reading_targets`, `navigate_reading`
 
 `observe` returns a projection with a `ref` on every node; `locate` searches for
 controls by role and name and returns refs too. References are locators, not
@@ -191,6 +192,40 @@ returned `ref` points at the window, so it can be used as `within` for `locate`.
 Titles are matched case- and whitespace-insensitively, ignoring zero-width
 characters; a title with no match is `4205 TARGET_UNAVAILABLE` with the available
 titles in `details`.
+
+`list_reading_targets(item, limit=20, within?, create=false)` enumerates a
+document's positions of one kind — `heading`, `heading1`…`heading6`, `link`,
+`landmark`, `formfield`, `button`, `edit`, `list`, `listitem`, `table`,
+`graphic`, `checkbox`, `radiobutton`, `combobox`, `frame`, `annotation`,
+`reference` — **in reading order**, without moving the cursor. This is NVDA's
+quick navigation, not a tree search: a virtual buffer's order, visibility rules
+and heading levels are the screen reader's, which is why it is a different
+question from `locate(role="HEADING")`. Each target carries `label` (what NVDA
+would announce), `text` (the position's own text), `role`, `level`, and `ref`
+when a control backs the position — a plain heading is a text range and has no
+ref. `available` is what this document can be searched by, and `source` says how
+that was learned: `probed` (the implementation's own type table), `attempted`
+(measured by asking, which is what a refused type triggers), or `declared` (read
+out of NVDA's source for documents that cannot be asked).
+
+`navigate_reading(item, direction, steps=1, within?, create=false)` moves the
+reading position the way the quick nav key would: `next`, `previous`, `first`,
+`last`. `steps` skips ahead — three headings is one call — and the cursor is
+moved between steps, because a document searched from a position can yield a
+single match. `reached` reports how many moves actually happened, which is how a
+document that ends first is told apart from a completed move. It is an action:
+the screen reader announces the new position and the reply settles.
+
+`create` starts browse mode for a document NVDA is reading in focus mode — a
+Word document, by default — the way NVDA+space does. It is opt-in because it
+changes the user's session, and the model it creates is reused for the same
+application and window rather than rebuilt per call.
+
+Both tools are about *documents*: browsers, Word and PDF viewers have a document
+model, and an ordinary application does not. A document with no browse mode, or
+a window in front whose page does not hold focus, is `4205` with `browse_mode`
+and a `reason` naming the fix (put focus in its page) rather than an answer about
+some other window.
 
 Use `GET /tools` as the source of truth for parameter schemas and output types.
 

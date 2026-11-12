@@ -136,3 +136,37 @@ passed and the value was still readable. That is defensible, but it means
 
 The DSH GUI finding (a reasoning disclosure named after its whole paragraph)
 stands and is still worth an `aria-label`.
+
+## Reading a document in order (P5.2)
+
+Two tools came out of asking what a screen reader can do that the bridge could
+not: `list_reading_targets` enumerates a document's headings, links, landmarks
+and form fields *in reading order*, and `navigate_reading` moves the reading
+position the way the quick nav keys do.
+
+What the exercise changed:
+
+1. **Chromium does support landmark quick nav.** The assumption that it did not
+   came from reading `virtualBuffers/webKit.py`; Edge's document is a
+   `ChromeVBuf`, which inherits `GeckoVBuf`'s type table. The tool now asks
+   the document what it supports (`source: "probed"`) instead of consulting a
+   table someone typed.
+2. **One browser page, two implementations.** The same page was answered by
+   `ChromeVBuf` on one run and `ChromiumUIATreeInterceptor` on another, with
+   different metadata: heading levels come from a control field in the first and
+   from the position's own `level` property in the second. The reply's
+   `interface` field is what lets a caller tell them apart.
+3. **Word is not browsable until asked.** `WordDocument` declares
+   `shouldCreateTreeInterceptor = False`, so NVDA reads it in focus mode and
+   there is no quick navigation to drive. `create: true` starts browse mode the
+   way NVDA+space does, and the model is reused for the same application and
+   window rather than rebuilt per call.
+4. **Stepping is not iterating.** A UIA document searched *from a position*
+   yields a single match, so `steps` moves the cursor between searches. That
+   also means `navigate_reading` speaks the intermediate positions, exactly as
+   pressing the key three times would.
+5. **The document is the focused one, or nothing.** Resolving it from the
+   foreground window looked right until the measurement: a browser window holds a
+   document per tab, and nothing says which tab is showing. The tool now refuses
+   when the focus is not in the window in front, and the refusal names the fix
+   (F6, then ask again).

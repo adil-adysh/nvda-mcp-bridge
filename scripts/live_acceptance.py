@@ -294,7 +294,7 @@ def activate(bridge: Bridge, fragment: str, attempts: int = 14) -> bool:
         return True
 
     response = bridge.call("activate_window", {"title": fragment})
-    if (response.get("body") or {}).get("success"):
+    if ok(response):
         if wait_for(lambda: fragment in window_title(bridge).lower(), timeout_s=1.5, interval_s=0.1):
             return True
 

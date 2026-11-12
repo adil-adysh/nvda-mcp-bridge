@@ -456,6 +456,44 @@ no match returns `matches: []` with how much was searched, not an error.
 
 ---
 
+### P5.2 — Reading a document in order
+
+Everything up to here is object-centric: it reaches the focus, its neighbours,
+controls found by role and name. None of that can answer "the next heading", and
+the reason is structural rather than a missing search: the ordering being asked
+for is not in the accessibility tree. It is in NVDA's document model — the
+virtual buffer for browsers and PDFs, the text-pattern browse mode for Word and
+UIA documents — where the screen reader has already decided what a reader
+encounters, in what order, and at what heading level.
+
+`locate(role="HEADING")` searches the same page and returns a different answer:
+tree order, UIA visibility rules, no hierarchy, one search per level. The two are
+not the same question, so this is a new capability rather than a cheaper path to
+an existing one.
+
+* `list_reading_targets(item, limit?, within?, create?)` — enumerate positions of
+  one kind in reading order, without moving the cursor. The Elements List as
+  data: label, text, role, heading level, and a `ref` when a control backs the
+  position.
+* `navigate_reading(item, direction, steps?, within?, create?)` — move the
+  reading position (`next`/`previous`/`first`/`last`), reporting where it landed
+  and how many moves actually happened.
+* The interceptor's own iterator does the work (`_iterNodesByType`); nothing
+  re-implements ordering. Keystrokes are deliberately *not* synthesised: driving
+  `script_nextHeading` through a gesture would route through NVDA's focus and the
+  user's bindings, and would swallow the reason for failure into `ui.message`.
+* A document that cannot answer a type says what it *can* answer, probed from the
+  implementation rather than read out of a table.
+
+Pass: on a page with five headings and three links, one call returns all five in
+reading order with levels `[1, 2, 3, 2, 2]`; `navigate_reading(next, steps=2)`
+lands on the third heading and reports `reached: 2`; a type the document does not
+support is `4205` with the supported list; an application with no document is
+`4205` with `browse_mode: false`; Word — which NVDA reads in focus mode by
+default — is readable once `create: true` asks for browse mode.
+
+---
+
 ### 5.1 What the implementation actually does, and what was observed
 
 Every phase shipped. The deviations from the plan above are listed with the
@@ -469,6 +507,7 @@ reason, because a plan that quietly changes is worse than one that is updated.
 | P4 | `api_level: 2` with `supported_api_levels: [1, 2]`, `result` block, `outputSchema`, `schema_hash`, `deprecated`/`supersededBy`, companion catalog refresh | The companion's catalog capability was static, so for a while a swap was silent and a connected client kept the surface it saw at connect time — an add-on update could leave a session offering the old tool set. Fixed: it now advertises `tools.listChanged` and sends `notifications/tools/list_changed`, which is what makes a client re-list. |
 | P5 | `server/locate.py` (match rules), `nvda_bridge/locate.py` (UIA search + bounded walk), `nvda_bridge/uia.py` (Invoke/Value/Toggle/SelectionItem/ExpandCollapse), `nvda_bridge/targets.py` (one dispatch seam), `locate` tool | A located target is an `IUIAutomationElement`, not an NVDA object: `NVDAObjects.UIA.UIA(UIAElement=…)` rejects a live element with `E_INVALIDARG`, and hit-testing only works while the element is on screen. So references now record their `target_kind` and the action layer routes by it; `navigate` refuses a located target and says so. The default search root is the foreground window, because a top-level dialog (Notepad's Save As) is not an ancestor of the focus. |
 | P5.1 | `nvda_bridge/windows.py`, `activate_window`, verified `set_value` (`verified`/`observed`/`value_source`), empty-string writes, `4103` for handler `ValueError`s | `set_value` used to stop at "the input was dispatched": a keyboard write could report `units: 17` while the field stayed empty. It now reads the control back and sets `uncertain` when the value did not land, retrying once with keystrokes only when the platform write changed nothing. `activate_window` exists because Windows refuses `SetForegroundWindow` from an external process: raising a covered window was the one common task the tool surface could not start, so every such job needed a script. |
+| P5.2 | `server/reading.py` (vocabulary), `nvda_bridge/reading.py` (interceptor resolution, enumeration, stepping), `list_reading_targets`, `navigate_reading`, `create` on both | The first design resolved "the document in front" from the foreground window. Measured otherwise: one browser window holds a document per tab, and nothing in the document model says which tab is showing, so the honest rule is "the focused document, and only when it belongs to the window in front; otherwise refuse and say to press F6". `create` exists because Word declares `shouldCreateTreeInterceptor = False` — browse mode there is opt-in (NVDA+space), and a tool that cannot ask for it can only report that Word has no document. |
 
 Live observations from `scripts/live_acceptance.py` (44/44 checks, 1
 environmental skip) and `scripts/bridge_acceptance.py` (69/70 behavioural,
@@ -486,7 +525,7 @@ environmental skip) and `scripts/bridge_acceptance.py` (69/70 behavioural,
 | Browser button by `ref` | `invoke` → `changed: true`, delta `name: "Run action" → "Run action 1"`; a `liveRegion` transition appeared in Chromium |
 | `click_at` | pointer read back within 2 px of the request; reports the object under the point |
 | Stale `ref` | `4206`, message points the caller at `observe` |
-| Unknown tool surface | 30 tools advertised, strict input schemas, no type leaks |
+| Unknown tool surface | 30 tools advertised at the time (33 now), strict input schemas, no type leaks |
 
 `locate`, from `scripts/locate_acceptance.py` (39/39 checks) and the probes in
 `scripts/uia_*.py`:
@@ -522,12 +561,42 @@ behavioural, 8/8 security, 0/16 type leaks, 16/16 concurrency),
 | Zero-width characters in a title | Edge titles carry one inside "Microsoft Edge"; titles are compared with invisibles stripped, so `"Microsoft Edge"` matches |
 | Handler `ValueError` | `4103`, not `5303`: a bad argument is the caller's error, not a bridge fault |
 
+`list_reading_targets` / `navigate_reading`, from
+`scripts/reading_acceptance.py` (56/56 checks across Edge, Firefox, Word and
+Notepad) and the `bridge.reading.*` log lines of those runs:
+
+| Check | Observed |
+| --- | --- |
+| Five headings on the acceptance page (Edge) | one call, reading order, levels `[1, 2, 3, 2, 2]`, 59.6-79.5 ms, `interface: ChromeVBuf`, `source: probed` |
+| 20 headings on this documentation page | 459.7 ms on the first call (the buffer is built then), 38.7 ms for the next |
+| Three links | `["Intro", "Methods", "Download report"]` in document order, 8.6 ms; `label` adds "; same page", `text` is the link's own text |
+| Landmarks on a page with one `<nav>` | 1 target, 68.1 ms — **Chromium answers `landmark`**, because `ChromeVBuf` inherits `GeckoVBuf`'s type table; the WebKit implementation in `virtualBuffers/webKit.py` (which has no `landmark`) is not what Edge uses |
+| A Word-only type (`reference`) on a browser | `4205`, `available` lists 19 types measured by asking (`source: "probed"`), `reference` absent |
+| An unknown item type (`paragraph`) | `4103` with the valid vocabulary in the message |
+| The same page in Firefox | `interface: Gecko_ia2`, same five headings, 375-407 ms on the first call |
+| The same page through NVDA's UIA path | `interface: ChromiumUIATreeInterceptor`: headings still `[1, 2, 3, 2, 2]`, levels read from the position's own `level` property rather than a control field. A browser can be read through two different implementations, and the reply says which |
+| `navigate_reading(first / next, steps=2 / previous / last)` | `Reading Acceptance …` → `Background` (`reached: 2`) → `Introduction` → `Results`; `changed: false`, `settled_ms` 871-1165 ms |
+| A link position's ref | `LINK n16`, `read` on it returns `Intro` |
+| No such type present (`table` on a page without one) | `4205`, message names the move ("there is no next table in this document") |
+| Word document (4 headings, levels 1-3-2) | without `create`: `4205` ("not inside a document NVDA reads in browse mode"); with `create: true`: `interface: WordBrowseModeDocument`, headings in order with levels `[1, 2, 3, 2]`, `available` includes `reference` and `annotation`, `source: declared` |
+| Word stepping | `next` from the top yields one position per search — NVDA's UIA iterator does not advance on its own — so `steps` moves the cursor between searches, as repeated key presses do |
+| Notepad (no document) | `4205`, `browse_mode: false`, reason "the target is not inside a document that NVDA reads in browse mode" |
+| Focus in a page behind the window in front | refused with "the window in front does not hold the page focus; put focus in its page first (F6)" — after F6 the read succeeds |
+
+Two corrections to assumptions made before measuring, both from the runs above:
+Chromium *does* support landmark quick nav (the assumption came from the wrong
+file: `webKit.py`, not `gecko_ia2.py`), and a browser page can be read through
+either a virtual buffer or a UIA tree, with different metadata and a different
+capability list.
+
 Still true and worth keeping in view: a settle that observes no change costs
 about 800 ms (two rounds of the 250 ms first-activity wait), which is the price
 of not returning a half-updated answer; and the first `press` after a restart is
 slower than later ones while NVDA warms its caches. A located reference is not an
 NVDA object, so `navigate` and the tree half of `observe` cannot be used on it —
-re-`locate` or `observe` instead.
+re-`locate` or `observe` instead. A reading position is a *cursor*, not a
+control: a plain heading has no ref, and the way to act on it is to move there and
+read.
 
 ---
 

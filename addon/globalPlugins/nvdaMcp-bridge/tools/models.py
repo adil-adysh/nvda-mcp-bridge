@@ -700,3 +700,123 @@ class LocateResult:
 	truncated: bool = False
 	elapsed_ms: float = 0.0
 	scope: str = ""
+
+
+# ============================================================================
+# DOCUMENT READING MODELS (implementation plan P5.2)
+# ============================================================================
+
+
+@dataclass(frozen=True)
+class ListReadingTargetsInput:
+	"""Enumerate a document's positions of one kind, without moving the cursor.
+
+	``item`` is one of ``heading``, ``heading1``…``heading6``, ``link``,
+	``landmark``, ``formfield``, ``button``, ``edit``, ``list``, ``listitem``,
+	``table``, ``graphic``, ``checkbox``, ``radiobutton``, ``combobox``,
+	``frame``, ``annotation``, ``reference``. A document that cannot answer
+	reports what it can.
+
+	``create`` starts browse mode for a document that is being read in focus
+	mode — a Word document, by default — the way NVDA+space does. It changes the
+	user's session, so it is off unless asked for.
+	"""
+
+	item: str = "heading"
+	limit: int = 20
+	within: Optional[str] = None
+	create: bool = False
+
+
+@dataclass(frozen=True)
+class ReadingTarget:
+	"""One position in a document, in reading order.
+
+	``label`` is what NVDA would announce for the position; ``text`` is the raw
+	text there (they differ for links, where the label carries "visited" state,
+	and for form fields, where the label carries the control's role and states).
+
+	``level`` is a heading level when the position is a heading, otherwise 0.
+	``ref`` is empty for a position with no control behind it — a plain heading
+	is a text range, and ``navigate_reading`` is how you get there.
+	"""
+
+	ref: str = ""
+	role: str = ""
+	label: str = ""
+	text: str = ""
+	level: int = 0
+
+
+@dataclass(frozen=True)
+class ListReadingTargetsResult:
+	"""A document's positions of one kind, in the order a reader meets them.
+
+	``available`` is what this document can be searched by, and ``source`` says
+	how that was learned: ``probed`` (the implementation's own type table) or
+	``declared`` (read out of NVDA's source for document types that cannot be
+	asked).
+
+	``interface`` names the browse mode implementation that answered, which is
+	the same distinction ``locate`` makes with ``method``: ``ChromeVBuf`` is a
+	virtual buffer, ``WordBrowseModeDocument`` a text-pattern document.
+
+	``pass_through`` is focus mode: the move is available to a tool either way,
+	but a user's keyboard would not do it while focus mode is on.
+	"""
+
+	item: str = "heading"
+	available: list[str] = field(default_factory=list)
+	browse_mode: bool = True
+	document: str = ""
+	interface: str = ""
+	pass_through: bool = False
+	source: str = ""
+	targets: list[ReadingTarget] = field(default_factory=list)
+	truncated: bool = False
+	elapsed_ms: float = 0.0
+
+
+@dataclass(frozen=True)
+class NavigateReadingInput:
+	"""Move the document's reading position.
+
+	``direction`` is ``next``, ``previous`` (relative to where the document's
+	cursor is now), or ``first``/``last`` (absolute). ``steps`` skips ahead —
+	three headings forward is one call, not three.
+	"""
+
+	item: str = "heading"
+	direction: str = "next"
+	steps: int = 1
+	within: Optional[str] = None
+	create: bool = False
+	expect: Optional[dict[str, Any]] = None
+
+
+@dataclass(frozen=True)
+class NavigateReadingResult:
+	"""Where the reading position landed.
+
+	``reached`` is how many positions were actually passed over; when the
+	document ends first the cursor stops at the last one, exactly as pressing the
+	key repeatedly would, and ``reached`` is lower than ``steps``.
+
+	``ref`` is empty when the position is text rather than a control.
+	"""
+
+	item: str = "heading"
+	direction: str = "next"
+	steps: int = 1
+	reached: int = 0
+	ref: str = ""
+	role: str = ""
+	label: str = ""
+	text: str = ""
+	level: int = 0
+	landed: bool = False
+	browse_mode: bool = True
+	document: str = ""
+	interface: str = ""
+	pass_through: bool = False
+	elapsed_ms: float = 0.0

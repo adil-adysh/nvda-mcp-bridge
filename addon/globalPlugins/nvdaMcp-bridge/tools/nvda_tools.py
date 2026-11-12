@@ -488,6 +488,71 @@ ALL_NVDA_TOOLS = [
     ),
     TypedToolImpl.from_coordinator(
         ToolMetadata(
+            name="list_reading_targets",
+            version="1.0.0",
+            description=(
+                "List a document's positions of one kind in reading order — headings, links, "
+                "landmarks, form fields, tables, and so on — without moving the cursor. This is "
+                "the screen reader's Elements List as data: one call gives the structure of a "
+                "page or document, with refs where a control backs the position. 'available' "
+                "says what this document can be searched by (browsers, Word and PDFs only)."
+            ),
+            category="observation",
+            read_only=True,
+            destructive=False,
+            idempotent=True,
+            side_effects=False,
+            required_permission="read_only",
+            allowed_nvda_states=("normal", "modal", "menu"),
+            expected_duration_ms=120,
+            retry_safe=True,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.ListReadingTargetsInput,
+        models.ListReadingTargetsResult,
+        lambda input_obj, context: tool_handlers.list_reading_targets(
+            item=input_obj.item,
+            limit=input_obj.limit,
+            within=input_obj.within,
+            create=input_obj.create,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="navigate_reading",
+            version="1.0.0",
+            description=(
+                "Move a document's reading position like the screen reader's quick nav key: "
+                "'next' heading, 'previous' link, 'first', 'last'. 'steps' skips ahead (three "
+                "headings is one call). Works in browse-mode documents only — browsers, Word, "
+                "PDFs — and moves the real cursor, so the screen reader announces it."
+            ),
+            category="action",
+            read_only=False,
+            destructive=False,
+            idempotent=False,
+            side_effects=True,
+            required_permission="input_control",
+            allowed_nvda_states=("normal",),
+            expected_duration_ms=400,
+            retry_safe=False,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.NavigateReadingInput,
+        models.NavigateReadingResult,
+        lambda input_obj, context: tool_handlers.navigate_reading(
+            item=input_obj.item,
+            direction=input_obj.direction,
+            steps=input_obj.steps,
+            within=input_obj.within,
+            create=input_obj.create,
+            expect=input_obj.expect,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
             name="invoke",
             version="1.0.0",
             description=(

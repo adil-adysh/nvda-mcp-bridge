@@ -220,7 +220,10 @@ def read_text(obj: Any, scope: str = "line", max_chars: int = 4000) -> dict[str,
 		text = info.text or ""
 		source = "textinfo"
 	except (NotImplementedError, AttributeError, RuntimeError):
-		text = str(_safe_get(obj, "value") or _safe_get(obj, "name") or "")
+		# A control with no text interface at all — a link, a button — is
+		# described by its name; its value is often a URL or a flag, which reads
+		# as an answer while saying nothing about what the control is.
+		text = str(_safe_get(obj, "name") or _safe_get(obj, "value") or "")
 		source = "fallback"
 	return {
 		"text": text[:max_chars] if max_chars > 0 else text,

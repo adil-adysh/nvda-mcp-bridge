@@ -953,6 +953,96 @@
       ],
       "additionalProperties": false
     },
+    "ListReadingTargetsResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "item": {
+              "type": "string"
+            },
+            "available": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "browse_mode": {
+              "type": "boolean"
+            },
+            "document": {
+              "type": "string"
+            },
+            "interface": {
+              "type": "string"
+            },
+            "pass_through": {
+              "type": "boolean"
+            },
+            "source": {
+              "type": "string"
+            },
+            "targets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "ref": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "level": {
+                    "type": "integer"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "truncated": {
+              "type": "boolean"
+            },
+            "elapsed_ms": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
     "LocateResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
@@ -1140,6 +1230,87 @@
             "direction",
             "focused"
           ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "NavigateReadingResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "item": {
+              "type": "string"
+            },
+            "direction": {
+              "type": "string"
+            },
+            "steps": {
+              "type": "integer"
+            },
+            "reached": {
+              "type": "integer"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            },
+            "level": {
+              "type": "integer"
+            },
+            "landed": {
+              "type": "boolean"
+            },
+            "browse_mode": {
+              "type": "boolean"
+            },
+            "document": {
+              "type": "string"
+            },
+            "interface": {
+              "type": "string"
+            },
+            "pass_through": {
+              "type": "boolean"
+            },
+            "elapsed_ms": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
         },
         "error": {
           "type": "object",
@@ -3258,6 +3429,117 @@
       "supersededBy": null
     },
     {
+      "name": "list_reading_targets",
+      "version": "1.0.0",
+      "description": "List a document's positions of one kind in reading order \u2014 headings, links, landmarks, form fields, tables, and so on \u2014 without moving the cursor. This is the screen reader's Elements List as data: one call gives the structure of a page or document, with refs where a control backs the position. 'available' says what this document can be searched by (browsers, Word and PDFs only).",
+      "category": "observation",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "within": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "create": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "ListReadingTargetsResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string"
+          },
+          "available": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "browse_mode": {
+            "type": "boolean"
+          },
+          "document": {
+            "type": "string"
+          },
+          "interface": {
+            "type": "string"
+          },
+          "pass_through": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string"
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "level": {
+                  "type": "integer"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "elapsed_ms": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "read_only",
+      "cancellationSupported": false,
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
       "name": "locate",
       "version": "1.0.0",
       "description": "Find controls by role and/or name anywhere in the current window (or under a ref), and return a ref for each match. Searches with the application's own UIA provider when it can, otherwise with a bounded walk; 'method' says which answered. Use it to reach a control that is not the focus or next to it.",
@@ -3541,6 +3823,122 @@
           "direction",
           "focused"
         ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": false,
+      "destructive": false,
+      "idempotent": false,
+      "sideEffects": true,
+      "requiredPermission": "input_control",
+      "cancellationSupported": false,
+      "retrySafe": false,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
+      "name": "navigate_reading",
+      "version": "1.0.0",
+      "description": "Move a document's reading position like the screen reader's quick nav key: 'next' heading, 'previous' link, 'first', 'last'. 'steps' skips ahead (three headings is one call). Works in browse-mode documents only \u2014 browsers, Word, PDFs \u2014 and moves the real cursor, so the screen reader announces it.",
+      "category": "action",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "steps": {
+            "type": "integer"
+          },
+          "within": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "create": {
+            "type": "boolean"
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputType": "NavigateReadingResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "steps": {
+            "type": "integer"
+          },
+          "reached": {
+            "type": "integer"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "level": {
+            "type": "integer"
+          },
+          "landed": {
+            "type": "boolean"
+          },
+          "browse_mode": {
+            "type": "boolean"
+          },
+          "document": {
+            "type": "string"
+          },
+          "interface": {
+            "type": "string"
+          },
+          "pass_through": {
+            "type": "boolean"
+          },
+          "elapsed_ms": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -4532,5 +4930,5 @@
       "supersededBy": null
     }
   ],
-  "count": 32
+  "count": 34
 }

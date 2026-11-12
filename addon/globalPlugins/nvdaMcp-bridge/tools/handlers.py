@@ -246,6 +246,91 @@ def locate(
 	return _dispatch(context, perform)
 
 
+def list_reading_targets(
+	item: str,
+	limit: int,
+	within: str | None,
+	create: bool,
+	context: Any,
+) -> dict[str, Any]:
+	"""Enumerate a document's headings, links, form fields, and so on.
+
+	This is the Elements List as data: one call answers "what is the structure
+	of this page", where ``locate`` would need one search per kind and would
+	return them in tree order. Nothing moves — the reading position is left
+	where it was, so this is a read, not a move.
+
+	The whole thing runs in one main-thread hop for the same reason ``locate``
+	does: a second round trip would let the page change between enumerating and
+	registering the references.
+
+	``create`` starts browse mode for a document that NVDA is reading in focus
+	mode — a Word document, by default — the way NVDA+space does. It is opt-in
+	because it changes the user's session.
+	"""
+	from ..server import reading as rules
+
+	item_type = rules.normalize_item(item)
+	if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= rules.MAX_TARGETS:
+		raise ValueError(f"'limit' must be an integer between 1 and {rules.MAX_TARGETS}")
+
+	def perform() -> dict[str, Any]:
+		from ..nvda_bridge import reading
+
+		root = context.resolve(within) if within else None
+		payload, objects = reading.targets(item=item_type, limit=limit, root=root, create=create)
+		for record, obj in zip(payload["targets"], objects):
+			record["ref"] = context.register(obj) if obj is not None else ""
+		return payload
+
+	return _dispatch(context, perform)
+
+
+def navigate_reading(
+	item: str,
+	direction: str,
+	steps: int,
+	within: str | None,
+	create: bool,
+	expect: dict[str, Any] | None,
+	context: Any,
+) -> dict[str, Any]:
+	"""Move a document's reading position, the way a quick nav key would.
+
+	The move is a real change to the user's session — the screen reader speaks
+	the new position — so it is an action, not an observation. It settles like
+	one: the reply's ``changed``/``delta`` say what the screen did about it.
+	"""
+	from ..server import reading as rules
+
+	item_type = rules.normalize_item(item)
+	move = rules.normalize_direction(direction)
+	if not isinstance(steps, int) or isinstance(steps, bool) or not 1 <= steps <= rules.MAX_STEPS:
+		raise ValueError(f"'steps' must be an integer between 1 and {rules.MAX_STEPS}")
+	if move == "last" and steps != 1:
+		raise ValueError("'steps' must be 1 when 'direction' is 'last'")
+
+	captured: dict[str, Any] = {}
+
+	def perform() -> dict[str, Any]:
+		def act() -> dict[str, Any]:
+			from ..nvda_bridge import reading
+
+			root = context.resolve(within) if within else None
+			payload, obj = reading.navigate(
+				item=item_type, direction=move, steps=steps, root=root, create=create
+			)
+			if obj is not None:
+				payload["ref"] = context.register(obj)
+			captured.update(payload)
+			return payload
+
+		return context.dispatch(act)
+
+	context.settle(perform, expect=expect)
+	return dict(captured)
+
+
 def invoke(ref: str, action: str | None, expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
 	from ..nvda_bridge import targets
 
