@@ -600,6 +600,31 @@ read.
 
 ---
 
+### 5.2 The surface, weighed rather than counted
+
+The question "should the new reading tools replace the old ones" was answered by
+measuring the surface instead of by taste:
+
+* Nothing overlapped. `locate` searches a tree, `list_reading_targets` reads a
+  document model, `navigate` steps through objects, `navigate_reading` moves a
+  cursor — and the reading tools *call* the others (`activate_window`, `read`,
+  `invoke`). Replacing would have removed capability, not duplication.
+* The catalog is the real cost: 33 tools were 41 KB of definitions (~10k tokens)
+  and a 120 KB `/tools` payload. Every agent session paid that before acting.
+* So the aliases went. `get_current_focus`, `get_navigator_object`,
+  `read_current_line`, `move_focus`, `send_keyboard`, `get_desktop_object` and
+  `get_window_title` were removed at **api_level 3** after a full cycle as
+  deprecated names: 26 tools now, and `supported_api_levels` is `[2, 3]`.
+* `GET /tools?category=` filters the rest. `action,observation` is 58 KB of 101
+  KB; `NVDA_BRIDGE_CATEGORIES` lets a companion ask for only that. An unknown
+  category is `4103` with the known list rather than an empty catalog.
+
+Five one-off probe scripts and `docs/TOOLS_AUDIT.md` were deleted with them:
+they described a surface that no longer exists, or were superseded by an
+acceptance suite that runs.
+
+---
+
 ## 6. Risks and non-goals
 
 * **Main-thread cost.** Every projection and every action runs on NVDA's main

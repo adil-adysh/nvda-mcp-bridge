@@ -147,6 +147,7 @@ class ToolMetadata:
 	superseded_by: str | None = None
 	"""Name of the tool that replaces this one, when deprecated."""
 
+
 	def __post_init__(self) -> None:
 		"""Validate metadata."""
 		if not self.name or not self.name.replace("_", "").isalnum():

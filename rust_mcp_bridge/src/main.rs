@@ -164,6 +164,12 @@ struct BridgeClient {
     client: Client,
     base_url: String,
     auth_token: String,
+    /// Category allow-list for the catalog, from `NVDA_BRIDGE_CATEGORIES`.
+    ///
+    /// The catalog is context: every tool's schema is paid for by the agent on
+    /// every turn. A companion serving a production agent can ask the bridge for
+    /// actions and observations only, and never load the diagnostics.
+    categories: Option<String>,
 }
 
 impl BridgeClient {
@@ -195,10 +201,35 @@ impl BridgeClient {
             .build()
             .context("Failed to build HTTP client")?;
 
+        let categories = env::var("NVDA_BRIDGE_CATEGORIES").ok().and_then(|raw| {
+            let kept: Vec<&str> = raw
+                .split(',')
+                .map(str::trim)
+                .filter(|name| {
+                    !name.is_empty()
+                        && name
+                            .chars()
+                            .all(|c| c.is_ascii_lowercase() || c == '_' || c == '-')
+                })
+                .collect();
+            if kept.is_empty() {
+                None
+            } else {
+                Some(kept.join(","))
+            }
+        });
+        if categories.is_some() {
+            info!(
+                categories = %categories.as_deref().unwrap_or(""),
+                "Only these tool categories will be advertised"
+            );
+        }
+
         Ok(Self {
             client,
             base_url,
             auth_token,
+            categories,
         })
     }
 
@@ -218,7 +249,10 @@ impl BridgeClient {
     }
 
     async fn fetch_tool_catalog(&self) -> Result<ToolCatalog> {
-        let url = format!("{}/tools", self.base_url);
+        let url = match &self.categories {
+            Some(categories) => format!("{}/tools?category={}", self.base_url, categories),
+            None => format!("{}/tools", self.base_url),
+        };
         let response = self
             .client
             .get(url)

@@ -376,18 +376,18 @@ def check_bridge_contract(bridge: Bridge, report: Report) -> None:
     tools = {tool["name"]: tool for tool in payload.get("tools", [])}
     report.check("schema_hash is published", isinstance(payload.get("schema_hash"), str) and len(payload["schema_hash"]) == 64)
     report.check("outputSchema is published per tool", all("outputSchema" in tool for tool in tools.values()))
-    for name, replacement in (
-        ("get_current_focus", "observe"),
-        ("read_current_line", "read"),
-        ("move_focus", "navigate"),
-        ("send_keyboard", "press"),
+    # api_level 3 retired the v1 aliases: they must not be advertised at all, so
+    # no client pays context for a name it must not use.
+    for name in (
+        "get_current_focus",
+        "get_navigator_object",
+        "read_current_line",
+        "move_focus",
+        "send_keyboard",
+        "get_desktop_object",
+        "get_window_title",
     ):
-        tool = tools.get(name) or {}
-        report.check(
-            f"{name} is deprecated in favour of {replacement}",
-            tool.get("deprecated") is True and tool.get("supersededBy") == replacement,
-            f"deprecated={tool.get('deprecated')} supersededBy={tool.get('supersededBy')}",
-        )
+        report.check(f"{name} is retired", name not in tools, f"present={name in tools}")
     for name in ("observe", "invoke", "set_value", "focus", "press", "read", "navigate", "scroll", "dismiss", "click_at", "wait_for_events"):
         report.check(f"tool {name} is advertised", name in tools)
     report.check(

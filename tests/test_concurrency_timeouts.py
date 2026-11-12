@@ -47,6 +47,14 @@ for mod_name in (
     if mod_name not in sys.modules:
         sys.modules[mod_name] = types.ModuleType(mod_name)
 
+# `press` settles, and settling reads the projection, which asks NVDA for the
+# focus. An empty window is the honest stand-in: this file is about pacing and
+# cancellation, not about what is on screen.
+if not hasattr(sys.modules["api"], "getFocusObject"):
+    sys.modules["api"].getFocusObject = lambda: None
+    sys.modules["api"].getForegroundObject = lambda: None
+    sys.modules["api"].getDesktopObject = lambda: None
+
 
 class _DummyGesture:
     def __init__(self, name="dummy"):
@@ -108,8 +116,8 @@ class ConcurrencyAndTimeoutTests(unittest.TestCase):
 
             res = bridge.execute_action(
                 request_id="test-req-5",
-                action_name="send_keyboard",
-                params={"gesture": "windows+d", "repeat": 5, "delay_ms": 5},
+                action_name="press",
+                params={"keys": "windows+d", "repeat": 5, "delay_ms": 5},
                 timeout_ms=5000,
             )
 

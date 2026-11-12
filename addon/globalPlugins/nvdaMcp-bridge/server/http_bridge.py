@@ -273,15 +273,18 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				self._send_json_response(envelope, 403)
 				return
 
-			if self.path == "/health":
+			# Route on the path alone: `/tools?category=action` is the same
+			# endpoint as `/tools`, with a filter.
+			route = urlsplit(self.path)
+
+			if route.path == "/health":
 				self._send_json_response(self.server.get_health_payload())
 				return
 
-			if self.path == "/tools":
+			if route.path == "/tools":
 				self._handle_tools_discovery()
 				return
 
-			route = urlsplit(self.path)
 			if route.path == "/state":
 				self._handle_state(route)
 				return
@@ -370,7 +373,13 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			self._send_json_response(envelope, 401)
 			return
 
-		tools = self.server.list_tools()
+		query = parse_qs(urlsplit(self.path).query)
+		categories, problem = self._discovery_filters(query)
+		if problem is not None:
+			self._send_json_response(problem, 400)
+			return
+
+		tools = self.server.list_tools(categories=categories)
 		if not isinstance(tools, list):
 			raise RuntimeError(f"Invalid tools payload type: {type(tools).__name__}")
 
@@ -385,6 +394,36 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 		payload["schema_hash"] = _schema_hash(payload)
 		validate_tools_discovery_payload(payload)
 		self._send_json_response(payload)
+
+	def _discovery_filters(
+		self, query: Dict[str, list]
+	) -> tuple[Optional[set], Optional[Dict[str, Any]]]:
+		"""Read the `category` allow-list from a discovery query.
+
+		Comma-separated or repeated, so a production client can ask for actions
+		and observations and never pay context for diagnostics. An unknown
+		category is a request error rather than an empty catalog: a typo that
+		silently removes every tool is the worst available answer.
+		"""
+		raw_categories: list[str] = []
+		for value in query.get("category", []):
+			raw_categories.extend(part.strip() for part in value.split(",") if part.strip())
+		if not raw_categories:
+			return None, None
+
+		known = {meta.category for meta in self.server.registry.list_tools()}
+		unknown = [name for name in raw_categories if name not in known]
+		if unknown:
+			return None, self._build_error_envelope(
+				request_id=_new_request_id(),
+				action="tools_discovery",
+				code=4103,
+				message=(
+					f"Unknown category {unknown[0]!r}; categories are "
+					f"{', '.join(sorted(known))}"
+				),
+			)
+		return set(raw_categories), None
 
 	def do_POST(self):
 		"""Handle POST requests for bridge actions with comprehensive error handling."""
@@ -840,15 +879,19 @@ class NVDAHTTPBridge:
 
 		return constraints
 
-	def _build_tools_list(self) -> list[Dict[str, Any]]:
+	def _build_tools_list(self, categories: Optional[set] = None) -> list[Dict[str, Any]]:
 		"""Build tools list for /tools endpoint in protocol v1 format.
 
-		Omits developer-mode tools (like execute_python) when developer mode is disabled.
+		Two filters, because the catalog is context rather than a directory
+		listing: developer-only tools are omitted unless developer mode is on, and
+		a caller that names categories gets only those.
 		"""
 		tools = []
 		for meta in self.registry.list_tools():
 			# Exclude developer-only tools from discovery if developer mode is not active
 			if getattr(meta, "required_permission", "") == "developer" and not self.developer_mode_manager.is_enabled:
+				continue
+			if categories and getattr(meta, "category", "") not in categories:
 				continue
 
 			input_schema_obj = self.registry.get_input_schema(meta.name, meta.version)
@@ -1370,6 +1413,10 @@ class NVDAHTTPBridge:
 			self.server.bridge_token = self.bridge_token
 			self.server.developer_mode_manager = self.developer_mode_manager
 			self.server.permission_policy = self.permission_policy
+			# The request handler needs the catalog's metadata (categories,
+			# permissions) without building the payload; the registry is the cheap
+			# way to ask.
+			self.server.registry = self.registry
 			self.server.execute_action = self.execute_action
 			self.server.list_tools = self._list_tools
 			self.server.list_output_types = self._list_output_types

@@ -23,11 +23,7 @@ class EmptyInput:
 	pass
 
 
-@dataclass(frozen=True)
-class MoveFocusInput:
-	"""Move focus to next or previous object."""
 
-	direction: Literal["next", "previous"]
 
 
 @dataclass(frozen=True)
@@ -44,13 +40,7 @@ class ShowMessageInput:
 	message: str
 
 
-@dataclass(frozen=True)
-class SendKeyboardInput:
-	"""Send keyboard gesture through NVDA."""
 
-	gesture: str
-	repeat: int = 1
-	delay_ms: int = 0
 
 
 @dataclass(frozen=True)
@@ -271,37 +261,7 @@ class LocateInput:
 # ============================================================================
 
 
-@dataclass(frozen=True)
-class ObjectInfo:
-	"""Information about a UI object."""
 
-	name: str
-	role: Optional[int]
-	roleText: str
-	value: str
-	description: str
-	states: str
-	windowClassName: str = ""
-	windowControlID: int = 0
-
-
-@dataclass(frozen=True)
-class WindowInfo:
-	"""Information about a window."""
-
-	title: str
-	handle: int
-	className: str
-
-
-@dataclass(frozen=True)
-class TextLineInfo:
-	"""Text line information."""
-
-	text: str
-	lineNumber: Optional[int] = None
-	note: str = ""
-	status: str = "ok"
 
 
 @dataclass(frozen=True)
@@ -320,42 +280,10 @@ class MessageResult:
 	status: str = "ok"
 
 
-@dataclass(frozen=True)
-class KeyboardActionResult:
-	"""Keyboard action result.
-
-	Mirrors the dictionary returned by ``nvda_bridge.ui.send_keyboard`` exactly.
-	The bridge validates responses against this schema with extra fields
-	rejected, so every key the dispatch code reports must be declared here.
-
-	``dispatched`` means "the input was posted", which is all a keystroke can ever
-	mean. It used to be called ``completed``, and that word is why a call could
-	report success while the focus it moved was still stale.
-	"""
-
-	gesture: str
-	repeat: int
-	delay_ms: int
-	sent: bool
-	sent_count: int = 1
-	cancelled: bool = False
-	dispatched: bool = True
-	uncertain: bool = False
 
 
-@dataclass(frozen=True)
-class MoveFocusResult:
-	"""Move focus result.
 
-	``pendingFocus`` is always true: ``setFocus()`` posts an asynchronous Windows
-	message, and confirming it would require waiting for the resulting focus event
-	— which cannot happen while this call occupies NVDA's main thread. Callers
-	must re-read focus rather than treating ``newFocus`` as confirmed.
-	"""
 
-	direction: str
-	pendingFocus: bool
-	newFocus: dict[str, Any]
 
 
 @dataclass(frozen=True)

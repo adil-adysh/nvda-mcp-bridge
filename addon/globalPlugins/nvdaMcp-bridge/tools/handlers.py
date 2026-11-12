@@ -3,36 +3,6 @@ from __future__ import annotations
 from typing import Any, Literal
 
 
-def get_current_focus() -> dict[str, Any]:
-	from .. import nvda_bridge
-
-	return nvda_bridge.get_current_focus()
-
-
-def move_focus(direction: Literal["next", "previous"]) -> dict[str, Any]:
-	from .. import nvda_bridge
-
-	return nvda_bridge.move_focus(direction=direction)
-
-
-def get_navigator_object() -> dict[str, Any]:
-	from .. import nvda_bridge
-
-	return nvda_bridge.get_navigator_object()
-
-
-def get_desktop_object() -> dict[str, Any]:
-	from .. import nvda_bridge
-
-	return nvda_bridge.get_desktop_object()
-
-
-def read_current_line() -> dict[str, Any]:
-	from .. import nvda_bridge
-
-	return nvda_bridge.read_current_line()
-
-
 def speak_text(text: str) -> dict[str, Any]:
 	from .. import nvda_bridge
 
@@ -43,47 +13,6 @@ def show_message(message: str) -> dict[str, Any]:
 	from .. import nvda_bridge
 
 	return nvda_bridge.show_message(message=message)
-
-
-def send_keyboard(
-	gesture: str,
-	repeat: int = 1,
-	delay_ms: int = 0,
-	context: Any = None,
-) -> dict[str, Any]:
-	"""Send a keyboard sequence.
-
-	Coordinator tool: runs on the bridge worker thread so the inter-gesture
-	pacing does not block NVDA's main thread, and uses the execution context to
-	move each individual gesture onto it.
-	"""
-	from .. import nvda_bridge
-	from ..nvda_bridge import ui as nvda_ui
-
-	cancellation_event = getattr(context, "cancellation_event", None) if context else None
-	timeout = getattr(context, "timeout", None) if context else None
-	dispatch = getattr(context, "dispatch", None) if context else None
-
-	main_thread_fn = None
-	if dispatch is not None:
-		main_thread_fn = lambda resolved_gesture: dispatch(  # noqa: E731
-			lambda: nvda_ui.send_single_gesture(resolved_gesture),
-		)
-
-	return nvda_bridge.send_keyboard(
-		gesture=gesture,
-		repeat=repeat,
-		delay_ms=delay_ms,
-		cancellation_event=cancellation_event,
-		main_thread_fn=main_thread_fn,
-		timeout=timeout if timeout is not None else 10.0,
-	)
-
-
-def get_window_title() -> dict[str, Any]:
-	from .. import nvda_bridge
-
-	return nvda_bridge.get_window_title()
 
 
 def inspect_object(

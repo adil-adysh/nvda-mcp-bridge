@@ -145,34 +145,36 @@ Error envelope:
 
 ## Action Names
 
-The bridge exposes discoverable actions via `GET /tools`. The original surface,
-still present, is:
+The bridge exposes discoverable actions via `GET /tools`, 26 of them at
+api_level 3. The surface is organised by what a tool answers:
 
-* `get_current_focus`
-* `move_focus`
-* `get_navigator_object`
-* `get_desktop_object`
-* `read_current_line`
-* `speak_text`
-* `show_message`
-* `send_keyboard`
-* `get_window_title`
-* `inspect_object`
-* `walk_object_tree`
-* `get_focus_lineage`
-* `inspect_app_module`
-* `list_loaded_addons`
-* `health_snapshot`
-* `restart_nvda`
-* `reload_plugins`
-* `get_logs`
-* `execute_python`
+* **reading a screen**: `observe`
+* **finding something**: `locate`, `list_reading_targets`
+* **acting**: `invoke`, `set_value`, `focus`, `press`, `navigate`,
+  `navigate_reading`, `scroll`, `dismiss`, `click_at`
+* **windows**: `activate_window`
+* **waiting**: `wait_for_events`
+* **the user's own output**: `speak_text`, `show_message`
+* **diagnostics**: `inspect_object`, `walk_object_tree`, `get_focus_lineage`,
+  `inspect_app_module`, `list_loaded_addons`, `health_snapshot`, `get_logs`
+* **lifecycle** (each requires an explicit grant): `restart_nvda`,
+  `reload_plugins`, `execute_python`
 
-The observation and action surface added with api level 2:
+api_level 3 **removed** the v1 aliases rather than deprecating them again:
+`get_current_focus`, `get_navigator_object`, `read_current_line`, `move_focus`,
+`send_keyboard`, `get_desktop_object` and `get_window_title` are gone. Their
+replacements have been in the surface since api level 2 — `observe`,
+`observe`, `read`, `navigate`, `press`, `inspect_object(target="desktop")` and
+`observe().window` respectively — and a catalog is context an agent pays for on
+every turn, so a second name for an existing question is a cost with no answer
+attached. A client calling a retired name gets `4102` naming the action, not a
+silently different tool.
 
-* `observe`, `locate`, `invoke`, `set_value`, `focus`, `activate_window`, `press`,
-  `read`, `navigate`, `scroll`, `dismiss`, `click_at`, `wait_for_events`,
-  `list_reading_targets`, `navigate_reading`
+`GET /tools?category=action` narrows the catalog, and `category` may repeat or
+be comma-separated (`?category=action,observation`). A production companion that
+sets `NVDA_BRIDGE_CATEGORIES` asks only for what it needs: `action,observation`
+is 58 KB of the 101 KB full catalog, and leaves out the developer escape hatch.
+An unknown category is `4103` with the known list, never an empty catalog.
 
 `observe` returns a projection with a `ref` on every node; `locate` searches for
 controls by role and name and returns refs too. References are locators, not
@@ -243,10 +245,9 @@ Additive only. A client that asks for api level 1 sees the v1 payloads above.
 * **`outputSchema`** per tool, plus a top-level `schema_hash` on `GET /tools`, so
   a companion can detect a contract change instead of validating against a stale
   schema.
-* **`deprecated` / `supersededBy`** per tool. `get_current_focus`,
-  `get_navigator_object`, `read_current_line`, `move_focus` and `send_keyboard`
-  are deprecated aliases for `observe`, `observe`, `read`, `navigate` and
-  `press` respectively.
+* **`deprecated` / `supersededBy`** per tool, for the tools that still carry a
+  replacement. Nothing is deprecated at api level 3: the aliases that were
+  waited out were removed rather than deprecated a second time.
 * **Error `4206` `STALE_REFERENCE`** (HTTP 409): the referenced object is gone or
   expired. Call `observe` or `locate` for fresh references.
 * **`GET /events?raw=1`** returns the raw event journal instead of coalesced
@@ -262,3 +263,21 @@ Additive only. A client that asks for api level 1 sees the v1 payloads above.
   passed through as a tool error carrying the bridge's code, name, category,
   retry policy and details, rather than being flattened into "bridge
   unreachable"; only a real transport failure is reported as one.
+
+## Protocol 3 (api_level 3)
+
+The first *subtractive* level. `supported_api_levels` is `[2, 3]`: a client that
+speaks 3 uses the catalog above, and the bridge no longer serves 1 or 2.
+
+* **Seven v1 tools removed**: `get_current_focus`, `get_navigator_object`,
+  `read_current_line`, `move_focus`, `send_keyboard`, `get_desktop_object` and
+  `get_window_title`. Each had a replacement in the level-2 surface for a full
+  release cycle. A call to a removed name is `4102 INVALID_ACTION_NAME`, and the
+  message names the action — it does not fall back to another tool.
+* **`GET /tools?category=`** filters the catalog. It accepts a comma-separated or
+  repeated list, so a companion can advertise `action,observation` (58 KB) rather
+  than the whole surface (101 KB). The companion reads
+  `NVDA_BRIDGE_CATEGORIES` and appends the filter to its own discovery call.
+* **What a retirement owes a client**: a level bump, a documented replacement,
+  and an error that names the replacement rather than the absence. The aliases
+  were given a full cycle at level 2 before this one removed them.

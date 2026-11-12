@@ -100,7 +100,7 @@ If configuring an MCP client manually, add the following to your client's MCP co
 
 By default, the bridge enforces a conservative, safe permission policy:
 * **Safe defaults enabled:** `read_only` (focus/object inspection, window titles) and `speech_output` (`speak_text`, `cancel_speech`).
-* **Input control:** `send_keyboard` requires granting the `input_control` capability.
+* **Input control:** `press` requires granting the `input_control` capability.
 * **NVDA Lifecycle:** `restart_nvda` and `reload_plugins` require `nvda_lifecycle`.
 * **Developer Mode:** Arbitrary Python execution (`execute_python`) is disabled by default.
 
@@ -152,7 +152,7 @@ In the **VS Code chat interface with MCP enabled**, invoke:
 Use the NVDA MCP tool `speak_text` to say: "Hello from NVDA MCP Bridge".
 
 Or test tone generation interactively:
-Use the tool `send_keyboard` with `gesture="windows+d"` to toggle the desktop.
+Use the tool `press` with `keys="windows+d"` to toggle the desktop.
 
 ---
 
@@ -271,6 +271,13 @@ and a `schema_hash` that changes whenever the contract does.
 * `read` — text by scope (`line`, `selection`, `document`, `subtree`)
 * `wait_for_events` — block until the next coalesced UI transition
 
+### Reading a document (browsers, Word, PDFs)
+
+* `list_reading_targets` — headings, links, landmarks, form fields and tables in
+  reading order, without moving, with heading levels
+* `navigate_reading` — move the reading position like the quick nav key, with
+  `steps`, and report where it landed
+
 ### Action (by `ref`, settled)
 
 * `invoke` — press an object's default or named action
@@ -286,21 +293,27 @@ Every action returns `result.changed`, `result.delta` and `result.settled_ms`, s
 ### Inspection and diagnostics
 
 * `inspect_object`, `inspect_app_module`, `get_focus_lineage`
-* `walk_object_tree`, `get_desktop_object`
-* `get_window_title`, `list_loaded_addons`, `health_snapshot`, `get_logs`
+* `walk_object_tree`, `list_loaded_addons`, `health_snapshot`, `get_logs`
 * `speak_text`, `show_message`
 
 ### Development
 
 * `execute_python`
 
-### Deprecated (kept for compatibility)
+### Removed at api_level 3
 
-* `get_current_focus` → `observe`
-* `get_navigator_object` → `observe`
+The v1 aliases were retired rather than deprecated again. Each has had a
+replacement since api level 2:
+
+* `get_current_focus`, `get_navigator_object` → `observe`
 * `read_current_line` → `read`
 * `move_focus` → `navigate`
 * `send_keyboard` → `press`
+* `get_desktop_object` → `inspect_object(target="desktop")`
+* `get_window_title` → `observe().window`
+
+A call to a removed name is `4102`, with the action named. `GET /tools` is the
+authoritative list for the level this bridge serves.
 
 ---
 

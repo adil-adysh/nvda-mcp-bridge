@@ -34,7 +34,7 @@
       "$ref": "common.schema.json#/$defs/semver"
     },
     "api_level": {
-      "const": 2
+      "const": 3
     },
     "supported_api_levels": {
       "type": "array",

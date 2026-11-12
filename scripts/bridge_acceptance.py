@@ -213,27 +213,25 @@ def check_envelope(result, action, tools_by_name, types, jsonschema):
 # Only non-destructive tools appear here; lifecycle tools are probed separately.
 
 CASES = [
-    ("get_current_focus", "get_current_focus", {}, "ok"),
-    ("get_navigator_object", "get_navigator_object", {}, "ok"),
-    ("get_desktop_object", "get_desktop_object", {}, "ok"),
-    ("read_current_line", "read_current_line", {}, "ok"),
-    ("get_window_title", "get_window_title", {}, "ok"),
-    ("move_focus:next", "move_focus", {"direction": "next"}, "ok"),
-    ("move_focus:previous", "move_focus", {"direction": "previous"}, "ok"),
-    ("move_focus:bad-literal", "move_focus", {"direction": "sideways"}, "error"),
-    ("move_focus:missing", "move_focus", {}, "error"),
+    ("observe", "observe", {}, "ok"),
+    ("inspect_object:desktop", "inspect_object", {"target": "desktop"}, "ok"),
+    ("read:line", "read", {"scope": "line"}, "ok"),
+    ("navigate:next", "navigate", {"direction": "next"}, "ok"),
+    ("navigate:previous", "navigate", {"direction": "previous"}, "ok"),
+    ("navigate:bad-literal", "navigate", {"direction": "sideways"}, "error"),
+    ("navigate:missing", "navigate", {}, "error"),
     ("speak_text", "speak_text", {"text": "Bridge acceptance test."}, "ok"),
     ("speak_text:empty", "speak_text", {"text": ""}, "error"),
     ("show_message", "show_message", {"message": "Bridge acceptance test."}, "ok"),
     ("show_message:empty", "show_message", {"message": ""}, "error"),
     ("show_message:too-long", "show_message", {"message": "y" * 1200}, "error"),
-    ("send_keyboard:modifier", "send_keyboard", {"gesture": "shift"}, "ok"),
-    ("send_keyboard:repeat", "send_keyboard", {"gesture": "shift", "repeat": 3, "delay_ms": 40}, "ok"),
-    ("send_keyboard:bad-gesture", "send_keyboard", {"gesture": "not+a+real+key"}, "error"),
-    ("send_keyboard:empty-gesture", "send_keyboard", {"gesture": ""}, "error"),
-    ("send_keyboard:repeat-zero", "send_keyboard", {"gesture": "shift", "repeat": 0}, "error"),
-    ("send_keyboard:repeat-high", "send_keyboard", {"gesture": "shift", "repeat": 21}, "error"),
-    ("send_keyboard:delay-high", "send_keyboard", {"gesture": "shift", "delay_ms": 9999}, "error"),
+    ("press:modifier", "press", {"keys": "shift"}, "ok"),
+    ("press:repeat", "press", {"keys": "shift", "repeat": 3, "delay_ms": 40}, "ok"),
+    ("press:bad-gesture", "press", {"keys": "not+a+real+key"}, "error"),
+    ("press:empty-gesture", "press", {"keys": ""}, "error"),
+    ("press:repeat-zero", "press", {"keys": "shift", "repeat": 0}, "error"),
+    ("press:repeat-high", "press", {"keys": "shift", "repeat": 21}, "error"),
+    ("press:delay-high", "press", {"keys": "shift", "delay_ms": 9999}, "error"),
     ("inspect_object", "inspect_object", {}, "ok"),
     ("inspect_object:navigator", "inspect_object", {"target": "navigator", "include_relations": True}, "ok"),
     ("inspect_object:bad-target", "inspect_object", {"target": "mouse"}, "error"),
@@ -300,15 +298,15 @@ TYPE_PROBES = [
     ("health_snapshot", {"include_logs": "no"}, "str for bool"),
     ("health_snapshot", {"log_lines": "20"}, "str for int"),
     ("list_loaded_addons", {"scope": ["running"]}, "array for enum"),
-    ("send_keyboard", {"gesture": "shift", "repeat": "2"}, "str for int"),
-    ("send_keyboard", {"gesture": "shift", "delay_ms": "10"}, "str for int"),
-    ("send_keyboard", {"gesture": 5}, "int for str"),
+    ("press", {"keys": "shift", "repeat": "2"}, "str for int"),
+    ("press", {"keys": "shift", "delay_ms": "10"}, "str for int"),
+    ("press", {"keys": 5}, "int for str"),
     ("speak_text", {"text": 12345}, "int for str"),
     ("speak_text", {"text": ["a"]}, "array for str"),
 ]
 
 
-# Some tools report a normal environmental condition as a failure. ``move_focus``
+# Some tools report a normal environmental condition as a failure. ``navigate``
 # walks *siblings* of the focused object, so it reports an error whenever focus
 # sits on an only child — the common case in a browser. Treat it as a skip so it
 # stays visible in the report without failing the run.
@@ -375,7 +373,7 @@ def run(bridge: Bridge, tools, include_lifecycle: bool, verbose: bool):
 
     def probe(_):
         started = time.perf_counter()
-        ok = bool((bridge.call("get_current_focus")["body"] or {}).get("success"))
+        ok = bool((bridge.call("observe")["body"] or {}).get("success"))
         return ok, (time.perf_counter() - started) * 1000
 
     with ThreadPoolExecutor(max_workers=8) as pool:
@@ -426,13 +424,13 @@ def run_security(bridge: Bridge):
     record("missing token", 401, "GET", "/tools")
     record("wrong token", 401, "GET", "/tools", headers={TOKEN_HEADER: "not-the-token"})
     record("bearer token", 200, "GET", "/tools", headers={"Authorization": f"Bearer {token}"})
-    record("missing token on action", 401, "POST", "/action", {"action": "get_current_focus"})
+    record("missing token on action", 401, "POST", "/action", {"action": "observe"})
     record("malformed JSON", 400, "POST", "/action", b"{not json", {TOKEN_HEADER: token})
     record("evil Host header", 403, "GET", "/tools", headers={TOKEN_HEADER: token, "Host": "evil.example.com"})
     record("evil Origin", 403, "GET", "/tools", headers={TOKEN_HEADER: token, "Origin": "https://evil.example.com"})
 
     request_id = "rid-" + uuid.uuid4().hex[:8]
-    result = bridge.call("get_current_focus", request_id=request_id)
+    result = bridge.call("observe", request_id=request_id)
     echoed = (result["body"] or {}).get("request_id") == request_id
     checks.append(
         {

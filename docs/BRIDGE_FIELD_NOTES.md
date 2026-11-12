@@ -170,3 +170,28 @@ What the exercise changed:
    document per tab, and nothing says which tab is showing. The tool now refuses
    when the focus is not in the window in front, and the refusal names the fix
    (F6, then ask again).
+
+## The surface, weighed (api_level 3)
+
+Asked whether the reading tools should replace the old ones, the answer came
+from measuring the catalog rather than from taste. Nothing overlapped — and the
+reading tools call the others (ctivate_window, ead, invoke) — but the
+catalog itself was 33 tools, 41 KB of definitions, a 120 KB `/tools` payload.
+Every session paid that before doing anything.
+
+So the aliases went, and only the aliases: `get_current_focus`,
+`get_navigator_object`, `read_current_line`, `move_focus`,
+`send_keyboard`, `get_desktop_object` and `get_window_title`. 26 tools at
+api_level 3, `supported_api_levels: [2, 3]`.
+
+Two things make the next removal cheaper than this one:
+
+`GET /tools?category=`
+	`action,observation` is 58 KB of the 101 KB surface, and the companion asks
+	for it with `NVDA_BRIDGE_CATEGORIES`. An unknown category is `4103` with
+	the known list — never an empty catalog, which would look like "the bridge
+	has no tools".
+
+the error that names the replacement
+	A removed name is `4102` with the action in the message, not a fallback to
+	something similar. Deleting a name is safe only when the failure is loud.

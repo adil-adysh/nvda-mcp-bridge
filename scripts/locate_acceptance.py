@@ -257,9 +257,17 @@ def check_notepad_dialog(bridge: Bridge, report: Report) -> None:
 	# real Cancel button, and opening it changes nothing on disk.
 	opened = bridge.call("press", {"keys": "control+shift+s"})
 	report.check("the Save As dialog opens", ok(opened), str(error_code(opened)))
-	time.sleep(2.0)
 
-	found = bridge.call("locate", {"role": "BUTTON", "name": "Cancel"})
+	# A dialog appears when the application has drawn it, which is not when the
+	# keystroke returned: poll instead of sleeping for a guess, or the next check
+	# searches a window that does not exist yet.
+	def dialog_cancel():
+		response = bridge.call("locate", {"role": "BUTTON", "name": "Cancel"})
+		return response if (data(response).get("matches") or []) else None
+
+	found = wait_for(dialog_cancel, timeout_s=10, interval_s=0.4) or bridge.call(
+		"locate", {"role": "BUTTON", "name": "Cancel"}
+	)
 	block = data(found)
 	matches = block.get("matches") or []
 	report.check("the dialog's Cancel button is located", ok(found) and len(matches) == 1, json.dumps(matches)[:200])

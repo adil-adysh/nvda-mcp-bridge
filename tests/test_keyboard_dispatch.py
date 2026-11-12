@@ -391,11 +391,11 @@ class TestKeyboardDispatchSemantics(unittest.TestCase):
         self.assertEqual(attempts, 3)
 
     def test_13_output_contract_covers_all_dispatch_fields(self):
-        """13. The declared KeyboardActionResult must accept every field the dispatcher returns.
+        """13. The declared PressResult must accept every field the dispatcher returns.
 
         The bridge rejects responses that carry fields missing from the named
         output type, so a new field added to the dispatch result without the
-        matching schema property breaks send_keyboard end to end.
+        matching schema property breaks press end to end.
         """
         import dataclasses
 
@@ -404,11 +404,11 @@ class TestKeyboardDispatchSemantics(unittest.TestCase):
 
         result = send_keyboard("home", repeat=2, main_thread_fn=lambda resolved: None)
         schema_properties = set(
-            build_output_type_registry()["KeyboardActionResult"]["properties"]["data"]["properties"],
+            build_output_type_registry()["PressResult"]["properties"]["data"]["properties"],
         )
 
         self.assertEqual(set(result), schema_properties)
-        self.assertEqual({field.name for field in dataclasses.fields(models.KeyboardActionResult)}, schema_properties)
+        self.assertEqual({field.name for field in dataclasses.fields(models.PressResult)}, schema_properties)
 
 if __name__ == "__main__":
     unittest.main()

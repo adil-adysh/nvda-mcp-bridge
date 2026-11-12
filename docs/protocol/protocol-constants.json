@@ -6,10 +6,10 @@
     "name": "nvda-bridge-protocol",
     "version": "1.0.0",
     "bridge_version": "1.0.0",
-    "api_level": 2,
+    "api_level": 3,
     "supported_api_levels": [
-      1,
-      2
+      2,
+      3
     ],
     "default_bridge_token": "",
     "token_header": "X-NVDA-Bridge-Token",

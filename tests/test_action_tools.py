@@ -297,18 +297,25 @@ class SurfaceTests(unittest.TestCase):
 		self.assertIn("modal", states)
 		self.assertIn("menu", states)
 
-	def test_superseded_tools_are_marked_deprecated(self):
-		expected = {
-			"get_current_focus": "observe",
-			"get_navigator_object": "observe",
-			"read_current_line": "read",
-			"move_focus": "navigate",
-			"send_keyboard": "press",
-		}
-		for name, replacement in expected.items():
-			metadata = self.registry.get(name).get_metadata()
-			self.assertTrue(metadata.deprecated, f"{name} should be deprecated")
-			self.assertEqual(metadata.superseded_by, replacement)
+	def test_retired_aliases_are_gone(self):
+		# api_level 3 retired the v1 aliases outright: they are not deprecated
+		# placeholders, they are not in the registry at all, so an agent never
+		# pays context for a name it must not use.
+		for name in (
+			"get_current_focus",
+			"get_navigator_object",
+			"read_current_line",
+			"move_focus",
+			"send_keyboard",
+			"get_desktop_object",
+			"get_window_title",
+		):
+			with self.assertRaises(Exception, msg=name):
+				self.registry.get(name)
+
+	def test_nothing_is_deprecated_anymore(self):
+		deprecated = [meta.name for meta in self.registry.list_tools() if meta.deprecated]
+		self.assertEqual(deprecated, [], "a deprecated tool is a tool that should have been retired")
 
 	def test_every_new_tool_publishes_an_output_type(self):
 		types_registry = output_types.build_output_type_registry()

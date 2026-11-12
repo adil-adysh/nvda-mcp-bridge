@@ -79,14 +79,14 @@ class InputStrictnessTests(unittest.TestCase):
 			schema.validate({"max_depth": True})
 
 	def test_string_is_not_an_integer(self):
-		schema = self._schema(_models.SendKeyboardInput)
+		schema = self._schema(_models.PressInput)
 		with self.assertRaises(_core.ValidationError):
-			schema.validate({"gesture": "shift", "repeat": "2"})
+			schema.validate({"keys": "shift", "repeat": "2"})
 
 	def test_integer_is_not_a_string(self):
-		schema = self._schema(_models.SendKeyboardInput)
+		schema = self._schema(_models.PressInput)
 		with self.assertRaises(_core.ValidationError):
-			schema.validate({"gesture": 5})
+			schema.validate({"keys": 5})
 
 	def test_literal_is_enforced(self):
 		schema = self._schema(_models.InspectObjectInput)
@@ -99,8 +99,8 @@ class InputStrictnessTests(unittest.TestCase):
 			schema.validate({"disable_addons": False, "force": True})
 
 	def test_valid_input_still_passes(self):
-		schema = self._schema(_models.SendKeyboardInput)
-		validated = schema.validate({"gesture": "control+a", "repeat": 3, "delay_ms": 40})
+		schema = self._schema(_models.PressInput)
+		validated = schema.validate({"keys": "control+a", "repeat": 3, "delay_ms": 40})
 		self.assertEqual(validated.repeat, 3)
 
 
@@ -113,7 +113,7 @@ class OutputCoercionTests(unittest.TestCase):
 				description="test",
 				category="test",
 			),
-			_models.KeyboardActionResult,
+			_models.PressResult,
 			lambda: {
 				"gesture": "shift",
 				"repeat": 1,
@@ -131,7 +131,7 @@ class OutputCoercionTests(unittest.TestCase):
 	def test_declared_fields_are_accepted(self):
 		tool = _core.TypedToolImpl.from_inputless(
 			_core.ToolMetadata(name="output_ok", version="1.0.0", description="test", category="test"),
-			_models.KeyboardActionResult,
+			_models.PressResult,
 			lambda: {
 				"gesture": "shift",
 				"repeat": 1,
@@ -156,7 +156,8 @@ class CoordinatorTests(unittest.TestCase):
 
 		def handler(input_obj, context):
 			seen["context"] = context
-			return {"gesture": "shift", "repeat": 1, "delay_ms": 0, "sent": True}
+			seen["keys"] = input_obj.keys
+			return {"gesture": "shift", "repeat": 1, "delay_ms": 0, "sent": True, "sent_count": 1, "dispatched": True}
 
 		tool = _core.TypedToolImpl.from_coordinator(
 			_core.ToolMetadata(
@@ -166,13 +167,13 @@ class CoordinatorTests(unittest.TestCase):
 				category="test",
 				execution_mode=_core.ExecutionMode.COORDINATOR,
 			),
-			_models.SendKeyboardInput,
-			_models.KeyboardActionResult,
+			_models.PressInput,
+			_models.PressResult,
 			handler,
 		)
 		context = _core.ExecutionContext(timeout=5.0)
 
-		result = _core.ToolExecutor().execute(tool, {"gesture": "shift"}, context)
+		result = _core.ToolExecutor().execute(tool, {"keys": "shift"}, context)
 
 		self.assertTrue(result.success, msg=str(result.error))
 		self.assertIs(seen["context"], context)
@@ -181,23 +182,23 @@ class CoordinatorTests(unittest.TestCase):
 		with self.assertRaises(ValueError):
 			_core.TypedToolImpl.from_coordinator(
 				_core.ToolMetadata(name="bad_mode", version="1.0.0", description="test", category="test"),
-				_models.SendKeyboardInput,
-				_models.KeyboardActionResult,
+				_models.PressInput,
+				_models.PressResult,
 				lambda input_obj, context: {},
 			)
 
 	def test_main_thread_tool_ignores_context(self):
 		def handler(input_obj):
-			return {"gesture": input_obj.gesture, "repeat": 1, "delay_ms": 0, "sent": True}
+			return {"gesture": input_obj.keys, "repeat": 1, "delay_ms": 0, "sent": True, "sent_count": 1, "dispatched": True}
 
 		tool = _core.TypedToolImpl.from_handler(
 			_core.ToolMetadata(name="plain_tool", version="1.0.0", description="test", category="test"),
-			_models.SendKeyboardInput,
-			_models.KeyboardActionResult,
+			_models.PressInput,
+			_models.PressResult,
 			handler,
 		)
 
-		result = _core.ToolExecutor().execute(tool, {"gesture": "shift"}, _core.ExecutionContext())
+		result = _core.ToolExecutor().execute(tool, {"keys": "shift"}, _core.ExecutionContext())
 
 		self.assertTrue(result.success, msg=str(result.error))
 

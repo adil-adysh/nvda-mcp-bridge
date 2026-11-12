@@ -14,8 +14,8 @@ pub const PROTOCOL_NAME: &str = "nvda-bridge-protocol";
 pub const PROTOCOL_VERSION: &str = "1.0.0";
 #[allow(dead_code)]
 pub const BRIDGE_VERSION: &str = "1.0.0";
-pub const API_LEVEL: u32 = 2;
-pub const SUPPORTED_API_LEVELS: &[u32] = &[1, 2];
+pub const API_LEVEL: u32 = 3;
+pub const SUPPORTED_API_LEVELS: &[u32] = &[2, 3];
 pub const TOKEN_HEADER: &str = "X-NVDA-Bridge-Token";
 #[allow(dead_code)]
 pub const MAX_REQUEST_ID_LENGTH: usize = 128;
