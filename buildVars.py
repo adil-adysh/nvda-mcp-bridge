@@ -81,7 +81,19 @@ i18nSources: list[str] = pythonSources + ["buildVars.py"]
 # Paths are relative to the addon directory, not to the root directory of your addon sources.
 # You can either list every file (using ""/") as a path separator,
 # or use glob expressions.
-excludedFiles: list[str] = []
+#
+# Bytecode is the one thing that must never ship. Running the add-on from source
+# and running the test suite both leave `__pycache__` directories in the add-on
+# tree, compiled by whatever Python touched it last (3.13 and 3.14 here — NVDA
+# itself is neither), and the packager walks the tree. `Path.match` matches one
+# component at a time, so the depth is spelled out rather than written as `**`.
+excludedFiles: list[str] = [".DS_Store", "Thumbs.db"]
+for _depth in range(1, 8):
+	excludedFiles.append("*/" * _depth + "__pycache__/*")
+	excludedFiles.append("*/" * _depth + "*.pyc")
+	excludedFiles.append("*/" * _depth + "*.pyo")
+	excludedFiles.append("*/" * _depth + ".pytest_cache/*")
+excludedFiles.append("*.pyc")
 
 # Base language for the NVDA add-on
 # If your add-on is written in a language other than english, modify this variable.

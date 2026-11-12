@@ -14,7 +14,8 @@ from typing import Final
 # Linters aren't aware about them.
 # To avoid PyRight `reportUndefinedVariable` errors about them they are imported explicitly.
 # When using other  Scons functions please add them to the line below.
-from SCons.Script import EnsurePythonVersion, Variables, BoolVariable, Environment, Copy
+from SCons.Errors import BuildError
+from SCons.Script import Action, EnsurePythonVersion, Variables, BoolVariable, Environment, Copy
 
 # Imports for type hints
 from SCons.Node import FS
@@ -27,6 +28,21 @@ EnsurePythonVersion(3, 10)
 sys.dont_write_bytecode = True
 
 import buildVars  # NOQA: E402
+import build_companion  # NOQA: E402
+
+
+def buildCompanionAction(target, source, env):
+	"""Build the Rust companion and stage it inside the add-on tree.
+
+	The binary and its manifest are part of the add-on, so the archive must not
+	be built until they exist and match. Raising rather than returning an error
+	string keeps SCons' own reporting: which target, and why.
+	"""
+	try:
+		binary, manifest = build_companion.build_and_package(Path("."))
+	except build_companion.BuildError as error:
+		raise BuildError(errstr=str(error)) from error
+	print(f"Building companion: {binary.name} ({binary.stat().st_size} bytes) -> {manifest.name}")
 
 
 def validateVersionNumber(key: str, val: str, _):
@@ -55,6 +71,13 @@ vars.Add("version", "The version of this build", buildVars.addon_info["addon_ver
 vars.Add("versionNumber", "Version number of the form major.minor.patch", "0.0.0", validateVersionNumber)
 vars.Add(BoolVariable("dev", "Whether this is a daily development version", False))
 vars.Add("channel", "Update channel for this build", buildVars.addon_info["addon_updateChannel"])
+vars.Add(
+	BoolVariable(
+		"companion",
+		"Build the Rust MCP companion and bundle it into the add-on",
+		True,
+	),
+)
 
 env = Environment(variables=vars, ENV=os.environ, tools=["gettexttool", "NVDATool"])
 env.Append(
@@ -145,6 +168,28 @@ env.Depends(mergePot, i18nFiles)
 manifest = env.NVDAManifest(env.File(addonDir / "manifest.ini"), "manifest.ini.tpl")
 # Ensure manifest is rebuilt if buildVars is updated.
 env.Depends(manifest, "buildVars.py")
+
+# The companion is part of the artifact, not a step someone remembers. Build it,
+# stage it at addon/globalPlugins/nvdaMcp-bridge/companion/windows-x64 (binary +
+# manifest with its checksum), and make the archive wait for both.
+if not env["companion"]:
+	print("companion: skipped (companion=0)")
+elif sys.platform != "win32":
+	# The companion talks to NVDA, so it is a Windows binary; the add-on can
+	# still be built elsewhere for tests and translation work.
+	print("companion: not building on this platform")
+else:
+	companionTargets = [
+		env.File(str(build_companion.DEST_DIR / build_companion.BINARY_NAME)),
+		env.File(str(build_companion.DEST_DIR / "manifest.json")),
+	]
+	companionSources = [env.File(str(path)) for path in build_companion.rust_sources(Path("."))]
+	companion = env.Command(
+		companionTargets,
+		companionSources,
+		Action(buildCompanionAction, "Building companion"),
+	)
+	env.Depends(addon, companion)
 
 env.Depends(addon, manifest)
 env.Default(addon)

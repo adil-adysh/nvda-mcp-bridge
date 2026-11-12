@@ -128,20 +128,37 @@ For contributors and developers building the add-on from source:
 * Gettext tools (optional, for localization)
 
 #### Build Steps
+
+`SConstruct` owns the whole release. One command compiles the companion, stages
+it inside the add-on with a manifest whose checksum and API level come from the
+crate itself, and assembles the `.nvda-addon`:
+
 ```powershell
-# 1. Build Rust MCP release binary
-cargo build --release --manifest-path rust_mcp_bridge/Cargo.toml
-
-# 2. Package companion binary and generate manifest
-python scripts/package_companion.py
-
-# 3. Assemble .nvda-addon package
 scons
-scons pot
-
-# 4. Validate package contents
-python scripts/validate_addon_package.py
 ```
+
+That is the only step. It is also the step that cannot be half-done: the archive
+waits for the staged binary and manifest, so a release cannot ship a companion
+that disagrees with what the add-on says about it. Rebuilds are incremental —
+`cargo` runs only when a Rust source, `Cargo.toml` or `Cargo.lock` changed.
+
+Useful variations:
+
+```powershell
+scons companion=0            # build the add-on without touching Rust (no toolchain, CI, translators)
+scons pot                    # translation template only; does not build the companion
+scons -c                     # clean the archive and generated docs
+python scripts/package_companion.py            # same companion step, standalone
+python scripts/package_companion.py --no-build # restage a binary cargo already built
+python scripts/validate_addon_package.py       # check the archive's contents
+```
+
+Prerequisites for the companion step are Rust and `cargo` on `PATH`. Without
+them `scons` stops with a message that names both options — install Rust, or
+build with `companion=0` — rather than producing an add-on whose bundled
+companion is stale. That failure mode is real: the add-on once shipped a
+companion speaking api_level 2 next to a bridge speaking 3, and the companion
+refused the catalog and offered no tools at all.
 
 ---
 
