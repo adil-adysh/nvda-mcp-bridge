@@ -54,10 +54,14 @@ ERROR_CODES = {
 ENVELOPE_KEYS = {
     "success", "request_id", "action", "duration_ms", "bridge",
     "nvda_status_snapshot", "result", "data", "error",
+    # Diagnostic correlation: the logical action id and its bounded summary.
+    "trace_id", "trace",
 }
 RESULT_KEYS = {
     "ok", "state_version", "changed", "delta", "settled_ms", "uncertain",
     "completed", "expect_mismatch",
+    # Observation completeness, added with the action trace.
+    "projection_available", "events_complete", "settling_status",
 }
 ERROR_KEYS = {"code", "message", "name", "category", "retry_policy", "retry_after_ms", "details"}
 

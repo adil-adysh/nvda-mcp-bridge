@@ -163,6 +163,168 @@ class JournalTests(unittest.TestCase):
 		self.assertFalse(page["has_more"])
 
 
+class PaginationTests(unittest.TestCase):
+	"""Cursor semantics the Rust event pump depends on.
+
+	The pump used to advance to the journal's head (`state_version`) instead of
+	the last event it was given (`to_version`), which skipped every event between
+	the page and the head. These pin the contract that makes that avoidable.
+	"""
+
+	def test_one_page_reports_caught_up(self):
+		journal = events.EventJournal()
+		for index in range(3):
+			journal.record_transition("focus", name=f"e{index}")
+
+		page = journal.snapshot(since=0, limit=10)
+
+		self.assertEqual(page["to_version"], 3)
+		self.assertEqual(page["event_version"], 3)
+		self.assertEqual(page["state_version"], 3)
+		self.assertFalse(page["has_more"])
+		self.assertTrue(page["complete"])
+		self.assertTrue(page["caught_up"])
+		self.assertEqual(page["cursor_status"], "ok")
+
+	def test_a_full_page_reports_paged_not_caught_up(self):
+		journal = events.EventJournal()
+		for index in range(10):
+			journal.record_transition("focus")
+
+		page = journal.snapshot(since=0, limit=4)
+
+		self.assertEqual(page["to_version"], 4)
+		self.assertEqual(page["event_version"], 10)
+		self.assertTrue(page["has_more"])
+		self.assertTrue(page["complete"], "this page lost nothing")
+		self.assertFalse(page["caught_up"], "the caller has not seen everything")
+		self.assertEqual(page["cursor_status"], "paged")
+		self.assertEqual(page["next_cursor"], 4)
+
+	def test_more_events_than_the_page_limit_are_never_skipped(self):
+		journal = events.EventJournal()
+		total = 250
+		for index in range(total):
+			journal.record_transition("focus", name=f"e{index}")
+
+		seen = []
+		cursor = 0
+		requests = 0
+		while requests < 100:
+			requests += 1
+			page = journal.snapshot(since=cursor, limit=100)
+			seen.extend(entry["name"] for entry in page["events"])
+			cursor = page["to_version"]
+			if not page["has_more"]:
+				break
+
+		self.assertEqual(seen, [f"e{index}" for index in range(total)])
+		self.assertEqual(cursor, total)
+		self.assertEqual(requests, 3)
+
+	def test_an_event_burst_is_one_transition_at_one_version(self):
+		journal = events.EventJournal()
+		coalescer = events.TransitionCoalescer(journal, quiet_ms=10)
+		coalescer.start()
+		try:
+			for _ in range(5):
+				coalescer.record("valueChange", _FakeObject(name="abc"))
+			self.assertTrue(journal.wait(since=0, timeout_ms=1000)["events"])
+
+			page = journal.snapshot(since=0, limit=10)
+
+			self.assertEqual(page["to_version"], 1, "one burst is one cursor step")
+			self.assertEqual(page["events"][0]["count"], 5)
+		finally:
+			coalescer.stop()
+
+	def test_a_cursor_older_than_retained_history_is_reported_as_stale(self):
+		journal = events.EventJournal(capacity=2)
+		for _ in range(5):
+			journal.record_transition("focus")
+
+		page = journal.snapshot(since=0, limit=10)
+
+		self.assertEqual(page["cursor_status"], "stale")
+		self.assertTrue(page["truncated"])
+		self.assertFalse(page["complete"])
+		self.assertFalse(page["caught_up"])
+		self.assertEqual(page["oldest_retained_version"], 4)
+		self.assertEqual(page["dropped"], 3)
+
+	def test_a_cursor_from_another_journal_is_reported_as_future(self):
+		journal = events.EventJournal()
+		journal.record_transition("focus")
+
+		page = journal.snapshot(since=900, limit=10)
+
+		self.assertEqual(page["events"], [])
+		self.assertEqual(page["cursor_status"], "future_cursor")
+		self.assertEqual(page["to_version"], 900, "the cursor must not move backwards")
+		self.assertFalse(page["has_more"])
+
+	def test_a_restarted_journal_has_a_new_identity(self):
+		before = events.EventJournal()
+		before.record_transition("focus")
+		after = events.EventJournal()
+
+		self.assertNotEqual(before.journal_id, after.journal_id)
+		# The old cursor is a future cursor here, which is how the consumer
+		# knows to reset rather than wait forever.
+		self.assertEqual(after.snapshot(since=before.version)["cursor_status"], "future_cursor")
+
+	def test_an_empty_history_is_caught_up_not_stale(self):
+		journal = events.EventJournal()
+
+		page = journal.snapshot(since=0)
+
+		self.assertEqual(page["events"], [])
+		self.assertEqual(page["to_version"], 0)
+		self.assertEqual(page["oldest_retained_version"], 0)
+		self.assertEqual(page["cursor_status"], "ok")
+		self.assertTrue(page["complete"])
+		self.assertTrue(page["caught_up"])
+
+	def test_repeated_polling_without_new_events_does_not_move_the_cursor(self):
+		journal = events.EventJournal()
+		journal.record_transition("focus")
+
+		first = journal.snapshot(since=0)
+		second = journal.snapshot(since=first["to_version"])
+		third = journal.wait(since=first["to_version"], timeout_ms=10)
+
+		for page in (second, third):
+			self.assertEqual(page["events"], [])
+			self.assertEqual(page["to_version"], first["to_version"])
+			self.assertTrue(page["caught_up"])
+
+	def test_events_arriving_during_catch_up_are_still_ahead(self):
+		journal = events.EventJournal()
+		for index in range(150):
+			journal.record_transition("focus", name=f"e{index}")
+
+		first = journal.snapshot(since=0, limit=100)
+		for index in range(150, 160):
+			journal.record_transition("focus", name=f"e{index}")
+		second = journal.snapshot(since=first["to_version"], limit=100)
+
+		self.assertEqual(first["to_version"], 100)
+		self.assertEqual(second["to_version"], 160)
+		self.assertEqual(len(second["events"]), 60, "the events that arrived mid-catch-up are delivered")
+		self.assertFalse(second["has_more"])
+
+	def test_the_version_vocabulary_is_reported_separately(self):
+		journal = events.EventJournal()
+		for _ in range(10):
+			journal.record_transition("focus")
+
+		page = journal.snapshot(since=0, limit=3)
+
+		self.assertEqual(page["event_version"], page["state_version"])
+		self.assertNotEqual(page["to_version"], page["event_version"])
+		self.assertEqual(page["next_cursor"], page["to_version"])
+
+
 class CoalescerTests(unittest.TestCase):
 	def test_a_burst_becomes_one_transition(self):
 		journal = events.EventJournal()

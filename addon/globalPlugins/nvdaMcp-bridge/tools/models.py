@@ -815,3 +815,35 @@ class NavigateReadingResult:
 	pass_through: bool = False
 	timeout_ms: int = 0
 	elapsed_ms: float = 0.0
+
+
+# ============================================================================
+# ACTION TRACE OUTPUT MODELS
+# ============================================================================
+
+
+@dataclass(frozen=True)
+class GetActionTraceInput:
+	"""Identify one action trace to read back."""
+
+	trace_id: str
+
+
+@dataclass(frozen=True)
+class ActionTraceResult:
+	"""One retained action trace, or the reason it is not available.
+
+	``found: false`` is a normal answer, not a failure: traces are held in
+	memory and expire, and a caller that keeps an id past the retention window
+	needs to be told that rather than given an error that looks like the
+	action's own failure. ``retention`` always says what the window was.
+	"""
+
+	trace_id: str
+	found: bool
+	schema_version: int = 1
+	trace: Optional[dict[str, Any]] = None
+	retention: Optional[dict[str, Any]] = None
+	missing_reason: str = ""
+	"""Why the record is unavailable: ``expired_or_unknown`` or ``not_stored``."""
+

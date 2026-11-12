@@ -56,6 +56,13 @@ from .protocol import (
 	build_tools_payload,
 )
 from .events import EventJournal, EventRecorder
+from .action_trace import (
+	ActionTraceRecorder,
+	ActionTraceStore,
+	DiagnosticAssembler,
+	build_trace_summary,
+	match_native_log,
+)
 from .refs import ReferenceTable
 from .response import build_action_error, build_error_envelope
 from .settle import DEFAULT_BUDGET_MS, Settler
@@ -455,10 +462,14 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				return
 
 			if self.path in ("/action", "/execute"):
-				action, params, request_id, timeout_ms = self._validate_action_request(request_data, request_id)
+				action, params, request_id, timeout_ms, trace_id = self._validate_action_request(
+					request_data, request_id
+				)
 				if action is None:
 					return
-				self._handle_action(action, params or {}, request_id, timeout_ms=timeout_ms)
+				self._handle_action(
+					action, params or {}, request_id, timeout_ms=timeout_ms, trace_id=trace_id
+				)
 				return
 
 			if self.path == "/admin/developer-mode":
@@ -660,7 +671,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 
 	def _validate_action_request(
 		self, request_data: Dict[str, Any], request_id: str
-	) -> tuple[Optional[str], Optional[Dict[str, Any]], str, Optional[int]]:
+	) -> tuple[Optional[str], Optional[Dict[str, Any]], str, Optional[int], Optional[str]]:
 		action = request_data.get("action")
 		params = request_data.get("params")
 		timeout_ms = request_data.get("timeout_ms")
@@ -677,7 +688,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 					message="'request_id' must be a string",
 				)
 				self._send_json_response(envelope, 400)
-				return None, None, request_id, None
+				return None, None, request_id, None, None, None
 			client_request_id = client_request_id.strip()
 			if len(client_request_id) > MAX_REQUEST_ID_LENGTH:
 				envelope = self._build_error_envelope(
@@ -687,9 +698,35 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 					message=f"'request_id' is too long (max {MAX_REQUEST_ID_LENGTH} characters)",
 				)
 				self._send_json_response(envelope, 400)
-				return None, None, request_id, None
+				return None, None, request_id, None, None, None
 			if client_request_id:
 				request_id = client_request_id
+
+		# An action-level id, distinct from the per-request one: a logical action
+		# that costs several HTTP requests can carry the same trace_id through
+		# all of them, and its diagnostic timeline stays one record.
+		trace_id: Optional[str] = None
+		client_trace_id = request_data.get("trace_id")
+		if client_trace_id is not None:
+			if not isinstance(client_trace_id, str) or not client_trace_id.strip():
+				envelope = self._build_error_envelope(
+					request_id=request_id,
+					action="unknown",
+					code=4101,
+					message="'trace_id' must be a non-empty string",
+				)
+				self._send_json_response(envelope, 400)
+				return None, None, request_id, None, None, None
+			trace_id = client_trace_id.strip()
+			if len(trace_id) > MAX_REQUEST_ID_LENGTH:
+				envelope = self._build_error_envelope(
+					request_id=request_id,
+					action="unknown",
+					code=4101,
+					message=f"'trace_id' is too long (max {MAX_REQUEST_ID_LENGTH} characters)",
+				)
+				self._send_json_response(envelope, 400)
+				return None, None, request_id, None, None, None
 
 		if timeout_ms is not None:
 			if not isinstance(timeout_ms, int) or timeout_ms < 100 or timeout_ms > 300000:
@@ -700,7 +737,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 					message="'timeout_ms' must be an integer between 100 and 300000",
 				)
 				self._send_json_response(envelope, 400)
-				return None, None, request_id, None
+				return None, None, request_id, None, None
 
 		if action is None:
 			envelope = self._build_error_envelope(
@@ -710,7 +747,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="Missing 'action' field",
 			)
 			self._send_json_response(envelope, 400)
-			return None, None, request_id, None
+			return None, None, request_id, None, None
 
 		if not isinstance(action, str):
 			envelope = self._build_error_envelope(
@@ -720,7 +757,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="'action' must be a string",
 			)
 			self._send_json_response(envelope, 400)
-			return None, None, request_id, None
+			return None, None, request_id, None, None
 
 		action = action.strip()
 		if not action:
@@ -731,7 +768,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="'action' cannot be empty",
 			)
 			self._send_json_response(envelope, 400)
-			return None, None, request_id, None
+			return None, None, request_id, None, None
 
 		if len(action) > MAX_REQUEST_ID_LENGTH:
 			envelope = self._build_error_envelope(
@@ -741,7 +778,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="'action' is too long (max 128 characters)",
 			)
 			self._send_json_response(envelope, 400)
-			return None, None, request_id, None
+			return None, None, request_id, None, None
 
 		if "params" not in request_data:
 			envelope = self._build_error_envelope(
@@ -751,7 +788,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="Missing 'params' field",
 			)
 			self._send_json_response(envelope, 400)
-			return None, None, request_id, None
+			return None, None, request_id, None, None
 
 		if not isinstance(params, dict):
 			envelope = self._build_error_envelope(
@@ -761,16 +798,25 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				message="'params' must be a JSON object",
 			)
 			self._send_json_response(envelope, 400)
-			return None, None, request_id, None
+			return None, None, request_id, None, None
 
-		return action, params, request_id, timeout_ms
+		return action, params, request_id, timeout_ms, trace_id
 
 	def _handle_action(
-		self, action: str, params: Dict[str, Any], request_id: str, timeout_ms: Optional[int] = None
+		self,
+		action: str,
+		params: Dict[str, Any],
+		request_id: str,
+		timeout_ms: Optional[int] = None,
+		trace_id: Optional[str] = None,
 	):
 		"""Execute a validated bridge action request with deadline and error mapping."""
 		envelope = self.server.execute_action(
-			request_id=request_id, action_name=action, params=params, timeout_ms=timeout_ms
+			request_id=request_id,
+			action_name=action,
+			params=params,
+			timeout_ms=timeout_ms,
+			trace_id=trace_id,
 		)
 		if envelope.get("success"):
 			status = 200
@@ -810,6 +856,11 @@ class NVDAHTTPBridge:
 		# objects, so every refresh goes through the main-thread executor.
 		self.projector = StateProjector(self._project)
 		self.recorder = EventRecorder(self.event_journal, self.projector)
+		# Diagnostic records for actions, bounded and in memory only. The store
+		# is what `get_action_trace` reads; nothing here executes an action.
+		self.trace_store = ActionTraceStore()
+		self.assembler = DiagnosticAssembler()
+		self._native_log_enabled = True
 		# References captured by `observe`. Bounded and expiring; never scanned.
 		self.refs = ReferenceTable()
 		self._ref_lock = threading.Lock()
@@ -1169,16 +1220,97 @@ class NVDAHTTPBridge:
 			"developer_mode": self.developer_mode_manager.is_enabled,
 		}
 
+	def _collect_native_log(self, recorder: ActionTraceRecorder, trace_id: Optional[str]) -> None:
+		"""Attach best-effort native NVDA log evidence to a trace.
+
+		Optional by design: the native logger cannot carry a trace id, so this
+		never claims more than "this line was written while the action ran" —
+		unless the line is one the bridge itself wrote, which does carry it.
+		"""
+		if not self._native_log_enabled:
+			recorder.record_native_log([], "not_attempted")
+			return
+		try:
+			from ..nvda_bridge import diagnostics
+
+			payload = diagnostics.get_logs(max_lines=200, use_tail=True)
+			lines = payload.get("lines") or []
+		except Exception as e:  # noqa: BLE001 — log access is never load-bearing
+			recorder.record_native_log([], "unavailable", reason=str(e))
+			return
+		matches, status = match_native_log(
+			lines,
+			trace_id=trace_id,
+			start_wall=recorder.started_wall,
+			finish_wall=time.time(),
+		)
+		recorder.record_native_log(matches, status)
+
+	def _finish_action(
+		self,
+		recorder: ActionTraceRecorder,
+		envelope: Dict[str, Any],
+		*,
+		outcome: Optional[str] = None,
+	) -> Dict[str, Any]:
+		"""Finalize the trace, store it, and attach its summary to the envelope.
+
+		A failure here must not change the answer the caller already earned, so
+		the envelope goes back untouched apart from whatever trace block was
+		built before the failure.
+		"""
+		trace_id = recorder.trace_id
+		try:
+			self._collect_native_log(recorder, trace_id)
+			trace = recorder.finalize(
+				outcome=outcome,
+				http_status=None,
+				error=envelope.get("error") if isinstance(envelope.get("error"), dict) else None,
+				store=self.trace_store,
+			)
+		except Exception as e:  # noqa: BLE001
+			logHandler.log.warning(f"bridge.trace.failed trace_id={trace_id} error={e}")
+			trace = {}
+		if trace:
+			envelope["trace_id"] = trace.get("trace_id", trace_id)
+			envelope["trace"] = build_trace_summary(trace)
+		elif trace_id:
+			envelope["trace_id"] = trace_id
+		return envelope
+
+	def get_trace_payload(self, trace_id: str) -> Optional[Dict[str, Any]]:
+		"""Return one retained action trace, or ``None`` when it has expired."""
+		return self.trace_store.get(trace_id)
+
 	def execute_action(
 		self,
 		request_id: str,
 		action_name: str,
 		params: Dict[str, Any],
 		timeout_ms: Optional[int] = None,
+		trace_id: Optional[str] = None,
 	) -> Dict[str, Any]:
-		"""Execute a bridge action with full error handling, threading, and cancellation."""
+		"""Execute a bridge action with full error handling, threading, and cancellation.
+
+		This is the logical action boundary: one call, one ``trace_id``, one
+		diagnostic record. Everything the executor, the settler and the error
+		paths learn is attached to that record, and every response carries the
+		id back so the caller can read the full timeline.
+		"""
 		start_time = time.perf_counter()
-		logHandler.log.debug(f"bridge.action.start action={action_name}")
+		recorder = ActionTraceRecorder(assembler=self.assembler)
+		trace = recorder.start_action(
+			action_name,
+			params or {},
+			request_id=request_id,
+			trace_id=trace_id,
+			journal_id=self.event_journal.journal_id,
+			event_version=self.event_journal.version,
+			baseline_state_version=self.projector.state_version,
+			baseline_projection_available=self.projector.projection is not None,
+		)
+		active_trace_id = trace["trace_id"]
+		logHandler.log.debug(f"bridge.action.start action={action_name} trace_id={active_trace_id}")
 
 		try:
 			try:
@@ -1186,22 +1318,34 @@ class NVDAHTTPBridge:
 			except RegistryError:
 				# The registry raises for unknown names; a caller typo is a request
 				# problem (4102), not a bridge failure (5303).
-				logHandler.log.warning(f"bridge.action.unknown action={action_name}")
-				return {
-					"request_id": request_id,
-					"success": False,
-					"action": action_name,
-					"duration_ms": round((time.perf_counter() - start_time) * 1000, 2),
-					"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
-					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
-					"error": {
-						"code": 4102,
-						"name": ERROR_CODES[4102]["name"],
-						"message": f"Unknown action: {action_name}",
-						"category": ERROR_CODES[4102]["category"],
-						"retry_policy": ERROR_CODES[4102]["retry_policy"],
+				logHandler.log.warning(
+					f"bridge.action.unknown action={action_name} trace_id={active_trace_id}"
+				)
+				recorder.record_wire_failure(
+					code=4102,
+					name=ERROR_CODES[4102]["name"],
+					message=f"Unknown action: {action_name}",
+					stage="validation",
+				)
+				return self._finish_action(
+					recorder,
+					{
+						"request_id": request_id,
+						"success": False,
+						"action": action_name,
+						"duration_ms": round((time.perf_counter() - start_time) * 1000, 2),
+						"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
+						"nvda_status_snapshot": self.get_nvda_status_snapshot(),
+						"error": {
+							"code": 4102,
+							"name": ERROR_CODES[4102]["name"],
+							"message": f"Unknown action: {action_name}",
+							"category": ERROR_CODES[4102]["category"],
+							"retry_policy": ERROR_CODES[4102]["retry_policy"],
+						},
 					},
-				}
+					outcome="failed",
+				)
 
 			status_snapshot = self.get_nvda_status_snapshot()
 			duration_ms = (time.perf_counter() - start_time) * 1000
@@ -1209,7 +1353,14 @@ class NVDAHTTPBridge:
 				request_id, action_name, tool.get_metadata(), status_snapshot, duration_ms
 			)
 			if blocked is not None:
-				return blocked
+				blocked_error = blocked.get("error") if isinstance(blocked.get("error"), dict) else {}
+				recorder.record_wire_failure(
+					code=blocked_error.get("code"),
+					name=blocked_error.get("name"),
+					message=str(blocked_error.get("message") or "Action not permitted"),
+					stage="authorization",
+				)
+				return self._finish_action(recorder, blocked, outcome="failed")
 
 			resolved_params = params or {}
 			effective_timeout = (
@@ -1232,6 +1383,8 @@ class NVDAHTTPBridge:
 				self.projector,
 				_dispatch,
 				budget_ms=min(DEFAULT_BUDGET_MS, max(100, int(effective_timeout * 1000))),
+				journal=self.event_journal,
+				trace=recorder,
 			)
 
 			def _settle(
@@ -1263,10 +1416,13 @@ class NVDAHTTPBridge:
 				observe=self._observe,
 				wait_events=self.event_journal.wait,
 				result=result_meta,
+				trace_store=self.trace_store,
 			)
 
 			def _execute_tool() -> Dict[str, Any]:
-				return self.tool_executor.execute_and_serialize(tool, resolved_params, execution_context)
+				return self.tool_executor.execute_and_serialize(
+					tool, resolved_params, execution_context, trace=recorder
+				)
 
 			if tool.get_metadata().execution_mode is ExecutionMode.COORDINATOR:
 				result = _execute_tool()
@@ -1279,26 +1435,35 @@ class NVDAHTTPBridge:
 
 			duration_ms = (time.perf_counter() - start_time) * 1000
 
-			if duration_ms > 500:
-				logHandler.log.warning(
-					f"bridge.action.slow action={action_name} duration_ms={duration_ms:.1f} success=true"
-				)
-			else:
-				logHandler.log.info(
-					f"bridge.action.success action={action_name} duration_ms={duration_ms:.1f}"
-				)
-
 			if bool(result.get("success")):
-				return {
-					"request_id": request_id,
-					"success": True,
-					"action": action_name,
-					"duration_ms": round(duration_ms, 2),
-					"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
-					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
-					"result": self._result_payload(execution_context),
-					"data": result.get("output"),
-				}
+				# Only a result that actually succeeded says so. The old line was
+				# emitted before this check, so a failing tool logged "success"
+				# immediately followed by "failed" — two contradictory native log
+				# lines describing one action, with the same trace id.
+				if duration_ms > 500:
+					logHandler.log.warning(
+						f"bridge.action.slow action={action_name} duration_ms={duration_ms:.1f} "
+						f"success=true trace_id={active_trace_id}"
+					)
+				else:
+					logHandler.log.info(
+						f"bridge.action.success action={action_name} duration_ms={duration_ms:.1f} "
+						f"trace_id={active_trace_id}"
+					)
+				return self._finish_action(
+					recorder,
+					{
+						"request_id": request_id,
+						"success": True,
+						"action": action_name,
+						"duration_ms": round(duration_ms, 2),
+						"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
+						"nvda_status_snapshot": self.get_nvda_status_snapshot(),
+						"result": self._result_payload(execution_context),
+						"data": result.get("output"),
+					},
+					outcome="succeeded",
+				)
 
 			inner_error = result.get("error") if isinstance(result.get("error"), dict) else {}
 			inner_message = str(inner_error.get("message") or "Tool execution failed")
@@ -1316,90 +1481,120 @@ class NVDAHTTPBridge:
 				envelope_details.update(domain_details)
 			logHandler.log.info(
 				f"bridge.action.failed action={action_name} code={error_code} "
-				f"error_code={inner_error.get('error_code')} duration_ms={duration_ms:.1f}"
+				f"error_code={inner_error.get('error_code')} duration_ms={duration_ms:.1f} "
+				f"trace_id={active_trace_id}"
 			)
-			return {
-				"request_id": request_id,
-				"success": False,
-				"action": action_name,
-				"duration_ms": round(duration_ms, 2),
-				"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
-				"nvda_status_snapshot": self.get_nvda_status_snapshot(),
-				"result": {"ok": False, "state_version": self.projector.state_version},
-				"error": {
-					"code": error_code,
-					"name": ERROR_CODES[error_code]["name"],
-					"message": inner_message,
-					"category": ERROR_CODES[error_code]["category"],
-					"retry_policy": ERROR_CODES[error_code]["retry_policy"],
-					"details": envelope_details,
+			return self._finish_action(
+				recorder,
+				{
+					"request_id": request_id,
+					"success": False,
+					"action": action_name,
+					"duration_ms": round(duration_ms, 2),
+					"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
+					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
+					"result": {"ok": False, "state_version": self.projector.state_version},
+					"error": {
+						"code": error_code,
+						"name": ERROR_CODES[error_code]["name"],
+						"message": inner_message,
+						"category": ERROR_CODES[error_code]["category"],
+						"retry_policy": ERROR_CODES[error_code]["retry_policy"],
+						"details": envelope_details,
+					},
 				},
-			}
+				outcome=(
+					"cancelled"
+					if error_code == 4204
+					else "timed_out"
+					if error_code == 5004
+					else "failed"
+				),
+			)
 
 		except TimeoutError as e:
 			duration_ms = (time.perf_counter() - start_time) * 1000
 			logHandler.log.error(
-				f"bridge.action.timeout action={action_name} duration_ms={duration_ms:.1f} error={str(e)}",
+				f"bridge.action.timeout action={action_name} duration_ms={duration_ms:.1f} "
+				f"trace_id={active_trace_id} error={str(e)}",
 				exc_info=True,
 			)
-			return {
-				"request_id": request_id,
-				"success": False,
-				"action": action_name,
-				"duration_ms": round(duration_ms, 2),
-				"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
-				"nvda_status_snapshot": self.get_nvda_status_snapshot(),
-				"error": {
-					"code": 5004,
-					"name": ERROR_CODES[5004]["name"],
-					"message": f"Operation timed out: {str(e)}",
-					"category": ERROR_CODES[5004]["category"],
-					"retry_policy": ERROR_CODES[5004]["retry_policy"],
+			recorder.record_exception(e, "dispatch", protocol_code=5004)
+			recorder.record_dispatch("timeout")
+			return self._finish_action(
+				recorder,
+				{
+					"request_id": request_id,
+					"success": False,
+					"action": action_name,
+					"duration_ms": round(duration_ms, 2),
+					"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
+					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
+					"error": {
+						"code": 5004,
+						"name": ERROR_CODES[5004]["name"],
+						"message": f"Operation timed out: {str(e)}",
+						"category": ERROR_CODES[5004]["category"],
+						"retry_policy": ERROR_CODES[5004]["retry_policy"],
+					},
 				},
-			}
+				outcome="timed_out",
+			)
 		except ValueError as e:
 			duration_ms = (time.perf_counter() - start_time) * 1000
 			logHandler.log.warning(
 				f"bridge.action.validation_failed action={action_name} "
-				f"duration_ms={duration_ms:.1f} error={str(e)}"
+				f"duration_ms={duration_ms:.1f} trace_id={active_trace_id} error={str(e)}"
 			)
-			return {
-				"request_id": request_id,
-				"success": False,
-				"action": action_name,
-				"duration_ms": round(duration_ms, 2),
-				"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
-				"nvda_status_snapshot": self.get_nvda_status_snapshot(),
-				"error": {
-					"code": 4103,
-					"name": ERROR_CODES[4103]["name"],
-					"message": str(e),
-					"category": ERROR_CODES[4103]["category"],
-					"retry_policy": ERROR_CODES[4103]["retry_policy"],
+			recorder.record_exception(e, "validation", protocol_code=4103)
+			return self._finish_action(
+				recorder,
+				{
+					"request_id": request_id,
+					"success": False,
+					"action": action_name,
+					"duration_ms": round(duration_ms, 2),
+					"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
+					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
+					"error": {
+						"code": 4103,
+						"name": ERROR_CODES[4103]["name"],
+						"message": str(e),
+						"category": ERROR_CODES[4103]["category"],
+						"retry_policy": ERROR_CODES[4103]["retry_policy"],
+					},
 				},
-			}
+				outcome="failed",
+			)
 		except Exception as e:
 			duration_ms = (time.perf_counter() - start_time) * 1000
 			logHandler.log.error(
-				f"bridge.action.failed action={action_name} duration_ms={duration_ms:.1f} error={str(e)}",
+				f"bridge.action.failed action={action_name} duration_ms={duration_ms:.1f} "
+				f"trace_id={active_trace_id} error={str(e)}",
 				exc_info=True,
 			)
-			return {
-				"request_id": request_id,
-				"success": False,
-				"action": action_name,
-				"duration_ms": round(duration_ms, 2),
-				"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
-				"nvda_status_snapshot": self.get_nvda_status_snapshot(),
-				"error": {
-					"code": 5003,
-					"name": ERROR_CODES[5003]["name"],
-					"message": f"Execution failed: {str(e)}",
-					"category": ERROR_CODES[5003]["category"],
-					"retry_policy": ERROR_CODES[5003]["retry_policy"],
-					"retry_after_ms": ERROR_CODES[5003].get("retry_after_ms", 1000),
+			recorder.record_exception(e, "internal", protocol_code=5003)
+			return self._finish_action(
+				recorder,
+				{
+					"request_id": request_id,
+					"success": False,
+					"action": action_name,
+					"duration_ms": round(duration_ms, 2),
+					"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
+					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
+					"error": {
+						"code": 5003,
+						"name": ERROR_CODES[5003]["name"],
+						"message": f"Execution failed: {str(e)}",
+						"category": ERROR_CODES[5003]["category"],
+						"retry_policy": ERROR_CODES[5003]["retry_policy"],
+						"retry_after_ms": ERROR_CODES[5003].get("retry_after_ms", 1000),
+					},
 				},
-			}
+				outcome="failed",
+			)
+
 
 	def start(self):
 		"""Start the HTTP bridge server (blocking) with robust error handling."""

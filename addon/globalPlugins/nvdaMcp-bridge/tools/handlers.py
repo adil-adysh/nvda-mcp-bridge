@@ -711,3 +711,48 @@ def wait_for_events(
 		"has_more": bool(result.get("has_more", False)),
 		"timed_out": int(result.get("to_version", since)) <= since,
 	}
+
+
+def get_action_trace(trace_id: str, context: Any) -> dict[str, Any]:
+	"""Read one retained action trace.
+
+	Purely a store read: no NVDA call, no state change, and no dependency on the
+	event resource being subscribed. A missing record is reported as
+	``found: false`` with the retention window, because an expired trace is a
+	normal consequence of bounded storage rather than a failure of the action
+	being investigated.
+	"""
+	store = getattr(context, "trace_store", None)
+	trace = None
+	if store is not None:
+		try:
+			trace = store.get(trace_id)
+		except Exception:  # noqa: BLE001 — a broken store must not look like a bad tool
+			trace = None
+	stats = {}
+	if store is not None:
+		try:
+			stats = store.stats()
+		except Exception:  # noqa: BLE001
+			stats = {}
+	window = {
+		"max_traces": stats.get("max_traces"),
+		"max_age_seconds": stats.get("max_age_seconds"),
+		"retained_count": stats.get("count"),
+	}
+	if not isinstance(trace, dict):
+		return {
+			"trace_id": trace_id,
+			"found": False,
+			"schema_version": 1,
+			"missing_reason": "expired_or_unknown" if store is not None else "not_stored",
+			"retention": window,
+		}
+	return {
+		"trace_id": trace_id,
+		"found": True,
+		"schema_version": int(trace.get("schema_version", 1)),
+		"trace": trace,
+		"retention": window,
+	}
+

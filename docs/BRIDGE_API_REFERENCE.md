@@ -99,13 +99,18 @@ Notes:
 * `request_id` is required and must be a non-empty string.
 * `action` is required and must be a non-empty string.
 * `params` is required and must be a JSON object.
-* Optional fields such as `timeout_ms` and `client` are accepted for forward compatibility.
+* Optional fields such as `timeout_ms`, `client` and `trace_id` are accepted for
+  forward compatibility. `trace_id` is the *logical action* identifier; passing
+  it is optional and only needed when a client wants its own id to be the one the
+  diagnostic record uses. `request_id` is per HTTP request and is a different
+  thing.
 
 Success envelope:
 
 ```json
 {
   "request_id": "e0dc2bc6-8eb4-4f8f-a95b-6fb953953f77",
+  "trace_id": "at-9f3c2a1b8e4d5f607182",
   "success": true,
   "action": "get_current_focus",
   "duration_ms": 8.41,
@@ -115,15 +120,37 @@ Success envelope:
     "modal_blocking": false,
     "menu_open": false
   },
+  "result": {
+    "ok": true,
+    "state_version": 12,
+    "changed": false,
+    "delta": {},
+    "settled_ms": 0,
+    "uncertain": false,
+    "projection_available": true,
+    "events_complete": true,
+    "settling_status": "settled"
+  },
+  "trace": {
+    "trace_id": "at-9f3c2a1b8e4d5f607182",
+    "outcome": "succeeded",
+    "observation_status": "no_detectable_change",
+    "expectation_status": "not_provided"
+  },
   "data": {}
 }
 ```
+
+`trace_id` and `trace` appear on success and failure envelopes alike; the summary
+is bounded (no event list, no log lines) and the full record is fetched with the
+`get_action_trace` tool. See [ACTION_TRACE.md](ACTION_TRACE.md).
 
 Error envelope:
 
 ```json
 {
   "request_id": "e0dc2bc6-8eb4-4f8f-a95b-6fb953953f77",
+  "trace_id": "at-9f3c2a1b8e4d5f607182",
   "success": false,
   "action": "move_focus",
   "duration_ms": 1.23,
@@ -146,7 +173,7 @@ Error envelope:
 
 ## Action Names
 
-The bridge exposes discoverable actions via `GET /tools`, 27 of them at
+The bridge exposes discoverable actions via `GET /tools`, 28 of them at
 api_level 4. The surface is organised by what a tool answers:
 
 * **reading a screen**: `observe`
@@ -157,7 +184,8 @@ api_level 4. The surface is organised by what a tool answers:
 * **waiting**: `wait_for_events`
 * **the user's own output**: `speak_text`, `show_message`
 * **diagnostics**: `inspect_object`, `walk_object_tree`, `get_focus_lineage`,
-  `inspect_app_module`, `list_loaded_addons`, `health_snapshot`, `get_logs`
+  `inspect_app_module`, `list_loaded_addons`, `health_snapshot`, `get_logs`,
+  `get_action_trace`
 * **lifecycle** (each requires an explicit grant): `restart_nvda`,
   `reload_plugins`, `execute_python`
 

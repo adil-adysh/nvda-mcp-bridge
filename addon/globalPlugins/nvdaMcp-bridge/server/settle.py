@@ -54,10 +54,22 @@ NO_EVENT_GRACE_MS = 120
 #: Two rounds is enough: the second only exists for changes still in flight.
 MAX_ROUNDS = 2
 
+#: How many transitions one settle round keeps for its diagnostic record. The
+#: window's completeness is reported separately, so a truncated list is never
+#: mistaken for a quiet UI.
+SETTLE_EVENT_LIMIT = 50
+
 
 @dataclass
 class SettleOutcome:
-	"""What settle observed."""
+	"""What settle observed.
+
+	The optional fields exist so an action trace can say *how* the observation
+	was obtained, not merely whether something changed: an absent projection, an
+	expired budget and an incomplete event window are three different answers,
+	and collapsing them into ``changed: false`` is how a caller ends up
+	believing a screen it never actually saw.
+	"""
 
 	changed: bool
 	state_version: int
@@ -67,9 +79,38 @@ class SettleOutcome:
 	completed: Optional[bool] = None
 	expect_mismatch: Optional[dict[str, Any]] = None
 	projection: Optional[dict[str, Any]] = None
+	#: The ``expect`` condition that was evaluated, for the trace's record.
+	expect: Optional[dict[str, Any]] = None
+	#: Event-journal window observed around the action.
+	journal_id: Optional[str] = None
+	from_event_version: Optional[int] = None
+	to_event_version: Optional[int] = None
+	events: list[dict[str, Any]] = field(default_factory=list)
+	events_complete: bool = False
+	events_truncated: bool = False
+	#: Projection versions either side of the action.
+	baseline_state_version: Optional[int] = None
+	final_state_version: Optional[int] = None
+	#: ``settled``, ``budget_expired`` or ``unavailable``.
+	settling_status: str = "settled"
+	budget_ms: int = 0
+	budget_expired: bool = False
+
+	@property
+	def projection_changed(self) -> bool:
+		"""Explicit name for ``changed``; this is a projection diff, not the UI."""
+		return self.changed
+
+	@property
+	def projection_available(self) -> bool:
+		return self.projection is not None
 
 	def as_dict(self) -> dict[str, Any]:
-		"""The §4.1 result fields, with unset optional members omitted."""
+		"""The §4.1 result fields, with unset optional members omitted.
+
+		``changed`` keeps its name for compatibility; it means exactly
+		:attr:`projection_changed`, and the action trace spells that out.
+		"""
 		payload: dict[str, Any] = {
 			"ok": True,
 			"state_version": self.state_version,
@@ -77,6 +118,12 @@ class SettleOutcome:
 			"delta": self.delta,
 			"settled_ms": self.settled_ms,
 			"uncertain": self.uncertain,
+			# Additive: a caller that only reads `changed` is unaffected, and a
+			# caller that wants to know whether the observation was complete can
+			# now tell without fetching the trace.
+			"projection_available": self.projection_available,
+			"events_complete": self.events_complete,
+			"settling_status": self.settling_status,
 		}
 		if self.completed is not None:
 			payload["completed"] = self.completed
@@ -138,6 +185,12 @@ class Settler:
 	its own NVDA operations through ``dispatch``; the settle round will not do it,
 	because dispatching the action itself would deadlock as soon as the action
 	dispatches an operation of its own.
+
+	``journal`` and ``trace`` are optional diagnostic wiring. When present, the
+	round records the event-journal window it observed and the projection it
+	ended on, so the answer to "what did this action do" is attached to the
+	action rather than left to be reconstructed from a log. Neither can affect
+	the round: every call into the trace is non-raising by contract.
 	"""
 
 	def __init__(
@@ -149,6 +202,8 @@ class Settler:
 		poll_floor_ms: int = DEFAULT_POLL_FLOOR_MS,
 		clock: Callable[[], float] = time.monotonic,
 		sleep: Callable[[float], None] = time.sleep,
+		journal: Any = None,
+		trace: Any = None,
 	) -> None:
 		self._projector = projector
 		self._dispatch = dispatch
@@ -157,6 +212,8 @@ class Settler:
 		self._poll_floor_ms = max(1, poll_floor_ms)
 		self._clock = clock
 		self._sleep = sleep
+		self._journal = journal
+		self._trace = trace
 
 	def run(
 		self,
@@ -168,6 +225,11 @@ class Settler:
 		budget = self._budget_ms if budget_ms is None else max(0, budget_ms)
 		start = self._clock()
 		deadline = start + budget / 1000.0
+
+		journal = self._journal
+		journal_id = getattr(journal, "journal_id", None)
+		from_version = journal.version if journal is not None else None
+		self._record_settling_start(journal_id, from_version, budget)
 
 		baseline, _changes, version = self._dispatch(self._projector.refresh)
 		revision = self._projector.revision
@@ -186,6 +248,11 @@ class Settler:
 		changes: dict[str, Any] = {}
 		changed = False
 		version_now = version
+		# Whether the last round saw the burst go quiet. A round that reached
+		# quiet produced a trustworthy observation even if it spent the whole
+		# budget doing so; only a round that ran out of time while activity was
+		# still arriving leaves the final state unknown.
+		quiet_observed = False
 
 		for round_index in range(MAX_ROUNDS):
 			if round_index > 0:
@@ -199,6 +266,7 @@ class Settler:
 			while True:
 				remaining_ms = (deadline - self._clock()) * 1000.0
 				if remaining_ms <= 0:
+					quiet_observed = False
 					break
 				current = self._projector.revision
 				quiet = not self._projector.wait_for_revision(
@@ -206,6 +274,7 @@ class Settler:
 					int(max(self._poll_floor_ms, min(self._quiet_ms, remaining_ms))),
 				)
 				if quiet:
+					quiet_observed = True
 					break
 
 			projection, _reported_changes, version_now = self._dispatch(self._projector.refresh)
@@ -227,8 +296,15 @@ class Settler:
 
 		settled_ms = round((self._clock() - start) * 1000.0, 1)
 		expectation = evaluate_expect(projection, expect)
+		budget_expired = self._clock() >= deadline and not quiet_observed
+		if projection is None:
+			settling_status = "unavailable"
+		elif budget_expired:
+			settling_status = "budget_expired"
+		else:
+			settling_status = "settled"
 
-		return SettleOutcome(
+		outcome = SettleOutcome(
 			changed=changed,
 			state_version=version_now,
 			settled_ms=settled_ms,
@@ -237,7 +313,58 @@ class Settler:
 			completed=expectation.satisfied if expect else None,
 			expect_mismatch=expectation.mismatch,
 			projection=projection,
+			expect=dict(expect) if expect else None,
+			journal_id=journal_id,
+			from_event_version=from_version,
+			baseline_state_version=version,
+			final_state_version=version_now,
+			settling_status=settling_status,
+			budget_ms=budget,
+			budget_expired=budget_expired,
 		)
+		self._record_events(outcome, journal, from_version)
+		self._record_observation(outcome)
+		return outcome
+
+	def _record_events(self, outcome: SettleOutcome, journal: Any, from_version: Optional[int]) -> None:
+		"""Attach the event window the settle round spanned, with its completeness."""
+		if journal is None or from_version is None:
+			return
+		try:
+			page = journal.snapshot(since=from_version, limit=SETTLE_EVENT_LIMIT)
+		except Exception:  # noqa: BLE001 — diagnostics must not fail the action
+			return
+		events = list(page.get("events") or [])
+		# `complete` describes this page; `has_more` says the window continued
+		# past the page limit, which makes the window incomplete too.
+		complete = bool(page.get("complete", not page.get("truncated"))) and not page.get("has_more", False)
+		outcome.to_event_version = page.get("to_version", from_version)
+		outcome.events = events
+		outcome.events_complete = complete
+		outcome.events_truncated = not complete
+
+	def _record_settling_start(self, journal_id: Optional[str], from_version: Optional[int], budget_ms: int) -> None:
+		trace = self._trace
+		if trace is None:
+			return
+		try:
+			trace.record_settling_start(
+				journal_id=journal_id,
+				event_version=from_version,
+				baseline_state_version=self._projector.state_version,
+				budget_ms=budget_ms,
+			)
+		except Exception:  # noqa: BLE001
+			pass
+
+	def _record_observation(self, outcome: SettleOutcome) -> None:
+		trace = self._trace
+		if trace is None:
+			return
+		try:
+			trace.record_observation(outcome, journal_head=self._journal.version if self._journal else None)
+		except Exception:  # noqa: BLE001
+			pass
 
 	def _pause(self, start: float, grace_ms: int, budget_ms: int, cancellation_event: Any) -> None:
 		"""Sleep briefly, respecting the budget and a cancellation signal."""

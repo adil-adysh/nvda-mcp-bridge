@@ -747,4 +747,33 @@ ALL_NVDA_TOOLS = [
             context=context,
         ),
     ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="get_action_trace",
+            version="1.0.0",
+            description=(
+                "Read back the retained diagnostic timeline for one action by its trace_id: "
+                "lifecycle milestones, structured exceptions, the event window it spanned, the "
+                "baseline and final UI projection, the expected-postcondition result, and "
+                "best-effort native log matches. Every action response carries a trace_id. An "
+                "expired trace returns found=false with the retention window."
+            ),
+            category="diagnostics",
+            read_only=True,
+            destructive=False,
+            idempotent=True,
+            side_effects=False,
+            required_permission="diagnostics",
+            allowed_nvda_states=("normal", "modal", "menu"),
+            expected_duration_ms=5,
+            retry_safe=True,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.GetActionTraceInput,
+        models.ActionTraceResult,
+        lambda input_obj, context: tool_handlers.get_action_trace(
+            trace_id=input_obj.trace_id,
+            context=context,
+        ),
+    ),
 ]

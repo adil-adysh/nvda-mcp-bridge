@@ -103,6 +103,16 @@ pub struct BridgeActionEnvelope {
     pub error: Option<BridgeError>,
     #[serde(default)]
     pub result: Option<Value>,
+    /// Logical action identifier: one per action, not per HTTP request.
+    ///
+    /// Distinct from `request_id` (this HTTP request) and from the MCP request
+    /// id (the protocol call). It is the key for `get_action_trace`, so it must
+    /// survive every envelope the bridge produces, failures included.
+    #[serde(default)]
+    pub trace_id: Option<String>,
+    /// Compact diagnostic summary; the full timeline is fetched by `trace_id`.
+    #[serde(default)]
+    pub trace: Option<Value>,
 }
 
 /// Per-tool execution constraints from bridge discovery.

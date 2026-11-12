@@ -315,6 +315,80 @@
       ],
       "additionalProperties": false
     },
+    "ActionTraceResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "trace_id": {
+              "type": "string"
+            },
+            "found": {
+              "type": "boolean"
+            },
+            "schema_version": {
+              "type": "integer"
+            },
+            "trace": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "retention": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "missing_reason": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "trace_id",
+            "found"
+          ]
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
     "FocusLineage": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
@@ -2302,6 +2376,88 @@
       "idempotent": true,
       "sideEffects": true,
       "requiredPermission": "input_control",
+      "cancellationSupported": false,
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
+      "name": "get_action_trace",
+      "version": "1.0.0",
+      "description": "Read back the retained diagnostic timeline for one action by its trace_id: lifecycle milestones, structured exceptions, the event window it spanned, the baseline and final UI projection, the expected-postcondition result, and best-effort native log matches. Every action response carries a trace_id. An expired trace returns found=false with the retention window.",
+      "category": "diagnostics",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "trace_id"
+        ]
+      },
+      "outputType": "ActionTraceResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "trace_id": {
+            "type": "string"
+          },
+          "found": {
+            "type": "boolean"
+          },
+          "schema_version": {
+            "type": "integer"
+          },
+          "trace": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retention": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "missing_reason": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "trace_id",
+          "found"
+        ]
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "diagnostics",
       "cancellationSupported": false,
       "retrySafe": true,
       "deprecated": false,
@@ -4346,5 +4502,5 @@
       "supersededBy": null
     }
   ],
-  "count": 28
+  "count": 29
 }

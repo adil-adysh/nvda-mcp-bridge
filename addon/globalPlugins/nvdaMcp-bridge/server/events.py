@@ -228,6 +228,27 @@ class EventJournal:
 
 		``truncated`` is a different fact: history *before* the cursor was lost
 		because the ring buffer had already dropped it.
+
+		Version vocabulary, which the response spells out because two different
+		counters used to be reported as ``state_version``:
+
+		``event_version``
+			The journal head after this page was taken — ``state_version``
+			kept for compatibility, since clients already read it.
+		``to_version``
+			The last event version *in this page*, which is the correct value
+			to pass back as ``since``. ``next_cursor`` repeats it under a name
+			that says so.
+		``oldest_retained_version``
+			The oldest version still in the buffer; 0 when nothing is retained.
+		``cursor_status``
+			One of ``ok`` (caught up or moving forward), ``paged`` (more
+			remains), ``stale`` (the cursor predates retained history),
+			``future_cursor`` (the cursor is beyond this journal's head, which
+			means it came from another journal).
+		``complete``/``caught_up``
+			Whether this page lost nothing, and whether the caller has seen
+			everything after ``since``.
 		"""
 		wanted = {kind for kind in (kinds or ()) if kind}
 		source = self._raw if raw else self._transitions
@@ -252,13 +273,33 @@ class EventJournal:
 		# A cursor older than the oldest surviving *matched* entry means history
 		# was lost. When nothing matched, there is nothing to have lost.
 		truncated = since + 1 < oldest_raw and bool(entries)
+		if since > current:
+			# Only another journal can issue a version this one has not reached.
+			cursor_status = "future_cursor"
+		elif truncated:
+			cursor_status = "stale"
+		elif has_more:
+			cursor_status = "paged"
+		else:
+			cursor_status = "ok"
+		to_version = visible[-1]["version"] if visible else since
 		return {
 			"journal_id": journal_id,
 			"from_version": since,
-			"to_version": visible[-1]["version"] if visible else since,
+			"to_version": to_version,
+			# Journal head. Kept under its old name because clients read it;
+			# `event_version` is the name that says which counter it is.
 			"state_version": current,
+			"event_version": current,
+			"oldest_retained_version": oldest_raw if source else 0,
+			"next_cursor": to_version,
+			"cursor_status": cursor_status,
 			"truncated": truncated,
 			"has_more": has_more,
+			# `complete` is about this page's range; `caught_up` is about the
+			# caller's. Paging without loss is complete but not yet caught up.
+			"complete": not truncated,
+			"caught_up": not has_more and not truncated,
 			"dropped": dropped,
 			"source": "raw" if raw else "transitions",
 			"events": visible,

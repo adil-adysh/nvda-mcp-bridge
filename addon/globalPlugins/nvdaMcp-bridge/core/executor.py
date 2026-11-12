@@ -31,6 +31,20 @@ from .error import (
 T = TypeVar("T")
 
 
+def _note(trace: Any, method: str, *args: Any, **kwargs: Any) -> None:
+	"""Call a trace recorder method, absorbing any diagnostics failure.
+
+	Diagnostics are optional: a bug in the recorder must never turn a working
+	tool into a failing one, so every call goes through here.
+	"""
+	if trace is None:
+		return
+	try:
+		getattr(trace, method)(*args, **kwargs)
+	except Exception:  # noqa: BLE001 — diagnostics must not fail the action
+		pass
+
+
 class ExecutionResult(Generic[T]):
 	"""Result of a tool execution."""
 
@@ -129,6 +143,7 @@ class ToolExecutor:
 		tool: Tool,
 		raw_input: dict[str, Any],
 		context: "ExecutionContext | None" = None,
+		trace: Any = None,
 	) -> ExecutionResult:
 		"""Execute tool with full validation pipeline.
 
@@ -136,6 +151,8 @@ class ToolExecutor:
 			tool: Tool to execute
 			raw_input: Raw input (typically from JSON)
 			context: Runtime services for COORDINATOR tools
+			trace: Optional diagnostic recorder for this action; see
+				``server.action_trace``. Never allowed to change the outcome.
 
 		Returns:
 			ExecutionResult (always succeeds at this level)
@@ -152,6 +169,9 @@ class ToolExecutor:
 			# Update error with tool context
 			e.tool_name = metadata.name
 			e.version = metadata.version
+			_note(trace, "record_validation", False, {"error_code": e.error_code.value})
+			_note(trace, "record_exception", e, "validation", details={"error_code": e.error_code.value})
+			_note(trace, "record_tool_result", "failed")
 			return ExecutionResult(success=False, error=e)
 		except Exception as e:
 			# Wrap unexpected validation errors
@@ -162,9 +182,15 @@ class ToolExecutor:
 				error_code=ErrorCode.INVALID_INPUT_SCHEMA,
 			)
 			error.root_cause = e
+			_note(trace, "record_validation", False, {"error_code": error.error_code.value})
+			_note(trace, "record_exception", e, "validation")
+			_note(trace, "record_tool_result", "failed")
 			return ExecutionResult(success=False, error=error)
+		_note(trace, "record_validation", True)
 
 		# Phase 2: HANDLER EXECUTION
+		_note(trace, "record_dispatch", "dispatched")
+		_note(trace, "record_handler_start")
 		try:
 			output = tool.execute(validated_input, context)
 		except ToolExecutionError as e:
@@ -172,6 +198,22 @@ class ToolExecutor:
 			# keep its code instead of flattening it to a generic handler error.
 			e.tool_name = metadata.name
 			e.version = metadata.version
+			_note(trace, "record_handler_result", "failed", error_code=e.error_code.value)
+			# Record the wrapper, not just its cause: the wrapper carries the
+			# structured error code that says whether this was the caller's
+			# input, the handler's own exception, or a broken output contract.
+			_note(
+				trace,
+				"record_exception",
+				e,
+				"handler",
+				protocol_code=e.protocol_code,
+				details={
+					"error_code": e.error_code.value,
+					"root_cause": type(e.root_cause).__name__ if e.root_cause else None,
+				},
+			)
+			_note(trace, "record_tool_result", "failed")
 			return ExecutionResult(success=False, error=e)
 		except Exception as e:
 			# Handler raised domain exception. Preserve any structured detail the
@@ -206,7 +248,18 @@ class ToolExecutor:
 				details=details,
 				error_code=error_code,
 			)
+			_note(trace, "record_handler_result", "failed", error_code=error_code.value)
+			_note(
+				trace,
+				"record_exception",
+				e,
+				"handler",
+				protocol_code=getattr(e, "protocol_code", None),
+				details=details or None,
+			)
+			_note(trace, "record_tool_result", "failed")
 			return ExecutionResult(success=False, error=error)
+		_note(trace, "record_handler_result", "succeeded")
 
 		# Phase 3: OUTPUT VALIDATION
 		try:
@@ -215,6 +268,8 @@ class ToolExecutor:
 			# Update error with tool context
 			e.tool_name = metadata.name
 			e.version = metadata.version
+			_note(trace, "record_exception", e, "output_validation")
+			_note(trace, "record_tool_result", "failed")
 			return ExecutionResult(success=False, error=e)
 		except Exception as e:
 			# Wrap unexpected validation errors
@@ -225,9 +280,12 @@ class ToolExecutor:
 				error_code=ErrorCode.INVALID_OUTPUT_SCHEMA,
 			)
 			error.root_cause = e
+			_note(trace, "record_exception", e, "output_validation")
+			_note(trace, "record_tool_result", "failed")
 			return ExecutionResult(success=False, error=error)
 
 		# Phase 4: SUCCESS
+		_note(trace, "record_tool_result", "succeeded")
 		return ExecutionResult(success=True, output=validated_output)
 
 	def execute_and_serialize(
@@ -235,6 +293,7 @@ class ToolExecutor:
 		tool: Tool,
 		raw_input: dict[str, Any],
 		context: "ExecutionContext | None" = None,
+		trace: Any = None,
 	) -> dict[str, Any]:
 		"""Execute tool and serialize result to transport format.
 
@@ -244,10 +303,18 @@ class ToolExecutor:
 			tool: Tool to execute
 			raw_input: Raw input (from JSON)
 			context: Runtime services for COORDINATOR tools
+			trace: Optional diagnostic recorder for this action
 
 		Returns:
 			Dict with either {"success": True, "output": ...}
 			or {"success": False, "error": {...}}
 		"""
-		result = self.execute(tool, raw_input, context)
-		return result.as_dict()
+		result = self.execute(tool, raw_input, context, trace=trace)
+		try:
+			return result.as_dict()
+		except Exception as e:
+			# Serialization is a pipeline stage of its own: a handler can succeed
+			# and the answer still never reach the caller.
+			_note(trace, "record_exception", e, "serialization")
+			_note(trace, "record_tool_result", "failed")
+			raise

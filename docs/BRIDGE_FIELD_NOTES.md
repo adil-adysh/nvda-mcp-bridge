@@ -203,10 +203,13 @@ So the aliases went, and only the aliases: `get_current_focus`,
 `send_keyboard`, `get_desktop_object` and `get_window_title`. 26 tools at
 api_level 3, `supported_api_levels: [2, 3]`.
 
-At api_level 4 the surface is 27: `start_browse_mode` was added as the honest
+At api_level 4 the surface is 28: `start_browse_mode` was added as the honest
 home for the reading tools' `create` flag, and both reading tools gained
 `timeout_ms` and `stopped` so a call that outruns its main-thread budget says
-where it stopped instead of blocking the reader. `supported_api_levels` is
+where it stopped instead of blocking the reader. `get_action_trace` came later
+and is additive — it reads a diagnostic store, so it needs no new api level:
+every action envelope now also carries `trace_id` and a bounded `trace` summary,
+and a client that ignores both is unaffected. `supported_api_levels` is
 `[2, 3, 4]`, and the companion now checks membership rather than equality — the
 exact-match rule had made the field decorative.
 

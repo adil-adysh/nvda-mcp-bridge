@@ -88,6 +88,13 @@ class ExecutionContext:
 	result: ResultMeta | None = None
 	"""Per-request result metadata; the bridge serialises it into the envelope."""
 
+	trace_store: Any = None
+	"""Retained action traces, so ``get_action_trace`` can read one back.
+
+	Set by the bridge that owns the store. A read-only diagnostic surface, not
+	an action path: nothing here may mutate NVDA state.
+	"""
+
 
 @dataclass(frozen=True)
 class ToolMetadata:

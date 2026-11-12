@@ -362,7 +362,23 @@ Every action returns `result.changed`, `result.delta` and `result.settled_ms`, s
 
 * `inspect_object`, `inspect_app_module`, `get_focus_lineage`
 * `walk_object_tree`, `list_loaded_addons`, `health_snapshot`, `get_logs`
+* `get_action_trace` — read back the diagnostic timeline of one action
 * `speak_text`, `show_message`
+
+### Diagnosing an action
+
+Every action response carries `trace_id` and a compact `trace` summary
+(`outcome`, `duration_ms`, exception type/stage, event range, projection change,
+expectation status, observation completeness). Pass that id to
+`get_action_trace` for the full record: lifecycle milestones, the structured
+exception and its traceback, the event window it spanned, the baseline and final
+projection with their delta, the expected-postcondition result, best-effort
+native log matches, and the list of things the record cannot prove.
+
+`result.changed` is a projection diff, not a statement about the whole screen,
+and an `expect` that does not match is reported separately from a handler
+failure. See [docs/ACTION_TRACE.md](docs/ACTION_TRACE.md) for the schema, the
+identifier semantics and the retention limits.
 
 ### Development
 

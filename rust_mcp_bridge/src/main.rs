@@ -466,6 +466,10 @@ impl BridgeClient {
             .get("nvda_status_snapshot")
             .and_then(|v| serde_json::from_value(v.clone()).ok());
         let result = obj.get("result").cloned();
+        // The diagnostic identifiers travel with every envelope, success or
+        // failure: losing them would leave an agent unable to ask why.
+        let trace_id = obj.get("trace_id").and_then(Value::as_str).map(String::from);
+        let trace = obj.get("trace").cloned();
 
         if success {
             let data = obj
@@ -483,6 +487,8 @@ impl BridgeClient {
                 data,
                 error: None,
                 result,
+                trace_id,
+                trace,
             });
         }
 
@@ -509,6 +515,8 @@ impl BridgeClient {
             data: obj.get("data").cloned(),
             error: Some(parsed_error),
             result,
+            trace_id,
+            trace,
         })
     }
 
@@ -723,6 +731,15 @@ impl NvdaServer {
             envelope["result"] = result.clone();
         }
 
+        // Diagnostic correlation: an agent needs the trace id to ask what
+        // happened, and the summary to decide whether it needs to.
+        if let Some(ref trace_id) = payload.trace_id {
+            envelope["trace_id"] = json!(trace_id);
+        }
+        if let Some(ref trace) = payload.trace {
+            envelope["trace"] = trace.clone();
+        }
+
         // Attach protocol metadata for AI agents
         if let Some(ref rid) = payload.request_id {
             envelope["request_id"] = json!(rid);
@@ -796,6 +813,14 @@ impl NvdaServer {
         }
         if let Some(ref result) = payload.result {
             detail["result"] = result.clone();
+        }
+        // A failed action's trace id is at least as valuable as a successful
+        // one's: it is how the caller asks why it failed.
+        if let Some(ref trace_id) = payload.trace_id {
+            detail["trace_id"] = json!(trace_id);
+        }
+        if let Some(ref trace) = payload.trace {
+            detail["trace"] = trace.clone();
         }
         if let Some(ref rid) = payload.request_id {
             detail["request_id"] = json!(rid);
@@ -1042,6 +1067,8 @@ impl ServerHandler for NvdaServer {
                             details: None,
                         }),
                         result: None,
+                        trace_id: None,
+                        trace: None,
                     };
                     return Ok(CallToolResponse::Complete(CallToolResult::error(
                         Self::error_content(&error_envelope),
@@ -1124,6 +1151,54 @@ fn pump_step(previous_journal: Option<&str>, seen_journal: Option<&str>, version
     }
 }
 
+/// What one page does to the cursor, and whether another page is already due.
+#[derive(Debug, PartialEq, Eq)]
+struct PageOutcome {
+    step: PumpStep,
+    /// The cursor to poll from next.
+    cursor: i64,
+    /// True when the bridge said `has_more` and this page actually moved the
+    /// cursor, so the next page can be fetched immediately.
+    more_pages: bool,
+}
+
+/// Advance the cursor to the last event this page actually delivered.
+///
+/// The bridge reports two numbers: `to_version` (the last event in the page) and
+/// `state_version`/`event_version` (the journal head). Advancing to the head
+/// while `has_more` is true would skip everything between the page and the head
+/// with no record that it happened; advancing to `to_version` walks the journal
+/// one page at a time. Bridges too old to send `to_version` only ever returned
+/// the newest page, so the head is the right value for them.
+///
+/// `has_more` with no progress would spin the pump at full speed against an
+/// unresponsive bridge, so that case falls back to the normal long poll.
+fn consume_page(
+    previous_journal: Option<&str>,
+    seen_journal: Option<&str>,
+    head: i64,
+    page_last: i64,
+    has_more: bool,
+    cursor: i64,
+) -> PageOutcome {
+    let step = pump_step(previous_journal, seen_journal, head, cursor);
+    let next = match step {
+        // A restarted journal's numbering says nothing about the old one, so
+        // the head is the only safe place to resume. Subscribers are told to
+        // re-read the state, which is what covers the gap.
+        PumpStep::Restart => head.max(page_last).max(0),
+        // `page_last` may go backwards only if the bridge is confused; never
+        // let the cursor regress.
+        PumpStep::Advance => page_last.max(cursor).max(0),
+        PumpStep::Idle => cursor,
+    };
+    PageOutcome {
+        step,
+        cursor: next,
+        more_pages: has_more && next > cursor,
+    }
+}
+
 /// One shared `/events` long-poll loop feeding every `listen()` subscriber.
 ///
 /// The cursor is a sequence number, and a sequence number only means anything
@@ -1141,46 +1216,66 @@ fn spawn_event_pump(
     tokio::spawn(async move {
         let mut cursor = 0_i64;
         let mut journal_id: Option<String> = None;
+        // Catch-up pages are fetched back to back; only an empty poll goes back
+        // to the long poll. A burst larger than one page must not cost a
+        // notification per page plus a one-second wait between them.
+        let mut catching_up = false;
         while !shutdown.load(Ordering::SeqCst) {
-            let events_path = format!("/events?since={cursor}&timeout_ms=1000");
+            let timeout_ms = if catching_up { 0 } else { 1000 };
+            let events_path = format!("/events?since={cursor}&timeout_ms={timeout_ms}");
             match bridge_client.get_json(&events_path).await {
                 Ok(page) => {
-                    let version = page
-                        .get("state_version")
+                    let head = page
+                        .get("event_version")
+                        .or_else(|| page.get("state_version"))
                         .and_then(Value::as_i64)
                         .unwrap_or(cursor);
+                    // Older bridges have no `to_version`, and only ever returned
+                    // the newest page, so the head was the right cursor there.
+                    let page_last = page
+                        .get("to_version")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(head);
+                    let has_more = page.get("has_more").and_then(Value::as_bool).unwrap_or(false);
                     let seen_id = page
                         .get("journal_id")
                         .and_then(Value::as_str)
                         .filter(|id| !id.is_empty())
                         .map(str::to_string);
-                    match pump_step(journal_id.as_deref(), seen_id.as_deref(), version, cursor) {
+                    let outcome = consume_page(
+                        journal_id.as_deref(),
+                        seen_id.as_deref(),
+                        head,
+                        page_last,
+                        has_more,
+                        cursor,
+                    );
+                    match outcome.step {
                         PumpStep::Restart => {
                             warn!(
                                 previous = ?journal_id,
                                 current = ?seen_id,
                                 previous_cursor = cursor,
-                                new_head = version,
+                                new_head = head,
                                 "Bridge event journal restarted; resetting the cursor"
                             );
-                            cursor = version;
                             // Subscribers have to re-read the state: the events
                             // across the restart are not in this journal.
-                            let _ = subscription_tx.send(version);
+                            let _ = subscription_tx.send(outcome.cursor);
                         }
                         PumpStep::Advance => {
-                            // The bridge persists the journal, so advancing the
-                            // cursor is the store; the broadcast is just fan-out.
-                            cursor = version;
-                            let _ = subscription_tx.send(version);
+                            let _ = subscription_tx.send(outcome.cursor);
                         }
                         PumpStep::Idle => {}
                     }
+                    cursor = outcome.cursor;
+                    catching_up = outcome.more_pages;
                     if seen_id.is_some() {
                         journal_id = seen_id;
                     }
                 }
                 Err(err) => {
+                    catching_up = false;
                     warn!(error = %err, "Bridge event poll failed; retrying in 1s");
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
@@ -1612,6 +1707,7 @@ mod tests {
             data: Some(json!({"title":"Notepad"})),
             error: None,
             result: None,
+            ..Default::default()
         };
 
         assert!(
@@ -1799,6 +1895,83 @@ mod tests {
     }
 
     #[test]
+    fn one_page_advances_to_the_last_event_delivered() {
+        // Head 5, one page holding everything: the cursor lands on 5.
+        let outcome = consume_page(Some("a"), Some("a"), 5, 5, false, 0);
+        assert_eq!(outcome.step, PumpStep::Advance);
+        assert_eq!(outcome.cursor, 5);
+        assert!(!outcome.more_pages);
+    }
+
+    #[test]
+    fn a_full_page_advances_to_the_page_not_the_head() {
+        // 250 events, 100 per page. The old code set the cursor to the head
+        // (250) and skipped events 101-250 with no record that it had.
+        let outcome = consume_page(Some("a"), Some("a"), 250, 100, true, 0);
+        assert_eq!(outcome.step, PumpStep::Advance);
+        assert_eq!(outcome.cursor, 100, "cursor must match the last consumed event");
+        assert!(outcome.more_pages, "a partial page means another is due");
+    }
+
+    #[test]
+    fn catch_up_walks_every_page_and_stops_at_the_head() {
+        let mut cursor = 0;
+        let mut seen = Vec::new();
+        for page_last in [100, 200, 250] {
+            let has_more = page_last != 250;
+            let outcome = consume_page(Some("a"), Some("a"), 250, page_last, has_more, cursor);
+            seen.push((cursor, outcome.cursor, outcome.more_pages));
+            cursor = outcome.cursor;
+        }
+        assert_eq!(
+            seen,
+            vec![(0, 100, true), (100, 200, true), (200, 250, false)]
+        );
+        assert_eq!(cursor, 250);
+    }
+
+    #[test]
+    fn events_arriving_during_catch_up_are_picked_up_by_the_next_page() {
+        // The head grew between pages; only the page's own last event advances
+        // the cursor, so the extra events are still ahead of it.
+        let outcome = consume_page(Some("a"), Some("a"), 320, 200, true, 100);
+        assert_eq!(outcome.cursor, 200);
+        assert!(outcome.more_pages);
+    }
+
+    #[test]
+    fn has_more_without_progress_does_not_spin() {
+        // A bridge that reports more pages but keeps returning the same page
+        // would otherwise be polled at full speed forever.
+        let outcome = consume_page(Some("a"), Some("a"), 7, 7, true, 7);
+        assert_eq!(outcome.cursor, 7);
+        assert!(!outcome.more_pages);
+    }
+
+    #[test]
+    fn a_restarted_journal_resumes_at_its_head() {
+        let outcome = consume_page(Some("a"), Some("b"), 3, 3, true, 900);
+        assert_eq!(outcome.step, PumpStep::Restart);
+        assert_eq!(outcome.cursor, 3);
+        assert!(!outcome.more_pages);
+    }
+
+    #[test]
+    fn a_stale_cursor_never_regresses() {
+        let outcome = consume_page(None, None, 3, 3, false, 900);
+        assert_eq!(outcome.step, PumpStep::Restart);
+        assert_eq!(outcome.cursor, 3);
+    }
+
+    #[test]
+    fn a_bridge_without_to_version_falls_back_to_the_head() {
+        // Old bridges returned the newest page, so the head is what they meant.
+        // `page_last` is passed as the head by the pump in that case.
+        let outcome = consume_page(Some("a"), Some("a"), 42, 42, false, 0);
+        assert_eq!(outcome.cursor, 42);
+    }
+
+    #[test]
     fn api_level_is_accepted_when_the_bridge_lists_it() {
         // A newer bridge that still serves this companion's level.
         let accepted = validate_tools_payload(
@@ -1839,5 +2012,84 @@ mod tests {
         let envelope: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(envelope["result"]["state_version"], 7);
         assert_eq!(envelope["data"]["sent"], true);
+    }
+
+    fn first_text(blocks: &[ContentBlock]) -> String {
+        match blocks.first() {
+            Some(ContentBlock::Text(text)) => text.text.clone(),
+            _ => panic!("expected a text block"),
+        }
+    }
+
+    #[test]
+    fn a_parsed_envelope_keeps_the_trace_identifier() {
+        let payload = json!({
+            "success": true,
+            "action": "press",
+            "data": {"sent": true},
+            "trace_id": "at-abc",
+            "trace": {"trace_id": "at-abc", "outcome": "succeeded"},
+        });
+
+        let envelope = BridgeClient::parse_action_payload(payload).unwrap();
+
+        assert_eq!(envelope.trace_id.as_deref(), Some("at-abc"));
+        assert_eq!(envelope.trace.unwrap()["outcome"], "succeeded");
+    }
+
+    #[test]
+    fn a_failed_envelope_keeps_the_trace_identifier_too() {
+        let payload = json!({
+            "success": false,
+            "action": "press",
+            "error": {"code": 4103, "message": "bad params"},
+            "trace_id": "at-def",
+            "trace": {"outcome": "failed"},
+        });
+
+        let envelope = BridgeClient::parse_action_payload(payload).unwrap();
+
+        assert!(!envelope.success);
+        assert_eq!(envelope.trace_id.as_deref(), Some("at-def"));
+        assert_eq!(envelope.trace.unwrap()["outcome"], "failed");
+    }
+
+    #[test]
+    fn success_content_carries_the_trace_block() {
+        let payload = BridgeActionEnvelope {
+            success: true,
+            data: Some(json!({"sent": true})),
+            trace_id: Some("at-abc".into()),
+            trace: Some(json!({"trace_id": "at-abc", "outcome": "succeeded"})),
+            ..Default::default()
+        };
+
+        let text = first_text(&NvdaServer::success_content(&payload));
+        let envelope: Value = serde_json::from_str(&text).unwrap();
+
+        assert_eq!(envelope["trace_id"], "at-abc");
+        assert_eq!(envelope["trace"]["outcome"], "succeeded");
+    }
+
+    #[test]
+    fn error_content_carries_the_trace_block() {
+        let payload = BridgeActionEnvelope {
+            success: false,
+            error: Some(BridgeError {
+                code: ErrorCode("4103".into()),
+                message: "bad params".into(),
+                ..Default::default()
+            }),
+            trace_id: Some("at-def".into()),
+            trace: Some(json!({"outcome": "failed"})),
+            ..Default::default()
+        };
+
+        let blocks = NvdaServer::error_content(&payload);
+        // [summary, detail]
+        let detail: Value = serde_json::from_str(&first_text(&blocks[1..])).unwrap();
+
+        assert_eq!(detail["trace_id"], "at-def");
+        assert_eq!(detail["trace"]["outcome"], "failed");
     }
 }
