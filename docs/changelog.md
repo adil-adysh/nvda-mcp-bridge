@@ -63,6 +63,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pretty-printed envelope, no per-call `trace` block). Errors are compact JSON
   without `structuredContent`. The companion starts with an empty catalog and
   retries when the bridge is unreachable, instead of exiting.
+- `summarize_logs` defaults to `["counts"]` (~1 KB instead of ~25 KB); request
+  `exceptions`, `warnings`, `repeated_patterns`, `top_sources`, `time_buckets`
+  or `noise` explicitly.
+- `list_loaded_addons` defaults to `detail="summary"` (identity and state,
+  ~3 KB); `detail="full"` returns paths, authors and compatibility versions.
 - The Rust companion no longer treats an unknown Bridge instance as continuity.
 - Removed legacy architecture/migration documents and API-4 history.
 

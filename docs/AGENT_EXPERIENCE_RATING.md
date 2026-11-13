@@ -263,6 +263,12 @@ and what is still open; it supersedes the "Bottom line" for current builds.
 | Per-call `trace` block | ~600 B every call | removed; `trace_id` + `get_action_trace` |
 | Text vs structured | two different representations | identical compact JSON |
 | `tools/list` discovery | 57,974 B | 76,189 B (**+31%**) |
+| `summarize_logs` default | 25,687 B | 985 B (−96%) |
+| `list_loaded_addons` default | 13,402 B | 2,883 B (−78%) |
+
+`summarize_logs` now defaults to counts only; add facets with `include`.
+`list_loaded_addons` defaults to `detail="summary"` (identity + state); pass
+`detail="full"` for paths, authors and compatibility versions.
 
 The discovery increase is the cost of publishing defaults, descriptions,
 titles and the extended output schema. `NVDA_BRIDGE_CATEGORIES` can restrict the
@@ -270,8 +276,8 @@ catalog for small-context agents.
 
 ### Still open
 
-- `summarize_logs` still returns ~22 KB on a zero-argument call, and
-  `list_loaded_addons` ~13 KB; neither has a new cap.
+- `get_action_trace` still returns the full trace when it finds one (~10 KB);
+  `found: false` is small.
 - `locate` accepts any role string; a typo returns an empty result rather than
   `4103`. (The earlier claim that `locate` with no filter returns empty was
   wrong: it raises `4103` for missing `role`/`name`.)

@@ -5713,6 +5713,15 @@
             ],
             "description": "Which scope to read, list or operate on.",
             "default": "running"
+          },
+          "detail": {
+            "type": "string",
+            "enum": [
+              "summary",
+              "full"
+            ],
+            "description": "summary keeps identity and state (name, summary, version, running/enabled); full adds path, author and compatibility versions.",
+            "default": "summary"
           }
         },
         "additionalProperties": false,
@@ -8551,15 +8560,9 @@
             "items": {
               "type": "string"
             },
-            "description": "Optional sections or facets to include.",
+            "description": "Facets to compute. The default is just counts; add exceptions, warnings, repeated_patterns, top_sources, time_buckets or noise when needed.",
             "default": [
-              "counts",
-              "repeated_patterns",
-              "exceptions",
-              "warnings",
-              "top_sources",
-              "time_buckets",
-              "noise"
+              "counts"
             ]
           },
           "limit": {

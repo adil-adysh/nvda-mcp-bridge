@@ -103,7 +103,7 @@ document does not duplicate machine-generated data.
 
 | Check | Result |
 |---|---|
-| `python -m pytest -q` | **590 passed, 19 subtests passed** |
+| `python -m pytest -q` | **591 passed, 19 subtests passed** |
 | `cargo test` | **40 passed, 0 failed** |
 | `cargo clippy --all-targets` | Finished with pre-existing warnings; no new warning in changed regions |
 | `ruff check` (changed files) | All checks passed |

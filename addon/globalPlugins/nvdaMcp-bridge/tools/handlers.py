@@ -46,10 +46,34 @@ def inspect_app_module(source: Literal["focus", "navigator", "desktop"] = "focus
 	return nvda_bridge.inspect_app_module(source=source)
 
 
-def list_loaded_addons(scope: Literal["running", "available", "all"] = "running") -> dict[str, Any]:
+def list_loaded_addons(
+	scope: Literal["running", "available", "all"] = "running",
+	detail: Literal["summary", "full"] = "summary",
+) -> dict[str, Any]:
 	from .. import nvda_bridge
 
-	return nvda_bridge.list_loaded_addons(scope=scope)
+	payload = nvda_bridge.list_loaded_addons(scope=scope)
+	if detail == "summary":
+		# The full record carries paths, authors and compatibility versions for
+		# every add-on; a zero-argument call should not pay ~13 KB for that.
+		# Identity plus running/enabled state is what a diagnostic question
+		# usually needs; `detail="full"` keeps the rest available.
+		keep = (
+			"name",
+			"summary",
+			"version",
+			"is_running",
+			"is_enabled",
+			"is_disabled",
+			"is_blocked",
+			"is_compatible",
+			"requires_restart",
+		)
+		for addon in payload.get("addons", []):
+			trimmed = {key: addon.get(key) for key in keep if addon.get(key) is not None}
+			addon.clear()
+			addon.update(trimmed)
+	return payload
 
 
 def health_snapshot(

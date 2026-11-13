@@ -83,6 +83,15 @@ class ListLoadedAddonsInput:
 	"""List loaded addons."""
 
 	scope: Literal["running", "available", "all"] = "running"
+	detail: Literal["summary", "full"] = field(
+		default="summary",
+		metadata={
+			"description": (
+				"summary keeps identity and state (name, summary, version, running/enabled); "
+				"full adds path, author and compatibility versions."
+			)
+		},
+	)
 
 
 @dataclass(frozen=True)
@@ -215,15 +224,13 @@ class SummarizeLogsInput:
 		default_factory=lambda: ["source", "level", "message_pattern"]
 	)
 	include: list[str] = field(
-		default_factory=lambda: [
-			"counts",
-			"repeated_patterns",
-			"exceptions",
-			"warnings",
-			"top_sources",
-			"time_buckets",
-			"noise",
-		]
+		default_factory=lambda: ["counts"],
+		metadata={
+			"description": (
+				"Facets to compute. The default is just counts; add exceptions, "
+				"warnings, repeated_patterns, top_sources, time_buckets or noise when needed."
+			)
+		},
 	)
 	limit: int = 20
 	max_scan_records: int = 500000

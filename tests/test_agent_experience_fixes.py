@@ -112,6 +112,13 @@ class SchemaContractTests(unittest.TestCase):
 		document = schema.dataclass_to_json_schema(models.GetLogsInput)
 		self.assertIn("description", document["properties"]["filter_level"])
 
+	def test_heavy_diagnostics_tools_default_to_a_small_payload(self):
+		summarize = schema.dataclass_to_json_schema(models.SummarizeLogsInput)
+		self.assertEqual(summarize["properties"]["include"]["default"], ["counts"])
+
+		addons = schema.dataclass_to_json_schema(models.ListLoadedAddonsInput)
+		self.assertEqual(addons["properties"]["detail"]["default"], "summary")
+
 
 class BoundedObservationTests(unittest.TestCase):
 	def _payload(self) -> dict:

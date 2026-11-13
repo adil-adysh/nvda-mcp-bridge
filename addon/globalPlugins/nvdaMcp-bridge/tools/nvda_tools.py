@@ -156,7 +156,9 @@ ALL_NVDA_TOOLS = [
         ),
         models.ListLoadedAddonsInput,
         models.AddonMetadataList,
-        lambda input_obj: tool_handlers.list_loaded_addons(scope=input_obj.scope),
+        lambda input_obj: tool_handlers.list_loaded_addons(
+            scope=input_obj.scope, detail=input_obj.detail
+        ),
     ),
     TypedToolImpl.from_handler(
         ToolMetadata(
