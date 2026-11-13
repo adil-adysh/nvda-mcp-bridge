@@ -57,6 +57,8 @@ class BridgeMeta:
     """Protocol metadata block in every action response."""
     bridge_version: Optional[str] = field(default=None)
     api_level: Optional[int] = field(default=None)
+    instance_id: Optional[str] = field(default=None)
+    started_at: Optional[str] = field(default=None)
 
 @dataclass
 class NvdaStatusSnapshot:
@@ -75,6 +77,7 @@ class BridgeError:
     retry_policy: Optional[str] = field(default=None)
     retry_after_ms: Optional[int] = field(default=None)
     details: Optional[Dict[str, Any]] = field(default=None)
+    recovery: Optional[Dict[str, Any]] = field(default=None)
 
 @dataclass
 class BridgeActionEnvelope:
@@ -134,6 +137,8 @@ class BridgeToolsResponse:
     tools: list[Dict[str, Any]] = field(default_factory=list)
     count: int = field(default=0)
     schema_hash: Optional[str] = field(default=None)
+    instance_id: Optional[str] = field(default=None)
+    started_at: Optional[str] = field(default=None)
 
 
 # ── HTTP status mapping ──

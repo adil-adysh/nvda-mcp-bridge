@@ -374,6 +374,7 @@ ALL_NVDA_TOOLS = [
             include=input_obj.include,
             max_text=input_obj.max_text,
             detail=input_obj.detail,
+            max_bytes=input_obj.max_bytes,
             context=context,
         ),
     ),
@@ -817,6 +818,7 @@ ALL_NVDA_TOOLS = [
         models.WaitEventsResult,
         lambda input_obj, context: tool_handlers.wait_for_events(
             since=input_obj.since,
+            journal_id=input_obj.journal_id,
             timeout_ms=input_obj.timeout_ms,
             kinds=input_obj.kinds,
             limit=input_obj.limit,

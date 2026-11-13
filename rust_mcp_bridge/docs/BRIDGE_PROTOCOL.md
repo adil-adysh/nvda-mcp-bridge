@@ -22,3 +22,12 @@ Canonical protocol specification and JSON Schemas live in the bridge repository:
 - Tool `constraints` from discovery (`dangerous`, `requires_explicit_opt_in`,
   `blocked_on_secure_screen`, `blocked_on_modal`, `blocked_on_menu`) are forwarded
   to MCP tool annotations.
+- Bridge identity (`instance_id`, `started_at`) is preserved in catalogs and
+  action metadata. A changed instance id is a replacement, not continuity.
+- Event polls send `journal_id` with `since`. A page with
+  `resync_required: true` is never treated as complete history: the pump jumps
+  to `resync_from.version`, adopts `resync_from.journal_id`, notifies
+  subscribers and re-observes rather than replaying a mutation.
+- Tool-level errors preserve `error.code`, `name`, `category`, `retry_policy`,
+  `details` and `recovery` in `structuredContent`; an empty text block never
+  discards valid structured data.

@@ -63,6 +63,48 @@
         },
         "expect_mismatch": {
           "type": "object"
+        },
+        "projection_available": {
+          "type": "boolean"
+        },
+        "observed": {
+          "type": "boolean"
+        },
+        "events_complete": {
+          "type": "boolean"
+        },
+        "settling_status": {
+          "type": "string",
+          "enum": [
+            "settled",
+            "budget_expired",
+            "unavailable",
+            "cancelled"
+          ]
+        },
+        "budget_expired": {
+          "type": "boolean"
+        },
+        "verification": {
+          "type": "string",
+          "enum": [
+            "confirmed",
+            "contradicted",
+            "unavailable"
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object"
+          }
+        },
+        "cancelled": {
+          "type": "boolean"
+        },
+        "scope": {
+          "type": "object"
         }
       }
     },

@@ -175,6 +175,14 @@ it against). An action can succeed and still miss its postcondition:
 `completion.outcome` stays `succeeded` and `expectation_status` says
 `not_satisfied`. Those are two different facts and the record keeps them apart.
 
+The wire result maps those facts onto the smaller model-facing vocabulary:
+`result.verification` is `confirmed` (satisfied with a projection),
+`contradicted` (not satisfied with a projection) or `unavailable` (no
+expectation, no projection, or no reliable read-back). `result.evidence` carries
+the bounded observation behind that verdict. `result.uncertain` remains about a
+dispatched action whose consequential outcome is unknown; it is not set merely
+because verification was unavailable.
+
 ### Event cursor semantics
 
 The event journal reports two numbers, and confusing them loses events:

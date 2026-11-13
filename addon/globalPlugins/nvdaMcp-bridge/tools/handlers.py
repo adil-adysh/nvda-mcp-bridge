@@ -272,13 +272,69 @@ def _dispatch(context: Any, operation: Any) -> Any:
 	return context.dispatch(operation)
 
 
-def observe(include: list[str], max_text: int, context: Any, detail: str = "summary") -> dict[str, Any]:
+def observe(
+	include: list[str],
+	max_text: int,
+	context: Any,
+	detail: str = "summary",
+	max_bytes: int = 0,
+) -> dict[str, Any]:
 	"""Capture the screen, with references to what was seen."""
 	result = dict(_dispatch(context, lambda: context.observe(include, max_text)))
 	if detail == "summary":
 		for node in _observation_nodes(result):
 			node.pop("states", None)
+	if max_bytes and max_bytes > 0:
+		_bound_observation(result, max_bytes)
 	return result
+
+
+def _observation_bytes(payload: dict[str, Any]) -> int:
+	import json
+
+	return len(json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8"))
+
+
+def _bound_observation(payload: dict[str, Any], max_bytes: int) -> None:
+	"""Drop optional observation sections until the payload fits.
+
+	Truncation is always reported: a caller must never mistake a bounded
+	observation for the whole screen. The focused control and the top-level
+	window are the last things removed, because they are what an action needs.
+	"""
+	import json  # noqa: F401 — kept local to this boundary helper
+
+	if _observation_bytes(payload) <= max_bytes:
+		payload["truncated"] = False
+		payload["truncated_sections"] = []
+		return
+	dropped: list[str] = []
+	for section in ("selection", "ancestors", "children"):
+		if _observation_bytes(payload) <= max_bytes:
+			break
+		value = payload.get(section)
+		if value:
+			payload[section] = [] if isinstance(value, list) else None
+			dropped.append(section)
+	dialog = payload.get("dialog")
+	if _observation_bytes(payload) > max_bytes and isinstance(dialog, dict) and dialog.get("children"):
+		count = len(dialog["children"])
+		dialog["children"] = []
+		dropped.append(f"dialog.children({count})")
+	if _observation_bytes(payload) > max_bytes:
+		# Last resort: keep identity and refs, drop descriptive text.
+		for node in _observation_nodes(payload):
+			node.pop("value", None)
+			node.pop("location", None)
+			if isinstance(node.get("name"), str):
+				node["name"] = node["name"][:80]
+		dropped.append("descriptive_text")
+	payload["truncated"] = True
+	payload["truncated_sections"] = dropped
+	payload["more_available"] = True
+	payload["truncation_hint"] = (
+		"The observation exceeded max_bytes. Request a larger max_bytes or capture fewer sections."
+	)
 
 
 def _observation_nodes(result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -555,6 +611,32 @@ def set_value(ref: str, value: str, expect: dict[str, Any] | None, context: Any)
 
 	if not verified:
 		setattr(outcome, "uncertain", True)
+
+	# The read-back is the verification. Record it as observed evidence rather
+	# than letting the settle outcome say "unavailable" about a fact we know.
+	from ..server import settle as settle_module
+
+	evidence_source = {
+		"uia-value": "uia_value",
+		"value": "platform_value",
+		"text": "document_text",
+	}.get(value_source, "platform_value")
+	observation = observed if observed else ""
+	entry = {
+		"source": evidence_source,
+		"value": settle_module._bounded_text(observation),
+		"matched": bool(verified),
+	}
+	if not verified:
+		entry["expected"] = settle_module._bounded_text(value)
+	try:
+		outcome.observed = True
+		outcome.verification = (
+			settle_module.VERIFICATION_CONFIRMED if verified else settle_module.VERIFICATION_CONTRADICTED
+		)
+		outcome.evidence = settle_module._bound_evidence([entry])
+	except Exception:  # noqa: BLE001 — reporting evidence must not fail the action
+		pass
 
 	return {
 		"ref": ref,
@@ -894,9 +976,12 @@ def wait_for_events(
 	kinds: list[str] | None,
 	context: Any,
 	limit: int = 50,
+	journal_id: str | None = None,
 ) -> dict[str, Any]:
 	if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool) or timeout_ms < 0 or timeout_ms > 30000:
 		raise ValueError("'timeout_ms' must be an integer between 0 and 30000")
+	if journal_id is not None and (not isinstance(journal_id, str) or not journal_id.strip()):
+		raise ValueError("'journal_id' must be a non-empty journal id returned by a previous event response")
 	if since is None:
 		event_version = getattr(context, "event_version", None)
 		state_version = getattr(context, "state_version", None)
@@ -908,14 +993,35 @@ def wait_for_events(
 			since = 0
 	if not isinstance(since, int) or isinstance(since, bool) or since < 0:
 		raise ValueError("'since' must be a non-negative integer, or omitted")
-	result = context.wait_events(since=since, timeout_ms=timeout_ms, kinds=kinds, limit=limit)
+	result = context.wait_events(
+		since=since,
+		timeout_ms=timeout_ms,
+		kinds=kinds,
+		limit=limit,
+		journal_id=journal_id,
+		cancellation_event=getattr(context, "cancellation_event", None),
+	)
+	to_version = int(result.get("to_version", since))
+	cursor_status = str(result.get("cursor_status", "ok"))
+	mismatch = cursor_status == "journal_mismatch"
 	return {
+		"journal_id": str(result.get("journal_id", journal_id or "")),
 		"from_version": int(result.get("from_version", since)),
-		"to_version": int(result.get("to_version", since)),
+		"to_version": to_version,
+		"earliest_available_version": int(
+			result.get("earliest_available_version", result.get("oldest_retained_version", 0))
+		),
 		"events": list(result.get("events", [])),
+		"expired": bool(result.get("expired", False)),
+		"resync_required": bool(result.get("resync_required", False)),
+		"resync_reason": result.get("resync_reason"),
+		"resync_from": result.get("resync_from"),
+		"history_complete": bool(result.get("history_complete", not result.get("truncated", False))),
 		"truncated": bool(result.get("truncated", False)),
 		"has_more": bool(result.get("has_more", False)),
-		"timed_out": int(result.get("to_version", since)) <= since,
+		"cursor_status": cursor_status,
+		"timed_out": (not mismatch) and to_version <= since and not result.get("has_more", False),
+		"cancelled": bool(result.get("cancelled", False)),
 	}
 
 

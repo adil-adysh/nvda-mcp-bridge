@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## 0.10.0
 
+### Added
+
+- Typed event cursors: `journal_id` joins `since` in `wait_for_events`, with
+  `expired`, `resync_required`, `resync_reason`, `resync_from`,
+  `earliest_available_version` and `history_complete` in the result. A journal
+  reset generates a new random identity; a foreign cursor is reported as
+  `journal_mismatch` instead of being interpreted against unrelated history.
+- Bridge instance identity (`instance_id`, `started_at`, `capabilities`) on
+  `/health`, `/tools`, `/state` and every action envelope. References are bound
+  to the issuing instance.
+- Reference staleness reasons `ttl`, `identity`, `window`, `bridge_instance`
+  and `unavailable`, with typed recovery details and window identity
+  (handle + process + class) separate from object identity.
+- Action verification vocabulary (`confirmed`, `contradicted`, `unavailable`)
+  and bounded, redacted evidence on results that take `expect`.
+- A typed `recovery` object on every error, with stable recovery actions.
+- `observe(max_bytes=...)` with explicit `truncated`, `truncated_sections`,
+  `more_available` and a continuation hint.
+- `docs/REFERENCE_AND_VERIFICATION.md`, `docs/tool_inventory.json`, and
+  deterministic suites for cursors, references, verification and envelopes.
+
 ### Changed
 
 - Reset the unreleased contract to `api_level` 1 and the add-on version to `0.10.0`.
@@ -17,7 +38,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `press` normalizes key aliases and reports `requested` / `normalized_keys`.
 - All JSON is snake_case; `location` is one object shape everywhere.
 - The MCP companion advertises `outputSchema` and returns `structuredContent`.
+  It now sends `journal_id` with event polls, resynchronises on
+  `resync_required`, detects Bridge instance replacement, and forwards
+  `error.recovery`.
+- The Rust companion no longer treats an unknown Bridge instance as continuity.
 - Removed legacy architecture/migration documents and API-4 history.
+
+### Fixed
+
+- `wait_for_events` no longer drops `journal_id` and the completeness flags
+  before returning to the caller.
+- A stale reference hint no longer claims references are valid for exactly one
+  `state_version`.
+- Unknown wire error codes are normalised to `5303` instead of being returned
+  under a fabricated code.
+- An empty event journal is no longer considered expired.
+- Cancellation during an event wait ends the wait instead of pinning the worker.
+
 
 
 ### ≡ƒÜÇ Features

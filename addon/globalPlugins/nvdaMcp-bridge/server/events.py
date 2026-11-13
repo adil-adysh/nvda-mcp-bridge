@@ -60,6 +60,19 @@ JOURNAL_KINDS = (
 DEFAULT_CAPACITY = 256
 RAW_CAPACITY = 512
 
+#: Hard ceiling on one page. A caller that asks for more is clamped here rather
+#: than allowed to turn one response into an unbounded payload.
+MAX_PAGE_LIMIT = 500
+
+#: A cursor older than retained history is not silently usable. These are the
+#: stable classifications returned in ``resync_reason``.
+RESYNC_EXPIRED = "cursor_expired"
+RESYNC_JOURNAL_MISMATCH = "journal_mismatch"
+
+#: Waiters re-check the journal generation while blocked, so a reset during a
+#: long poll ends the wait instead of leaving the client watching a dead journal.
+WAIT_RECHECK_SECONDS = 0.25
+
 #: How long a burst of events has to be quiet before it becomes one transition.
 #: 40 ms is above the inter-event gap of a single keystroke and far below the
 #: 117-182 ms a focus change takes to settle, so a burst is coalesced without
@@ -202,6 +215,33 @@ class EventJournal:
 			self._condition.notify_all()
 			return self._version
 
+	# -- journal generation ------------------------------------------------
+
+	def reset(self, reason: str = "reset") -> str:
+		"""Start a new journal generation and return its id.
+
+		A version number is only meaningful inside the generation that issued
+		it. Anything that drops retained history (an explicit reset, a manual
+		reload that deliberately discards the journal) must therefore also
+		change the id: a client holding ``(old_id, 7)`` can then tell that its
+		cursor no longer refers to this history instead of silently reading
+		version 7 of a different sequence.
+		"""
+		with self._condition:
+			self._transitions.clear()
+			self._raw.clear()
+			self._version = 0
+			self._dropped = 0
+			self.journal_id = secrets.token_hex(8)
+			self._reset_reason = str(reason or "reset")
+			self._condition.notify_all()
+			return self.journal_id
+
+	def cursor(self) -> Dict[str, Any]:
+		"""Return the current typed cursor ``{journal_id, version}``."""
+		with self._condition:
+			return {"journal_id": self.journal_id, "version": self._version}
+
 	# -- reading -----------------------------------------------------------
 
 	@property
@@ -216,6 +256,7 @@ class EventJournal:
 		limit: int = 100,
 		kinds: Optional[Iterable[str]] = None,
 		raw: bool = False,
+		journal_id: Optional[str] = None,
 	) -> Dict[str, Any]:
 		"""Return entries after ``since``, oldest first, plus what they mean.
 
@@ -226,8 +267,13 @@ class EventJournal:
 		it had. The caller continues with ``since = to_version`` while
 		``has_more`` is true.
 
-		``truncated`` is a different fact: history *before* the cursor was lost
-		because the ring buffer had already dropped it.
+		``journal_id`` turns ``since`` into a typed cursor ``(journal_id,
+		version)``. When it does not match this journal's current generation the
+		call returns a *journal mismatch*: no events, ``resync_required: true``
+		and a ``resync_from`` cursor at this journal's head. A bare ``since``
+		with no journal id remains accepted as a current-journal convenience;
+		it cannot detect a replacement whose version has already overtaken the
+		old cursor, which is exactly why explicit catch-up should send the id.
 
 		Version vocabulary, which the response spells out because two different
 		counters used to be reported as ``state_version``:
@@ -237,23 +283,32 @@ class EventJournal:
 			kept for compatibility, since clients already read it.
 		``to_version``
 			The last event version *in this page*, which is the correct value
-			to pass back as ``since``. ``next_cursor`` repeats it under a name
-			that says so.
-		``oldest_retained_version``
+			to pass back. ``next_cursor`` repeats it under a name that says so.
+		``oldest_retained_version`` / ``earliest_available_version``
 			The oldest version still in the buffer; 0 when nothing is retained.
 		``cursor_status``
 			One of ``ok`` (caught up or moving forward), ``paged`` (more
 			remains), ``stale`` (the cursor predates retained history),
-			``future_cursor`` (the cursor is beyond this journal's head, which
-			means it came from another journal).
+			``future_cursor`` (the cursor is beyond this journal's head),
+			``journal_mismatch`` (the supplied journal id is a different
+			generation).
+		``expired`` / ``resync_required``
+			History before the cursor was evicted, so the returned page cannot
+			be treated as a complete record of what happened. ``resync_from``
+			is a typed cursor for the earliest usable retained version.
 		``complete``/``caught_up``
 			Whether this page lost nothing, and whether the caller has seen
 			everything after ``since``.
 		"""
 		wanted = {kind for kind in (kinds or ()) if kind}
 		source = self._raw if raw else self._transitions
+		page_limit = max(1, min(MAX_PAGE_LIMIT, int(limit))) if limit else 0
+
+		# Every fact below is read under one lock, so a concurrent append or
+		# eviction cannot produce a page whose versions and flags disagree.
 		with self._condition:
 			current = self._version
+			current_journal_id = self.journal_id
 			entries: List[Dict[str, Any]] = [
 				entry
 				for entry in source
@@ -267,42 +322,126 @@ class EventJournal:
 			]
 			oldest_raw = source[0]["version"] if source else current + 1
 			dropped = self._dropped
-			journal_id = self.journal_id
-		visible = entries[:limit] if limit > 0 else entries
-		has_more = len(visible) < len(entries)
-		# A cursor older than the oldest surviving *matched* entry means history
-		# was lost. When nothing matched, there is nothing to have lost.
-		truncated = since + 1 < oldest_raw and bool(entries)
-		if since > current:
-			# Only another journal can issue a version this one has not reached.
-			cursor_status = "future_cursor"
-		elif truncated:
-			cursor_status = "stale"
-		elif has_more:
-			cursor_status = "paged"
-		else:
-			cursor_status = "ok"
-		to_version = visible[-1]["version"] if visible else since
+			visible = entries[:page_limit] if page_limit else entries
+			has_more = len(visible) < len(entries)
+			# History before `since` was evicted exactly when the buffer no
+			# longer reaches back to the entry after the cursor. This is true
+			# even when the kind filter matches nothing in the remaining page:
+			# otherwise a filtered catch-up could silently report a complete
+			# history for a kind whose events were evicted.
+			expired = since + 1 < oldest_raw
+			to_version = visible[-1]["version"] if visible else since
+
+			if journal_id is not None and journal_id != current_journal_id:
+				return self._mismatch_page(
+					since=since,
+					current_journal_id=current_journal_id,
+					current=current,
+					oldest_raw=oldest_raw if source else 0,
+					dropped=dropped,
+					source=raw,
+				)
+
+			if since > current:
+				# Only another journal can issue a version this one has not
+				# reached; report it, do not rewind the caller's cursor.
+				cursor_status = "future_cursor"
+			elif expired:
+				cursor_status = "stale"
+			elif has_more:
+				cursor_status = "paged"
+			else:
+				cursor_status = "ok"
+
+			earliest = oldest_raw if source else 0
+			resync_required = expired
+			payload: Dict[str, Any] = {
+				"journal_id": current_journal_id,
+				"from_version": since,
+				"to_version": to_version,
+				# Journal head. Kept under its old name because clients read it;
+				# `event_version` is the name that says which counter it is.
+				"state_version": current,
+				"event_version": current,
+				"oldest_retained_version": earliest,
+				"earliest_available_version": earliest,
+				"next_cursor": to_version,
+				"cursor": {"journal_id": current_journal_id, "version": to_version},
+				"cursor_status": cursor_status,
+				"expired": expired,
+				"resync_required": resync_required,
+				"resync_reason": RESYNC_EXPIRED if expired else None,
+				"resync_from": (
+					{"journal_id": current_journal_id, "version": max(0, earliest - 1)}
+					if expired and source
+					else None
+				),
+				"history_complete": not expired,
+				"truncated": expired,
+				"has_more": has_more,
+				# `complete` is about this page's range; `caught_up` is about the
+				# caller's. Paging without loss is complete but not yet caught up.
+				"complete": not expired,
+				"caught_up": not has_more and not expired,
+				"dropped": dropped,
+				"source": "raw" if raw else "transitions",
+				"events": visible,
+			}
+			if expired:
+				payload["recovery"] = {
+					"action": "resync",
+					"hint": (
+						"History before this cursor was evicted. Re-observe current state, then "
+						"continue from resync_from; the returned events are not a complete record."
+					),
+				}
+			return payload
+
+	@staticmethod
+	def _mismatch_page(
+		since: int,
+		current_journal_id: str,
+		current: int,
+		oldest_raw: int,
+		dropped: int,
+		source: bool,
+	) -> Dict[str, Any]:
+		"""A typed cursor that belongs to another journal generation.
+
+		The old numeric version is deliberately *not* interpreted here. Doing so
+		is the silent skip this classification exists to prevent: version 7 of
+		the previous journal and version 7 of this one are unrelated.
+		"""
 		return {
-			"journal_id": journal_id,
+			"journal_id": current_journal_id,
 			"from_version": since,
-			"to_version": to_version,
-			# Journal head. Kept under its old name because clients read it;
-			# `event_version` is the name that says which counter it is.
+			"to_version": since,
 			"state_version": current,
 			"event_version": current,
 			"oldest_retained_version": oldest_raw if source else 0,
-			"next_cursor": to_version,
-			"cursor_status": cursor_status,
-			"truncated": truncated,
-			"has_more": has_more,
-			# `complete` is about this page's range; `caught_up` is about the
-			# caller's. Paging without loss is complete but not yet caught up.
-			"complete": not truncated,
-			"caught_up": not has_more and not truncated,
+			"earliest_available_version": oldest_raw if source else 0,
+			"next_cursor": since,
+			"cursor": {"journal_id": current_journal_id, "version": since},
+			"cursor_status": "journal_mismatch",
+			"expired": False,
+			"resync_required": True,
+			"resync_reason": RESYNC_JOURNAL_MISMATCH,
+			"resync_from": {"journal_id": current_journal_id, "version": current},
+			"history_complete": False,
+			"truncated": False,
+			"has_more": False,
+			"complete": False,
+			"caught_up": False,
 			"dropped": dropped,
-			"source": "raw" if raw else "transitions",
-			"events": visible,
+			"source": "raw" if source else "transitions",
+			"events": [],
+			"recovery": {
+				"action": "resync",
+				"hint": (
+					"The cursor belongs to a different journal generation (Bridge or NVDA "
+					"restarted). Re-observe current state and continue from resync_from."
+				),
+			},
 		}
 
 	def wait(
@@ -312,24 +451,62 @@ class EventJournal:
 		limit: int = 100,
 		kinds: Optional[Iterable[str]] = None,
 		raw: bool = False,
+		journal_id: Optional[str] = None,
+		cancellation_event: Any = None,
 	) -> Dict[str, Any]:
 		"""Block until the version advances past ``since`` or the timeout expires.
 
 		``timeout_ms == 0`` returns immediately, which makes this the same call as
 		:meth:`snapshot`. Blocking happens on the caller's (HTTP worker) thread;
 		never call this from NVDA's main thread.
+
+		The wait ends early when the journal generation changes, and a cursor
+		from another generation never blocks: both cases return the mismatch
+		page immediately so a client is told to resync instead of waiting for
+		events that this journal cannot describe. ``cancellation_event`` (any
+		object with ``is_set``) ends the wait too, so a shutdown or a dropped
+		request does not pin the worker for the full timeout.
 		"""
 		if timeout_ms <= 0:
-			return self.snapshot(since=since, limit=limit, kinds=kinds, raw=raw)
+			return self.snapshot(since=since, limit=limit, kinds=kinds, raw=raw, journal_id=journal_id)
 
+		with self._condition:
+			start_journal_id = self.journal_id
+		if journal_id is not None and journal_id != start_journal_id:
+			return self.snapshot(since=since, limit=limit, kinds=kinds, raw=raw, journal_id=journal_id)
+
+		cancelled = False
 		deadline = time.monotonic() + (timeout_ms / 1000.0)
 		with self._condition:
 			while self._version <= since:
+				if self.journal_id != start_journal_id:
+					# A reset during the wait invalidates the cursor, even if the
+					# new generation has already overtaken its number.
+					break
+				if cancellation_event is not None and cancellation_event.is_set():
+					cancelled = True
+					break
 				remaining = deadline - time.monotonic()
 				if remaining <= 0:
 					break
-				self._condition.wait(timeout=remaining)
-		return self.snapshot(since=since, limit=limit, kinds=kinds, raw=raw)
+				self._condition.wait(timeout=min(remaining, WAIT_RECHECK_SECONDS))
+		# Pass the generation observed at wait start only when it still exists;
+		# after a reset this is false and the caller sees the mismatch.
+		if journal_id is None and start_journal_id != self.journal_id:
+			payload = self.snapshot(
+				since=since, limit=limit, kinds=kinds, raw=raw, journal_id=start_journal_id
+			)
+		else:
+			payload = self.snapshot(
+				since=since,
+				limit=limit,
+				kinds=kinds,
+				raw=raw,
+				journal_id=journal_id or start_journal_id,
+			)
+		if cancelled:
+			payload["cancelled"] = True
+		return payload
 
 
 class TransitionCoalescer:

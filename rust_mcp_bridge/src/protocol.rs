@@ -66,6 +66,10 @@ pub struct BridgeMeta {
     pub bridge_version: Option<String>,
     #[serde(default)]
     pub api_level: Option<u32>,
+    #[serde(default)]
+    pub instance_id: Option<String>,
+    #[serde(default)]
+    pub started_at: Option<String>,
 }
 
 /// Snapshot of NVDA runtime state in every action response.
@@ -89,6 +93,8 @@ pub struct BridgeError {
     pub retry_policy: Option<String>,
     pub retry_after_ms: Option<u64>,
     pub details: Option<Value>,
+    #[serde(default)]
+    pub recovery: Option<Value>,
 }
 
 /// Full response envelope from the NVDA bridge /action endpoint.
@@ -176,6 +182,10 @@ pub struct BridgeToolsResponse {
     pub count: usize,
     #[serde(default)]
     pub schema_hash: Option<String>,
+    #[serde(default)]
+    pub instance_id: Option<String>,
+    #[serde(default)]
+    pub started_at: Option<String>,
 }
 
 // ── Validation ──

@@ -262,6 +262,14 @@ class ObserveInput:
 		default="summary",
 		metadata={"description": "summary leaves states empty; full includes them."},
 	)
+	max_bytes: int = field(
+		default=0,
+		metadata={
+			"minimum": 0,
+			"maximum": 200000,
+			"description": "Bound the serialized observation; 0 disables the bound. Truncation is reported.",
+		},
+	)
 
 
 @dataclass(frozen=True)
@@ -366,12 +374,22 @@ class ClickAtInput:
 class WaitForEventsInput:
 	"""Wait for the next coalesced transition.
 
-	``since`` defaults to the bridge's current state version, so the common
+	``since`` defaults to the bridge's current journal head, so the common
 	"wait for the next change" call never replays journal history. Pass ``0``
 	explicitly to read history.
+
+	For explicit catch-up, pair ``since`` with ``journal_id``. Together they
+	form the typed cursor ``(journal_id, version)``; a cursor from a different
+	journal generation is reported as a mismatch instead of being interpreted
+	against unrelated history. ``journal_id`` alone means "the current head of
+	that generation", which is a valid no-history wait.
 	"""
 
 	since: Optional[int] = field(default=None, metadata={"minimum": 0})
+	journal_id: Optional[str] = field(
+		default=None,
+		metadata={"description": "Journal generation that issued `since`. Omit only for a current-journal convenience."},
+	)
 	timeout_ms: int = field(default=1000, metadata={"minimum": 0, "maximum": 30000})
 	kinds: Optional[list[str]] = None
 	limit: int = field(default=50, metadata={"minimum": 1, "maximum": 500})
@@ -751,6 +769,10 @@ class ObserveResult:
 	dialog: Optional[DialogNode] = None
 	top_window: Optional[WindowInfo] = None
 	selection: Optional[str] = None
+	truncated: bool = False
+	truncated_sections: list[str] = field(default_factory=list)
+	more_available: bool = False
+	truncation_hint: str = ""
 
 
 @dataclass(frozen=True)
@@ -902,18 +924,36 @@ class ClickAtResult:
 class WaitEventsResult:
 	"""Coalesced transitions observed while waiting.
 
-	``to_version`` is the cursor for the next call — the version of the last
-	transition returned, not the journal's head. When more transitions are
-	already waiting than one page holds, ``has_more`` says to poll again
-	immediately with ``since = to_version``; nothing is skipped by paging.
+	``journal_id`` identifies the generation that issued ``from_version`` and
+	``to_version``. ``to_version`` is the cursor for the next call — the
+	version of the last transition returned, not the journal's head. When more
+	transitions are already waiting than one page holds, ``has_more`` says to
+	poll again immediately with ``since = to_version``; nothing is skipped by
+	paging.
+
+	Explicit catch-up is only safe when the history is complete. ``expired``
+	means events before the cursor were evicted, ``resync_required`` means the
+	caller must not treat this page as a complete record, and ``resync_from``
+	is the typed cursor to continue from after re-observing. A cursor from a
+	different generation is reported by ``cursor_status =
+	"journal_mismatch"`` with ``resync_required = true``.
 	"""
 
+	journal_id: str
 	from_version: int
 	to_version: int
+	earliest_available_version: int = 0
 	events: list[dict[str, Any]] = field(default_factory=list)
+	expired: bool = False
+	resync_required: bool = False
+	resync_reason: Optional[str] = None
+	resync_from: Optional[dict[str, Any]] = None
+	history_complete: bool = True
 	truncated: bool = False
 	has_more: bool = False
+	cursor_status: str = "ok"
 	timed_out: bool = False
+	cancelled: bool = False
 
 
 # ============================================================================

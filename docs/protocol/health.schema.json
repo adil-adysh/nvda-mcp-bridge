@@ -83,6 +83,21 @@
           "type": "boolean"
         }
       }
+    },
+    "instance_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "developer_mode": {
+      "type": "boolean"
     }
   }
 }

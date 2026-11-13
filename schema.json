@@ -2321,6 +2321,21 @@
                   "type": "null"
                 }
               ]
+            },
+            "truncated": {
+              "type": "boolean"
+            },
+            "truncated_sections": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "more_available": {
+              "type": "boolean"
+            },
+            "truncation_hint": {
+              "type": "string"
             }
           },
           "additionalProperties": false,
@@ -3298,10 +3313,16 @@
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
           "properties": {
+            "journal_id": {
+              "type": "string"
+            },
             "from_version": {
               "type": "integer"
             },
             "to_version": {
+              "type": "integer"
+            },
+            "earliest_available_version": {
               "type": "integer"
             },
             "events": {
@@ -3311,18 +3332,55 @@
                 "additionalProperties": {}
               }
             },
+            "expired": {
+              "type": "boolean"
+            },
+            "resync_required": {
+              "type": "boolean"
+            },
+            "resync_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "resync_from": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "history_complete": {
+              "type": "boolean"
+            },
             "truncated": {
               "type": "boolean"
             },
             "has_more": {
               "type": "boolean"
             },
+            "cursor_status": {
+              "type": "string"
+            },
             "timed_out": {
+              "type": "boolean"
+            },
+            "cancelled": {
               "type": "boolean"
             }
           },
           "additionalProperties": false,
           "required": [
+            "journal_id",
             "from_version",
             "to_version"
           ],
@@ -5899,6 +5957,12 @@
               "full"
             ],
             "description": "summary leaves states empty; full includes them."
+          },
+          "max_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 200000,
+            "description": "Bound the serialized observation; 0 disables the bound. Truncation is reported."
           }
         },
         "additionalProperties": false,
@@ -6359,6 +6423,21 @@
                 "type": "null"
               }
             ]
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "truncated_sections": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "more_available": {
+            "type": "boolean"
+          },
+          "truncation_hint": {
+            "type": "string"
           }
         },
         "additionalProperties": false,
@@ -7875,6 +7954,17 @@
               }
             ]
           },
+          "journal_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Journal generation that issued `since`. Omit only for a current-journal convenience."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "timeout_ms": {
             "type": "integer",
             "minimum": 0,
@@ -7907,10 +7997,16 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
         "properties": {
+          "journal_id": {
+            "type": "string"
+          },
           "from_version": {
             "type": "integer"
           },
           "to_version": {
+            "type": "integer"
+          },
+          "earliest_available_version": {
             "type": "integer"
           },
           "events": {
@@ -7920,18 +8016,55 @@
               "additionalProperties": {}
             }
           },
+          "expired": {
+            "type": "boolean"
+          },
+          "resync_required": {
+            "type": "boolean"
+          },
+          "resync_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resync_from": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "history_complete": {
+            "type": "boolean"
+          },
           "truncated": {
             "type": "boolean"
           },
           "has_more": {
             "type": "boolean"
           },
+          "cursor_status": {
+            "type": "string"
+          },
           "timed_out": {
+            "type": "boolean"
+          },
+          "cancelled": {
             "type": "boolean"
           }
         },
         "additionalProperties": false,
         "required": [
+          "journal_id",
           "from_version",
           "to_version"
         ],

@@ -40,6 +40,9 @@ Response fields:
 - `bridge_version`: bridge implementation version
 - `api_level`: active API level
 - `supported_api_levels`: integer array
+- `instance_id`: 32-hex identity of this Bridge process; changes on restart
+- `started_at`: RFC3339 UTC start time of this instance
+- `capabilities`: object describing event cursors, verification and identity
 - `uptime_seconds`: bridge uptime in seconds
 - `timestamp_utc`: RFC3339 UTC timestamp
 - `nvda_status`:
@@ -118,7 +121,13 @@ The result block is the same for every tool, read or action:
 - `changed` (actions): whether the projection actually differed
 - `delta` (actions): what differed, field by field (`{from, to}` per field)
 - `settled_ms` (actions): how long until the observation was stable
-- `uncertain` (actions): delivery could not be confirmed
+- `uncertain` (actions): delivery could not be confirmed. Not a synonym for
+  missing evidence.
+- `observed` (actions): a post-action projection was obtained
+- `verification` (actions): `confirmed | contradicted | unavailable`; only
+  `confirmed` when the post-action observation matched the caller's `expect`
+- `evidence` (actions): bounded list of observed `{source, matched, ...}` entries
+- `projection_available`, `settling_status`, `budget_expired`, `events_complete`
 - `completed` (actions, only with an `expect` request): whether the stated
   postcondition was observed
 - `expect_mismatch` (actions, only when `expect` failed): expected vs actual
@@ -137,6 +146,8 @@ Error object:
 - `retry_policy`: one of `never | immediate | after_delay | after_state_change`
 - `retry_after_ms` (optional): positive integer when `retry_policy = after_delay`
 - `details` (optional): object with structured diagnostics
+- `recovery` (optional): `{action, hint}` with a stable action enum. A hint is
+  advice; it never authorises an automatic replay of an uncertain mutation.
 
 ## 5) Error Code Registry
 

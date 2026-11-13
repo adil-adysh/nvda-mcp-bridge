@@ -31,6 +31,14 @@
         "api_level": {
           "type": "integer",
           "minimum": 1
+        },
+        "instance_id": {
+          "type": "string",
+          "pattern": "^$|^[0-9a-f]{32}$"
+        },
+        "started_at": {
+          "type": "string",
+          "maxLength": 64
         }
       }
     },
@@ -112,6 +120,35 @@
         },
         "details": {
           "type": "object"
+        },
+        "recovery": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "action",
+            "hint"
+          ],
+          "properties": {
+            "action": {
+              "type": "string",
+              "enum": [
+                "none",
+                "observe",
+                "wait",
+                "fix_arguments",
+                "configure_token",
+                "request_permission",
+                "retry_later",
+                "read_diagnostics",
+                "resync"
+              ]
+            },
+            "hint": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          }
         }
       },
       "allOf": [

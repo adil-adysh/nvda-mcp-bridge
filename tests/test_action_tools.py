@@ -246,9 +246,14 @@ class FakeContext:
 		self.calls.append(("observe", include, max_text))
 		return {"state_version": 4, "revision": 9, "focus": {"ref": "f", "name": "field"}}
 
-	def wait_events(self, since, timeout_ms, kinds, limit=100):
+	def wait_events(self, since, timeout_ms, kinds, limit=100, journal_id=None, cancellation_event=None):
 		self.calls.append(("wait_events", since, timeout_ms, kinds))
-		return self._wait_result or {"from_version": since, "to_version": since, "events": []}
+		return self._wait_result or {
+			"journal_id": "test-journal",
+			"from_version": since,
+			"to_version": since,
+			"events": [],
+		}
 
 	# -- settle ------------------------------------------------------------
 	def settle(self, action_fn, expect=None, budget_ms=None):

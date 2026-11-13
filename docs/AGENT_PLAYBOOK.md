@@ -1,15 +1,20 @@
 # Agent playbook
 
 Five canonical loops for the NVDA MCP bridge. The principle in all of them is
-the same: observe once, keep the `state_version`, act by `ref`, then trust
-`result` before reading the screen again.
+the same: observe once, keep the refs (not the `state_version`) as the locator,
+act by `ref`, then read `result.verification` before deciding whether to observe
+again.
+
+`state_version` is an advisory projection revision. It advancing does **not**
+invalidate a reference; a reference ends when it expires, the object/window
+changes identity, the Bridge instance is replaced, or the target is gone.
 
 ## 1. Menu → submenu → item
 
 ```text
 observe(include=["focus","dialog"])
 press("nvda+n")
-wait_for_events(timeout_ms=2000)          # since defaults to now
+wait_for_events(timeout_ms=2000)          # since defaults to the journal head
 observe(include=["focus","dialog","children"])
 navigate("next") / press("down")
 press("return")
@@ -65,13 +70,42 @@ get_action_trace(trace_id="at-…")          # for a known action
 Use `min_level` or `levels`, not both. `get_logs` is the raw tail; prefer
 `search_logs` when you know what you are looking for.
 
+## Verification, not optimism
+
+Any action that takes `expect` returns `result.verification`:
+
+* `confirmed` — the post-action observation matched every `expect` path.
+* `contradicted` — it did not; `result.evidence` carries the expected/observed
+  values (bounded, redacted). Decide from the evidence, do not re-dispatch
+  blindly.
+* `unavailable` — no reliable read-back existed (for example a key press with
+  no `expect`). This is not `uncertain`; it simply makes no claim.
+
+`set_value` has its own read-back and reports `verified` / `observed` plus
+`verification`. A `verified: false` is an answer, not a transport failure.
+
+## Event catch-up
+
+* No cursor: `wait_for_events()` waits from the current journal head and never
+  replays history.
+* Explicit catch-up: pass `since` **and** `journal_id` from the previous page.
+* `resync_required: true` (or `expired: true`) means the returned history is
+  incomplete. Re-observe current state, then continue from `resync_from`.
+* `cursor_status: "journal_mismatch"` means the Bridge or NVDA restarted. The
+  old version is meaningless in the new journal; treat it as a fresh start.
+* `GET /health`, `/tools` and every action expose `instance_id`. A changed id
+  invalidates cached refs and cursors; re-observe.
+
 ## Recovery rules
 
-* `4206 STALE_REFERENCE`: call `observe` and use a ref from the new `refs` map.
-  Do not retry the same ref.
+* `4206 STALE_REFERENCE`: read `details.reason_code` and call `observe` for a
+  fresh ref. Do not retry the same ref, and do not substitute a lookalike.
 * `4103 INVALID_PARAMS_SCHEMA`: read the field path and expected shape in
-  `error.details`; do not guess.
+  `error.details`; do not guess. A window title passed as `ref` is this error,
+  not `4206`.
 * `4203 MENU_OPEN_BLOCKING`: finish or dismiss the NVDA menu first.
 * `4202 MODAL_DIALOG_BLOCKING`: act on the dialog, or `dismiss` it.
 * `result.uncertain: true`: the input was posted but the effect was not
-  confirmed. Observe before assuming success.
+  confirmed. Observe before assuming success; never auto-retry a mutation.
+* `error.recovery.action` is a typed next step. It is advice, not permission to
+  replay an uncertain operation.

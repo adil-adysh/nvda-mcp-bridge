@@ -1,7 +1,7 @@
 {
   "$schema": "https://nvda.local/schemas/protocol-constants.schema.json",
   "$id": "https://nvda.local/schemas/protocol-constants.json",
-  "title": "NVDA Bridge Protocol Constants — single source of truth for Python and Rust codegen",
+  "title": "NVDA Bridge Protocol Constants \u2014 single source of truth for Python and Rust codegen",
   "protocol": {
     "name": "nvda-bridge-protocol",
     "version": "1.0.0",
@@ -168,6 +168,20 @@
           "serde_default": true,
           "python_type": "Optional[int]",
           "python_default": "None"
+        },
+        {
+          "name": "instance_id",
+          "type": "Option<String>",
+          "serde_default": true,
+          "python_type": "Optional[str]",
+          "python_default": "None"
+        },
+        {
+          "name": "started_at",
+          "type": "Option<String>",
+          "serde_default": true,
+          "python_type": "Optional[str]",
+          "python_default": "None"
         }
       ]
     },
@@ -246,6 +260,13 @@
           "name": "details",
           "type": "Option<Value>",
           "serde_default": false,
+          "python_type": "Optional[Dict[str, Any]]",
+          "python_default": "None"
+        },
+        {
+          "name": "recovery",
+          "type": "Option<Value>",
+          "serde_default": true,
           "python_type": "Optional[Dict[str, Any]]",
           "python_default": "None"
         }
@@ -583,6 +604,20 @@
         },
         {
           "name": "schema_hash",
+          "type": "Option<String>",
+          "serde_default": true,
+          "python_type": "Optional[str]",
+          "python_default": "None"
+        },
+        {
+          "name": "instance_id",
+          "type": "Option<String>",
+          "serde_default": true,
+          "python_type": "Optional[str]",
+          "python_default": "None"
+        },
+        {
+          "name": "started_at",
           "type": "Option<String>",
           "serde_default": true,
           "python_type": "Optional[str]",

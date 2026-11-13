@@ -164,6 +164,10 @@ struct ToolRuntime {
 #[derive(Debug)]
 struct ToolCatalog {
     bridge_version: String,
+    /// Identity of the Bridge process that served this catalog. A change means
+    /// every cached reference and event cursor from the previous process is
+    /// no longer meaningful.
+    instance_id: Option<String>,
     schema_hash: Option<String>,
     tools_for_mcp: Vec<Tool>,
     runtime_by_name: HashMap<String, ToolRuntime>,
@@ -376,6 +380,7 @@ impl BridgeClient {
 
         Ok(ToolCatalog {
             bridge_version: payload.bridge_version,
+            instance_id: payload.instance_id,
             schema_hash: payload.schema_hash,
             tools_for_mcp,
             runtime_by_name,
@@ -524,6 +529,7 @@ impl BridgeClient {
                 retry_policy: None,
                 retry_after_ms: None,
                 details: None,
+                recovery: None,
             });
 
         Ok(BridgeActionEnvelope {
@@ -570,6 +576,7 @@ impl BridgeClient {
             retry_policy,
             retry_after_ms,
             details,
+            recovery: None,
         })
     }
 
@@ -804,6 +811,7 @@ impl NvdaServer {
             retry_policy: None,
             retry_after_ms: None,
             details: None,
+            recovery: None,
         });
 
         let code_display = err.code.as_str();
@@ -835,6 +843,11 @@ impl NvdaServer {
         }
         if let Some(ref det) = err.details {
             detail["error"]["details"] = det.clone();
+        }
+        // Recovery is a typed instruction, not prose the model has to infer.
+        // It never authorises an automatic replay of a mutation.
+        if let Some(ref recovery) = err.recovery {
+            detail["error"]["recovery"] = recovery.clone();
         }
         if let Some(ref d) = payload.data {
             detail["data"] = d.clone();
@@ -1095,6 +1108,7 @@ impl ServerHandler for NvdaServer {
                             retry_policy: Some("no_retry".into()),
                             retry_after_ms: None,
                             details: None,
+                            recovery: None,
                         }),
                         result: None,
                         trace_id: None,
@@ -1127,6 +1141,20 @@ impl ServerHandler for NvdaServer {
 /// A hash appearing or disappearing is treated as a change; two absent hashes
 /// cannot prove anything, so they never trigger a swap.
 fn schema_hash_changed(current: Option<&str>, incoming: Option<&str>) -> bool {
+    match (current, incoming) {
+        (Some(current), Some(incoming)) => current != incoming,
+        (None, None) => false,
+        _ => true,
+    }
+}
+
+/// Whether the Bridge process serving the catalog changed.
+///
+/// An absent id on either side is "unknown", not "same": a replacement that
+/// cannot be identified must not be silently treated as continuity. An id that
+/// appears where there was none is a reason to refresh, because the previous
+/// catalog came from a bridge too old to identify itself.
+fn bridge_replaced(current: Option<&str>, incoming: Option<&str>) -> bool {
     match (current, incoming) {
         (Some(current), Some(incoming)) => current != incoming,
         (None, None) => false,
@@ -1248,9 +1276,51 @@ fn spawn_event_pump(
         let mut catching_up = false;
         while !shutdown.load(Ordering::SeqCst) {
             let timeout_ms = if catching_up { 0 } else { 1000 };
-            let events_path = format!("/events?since={cursor}&timeout_ms={timeout_ms}");
+            // Send the journal id with the numeric cursor. Without it the
+            // bridge can only treat `since` as a version inside whatever
+            // journal happens to be current; with it, a replacement is
+            // reported as a mismatch instead of silently reading unrelated
+            // history.
+            let events_path = match journal_id.as_deref() {
+                Some(id) => format!(
+                    "/events?since={cursor}&timeout_ms={timeout_ms}&journal_id={id}"
+                ),
+                None => format!("/events?since={cursor}&timeout_ms={timeout_ms}"),
+            };
             match bridge_client.get_json(&events_path).await {
                 Ok(page) => {
+                    // An explicit resync means the returned history cannot be
+                    // treated as complete. Do not advance past it as if it
+                    // were: jump to the bridge's typed resync cursor and tell
+                    // subscribers to re-read the state.
+                    if page
+                        .get("resync_required")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+                    {
+                        let resync = page.get("resync_from");
+                        let next_cursor = resync
+                            .and_then(|value| value.get("version"))
+                            .and_then(Value::as_i64)
+                            .unwrap_or(cursor);
+                        if let Some(next_id) = resync
+                            .and_then(|value| value.get("journal_id"))
+                            .and_then(Value::as_str)
+                            .filter(|id| !id.is_empty())
+                        {
+                            journal_id = Some(next_id.to_string());
+                        }
+                        warn!(
+                            reason = ?page.get("resync_reason").and_then(|value| value.as_str()),
+                            previous_cursor = cursor,
+                            resync_cursor = next_cursor,
+                            "Bridge event history was incomplete; resynchronising"
+                        );
+                        cursor = next_cursor.max(0);
+                        let _ = subscription_tx.send(cursor);
+                        catching_up = false;
+                        continue;
+                    }
                     let head = page
                         .get("event_version")
                         .or_else(|| page.get("state_version"))
@@ -1333,15 +1403,23 @@ fn spawn_catalog_refresh(
             }
             match bridge_client.fetch_tool_catalog().await {
                 Ok(new_catalog) => {
-                    let changed = {
+                    let (schema_changed, instance_changed, previous_instance) = {
                         let current = tool_catalog
                             .read()
                             .unwrap_or_else(|poisoned| poisoned.into_inner());
-                        schema_hash_changed(
-                            current.schema_hash.as_deref(),
-                            new_catalog.schema_hash.as_deref(),
+                        (
+                            schema_hash_changed(
+                                current.schema_hash.as_deref(),
+                                new_catalog.schema_hash.as_deref(),
+                            ),
+                            bridge_replaced(
+                                current.instance_id.as_deref(),
+                                new_catalog.instance_id.as_deref(),
+                            ),
+                            current.instance_id.clone(),
                         )
                     };
+                    let changed = schema_changed || instance_changed;
                     if changed {
                         let previous_hash = {
                             let mut current = tool_catalog
@@ -1351,6 +1429,12 @@ fn spawn_catalog_refresh(
                             *current = new_catalog;
                             previous
                         };
+                        if instance_changed {
+                            warn!(
+                                previous_instance = ?previous_instance,
+                                "Bridge instance changed; cached references and event cursors are no longer valid"
+                            );
+                        }
                         info!(
                             previous_hash = ?previous_hash,
                             "Bridge tool contract changed; swapped in refreshed catalog"
@@ -1724,6 +1808,8 @@ mod tests {
             bridge: Some(BridgeMeta {
                 bridge_version: Some("1.0.0".into()),
                 api_level: Some(1),
+                instance_id: Some("instance-1".into()),
+                started_at: Some("2026-01-01T00:00:00+00:00".into()),
             }),
             nvda_status_snapshot: Some(NvdaStatusSnapshot {
                 secure_screen: Some(false),
@@ -1822,6 +1908,7 @@ mod tests {
             tools_for_mcp: Vec::new(),
             runtime_by_name: HashMap::new(),
             bridge_version: "1.0.0".into(),
+            instance_id: None,
             schema_hash: None,
         };
         let dummy_client = BridgeClient::new("http://127.0.0.1:8765".into(), "dummy".into()).unwrap();
@@ -1860,6 +1947,8 @@ mod tests {
             bridge_version: "1.0.0".to_string(),
             api_level: API_LEVEL,
             supported_api_levels: Some(vec![API_LEVEL]),
+            instance_id: Some("instance-1".to_string()),
+            started_at: Some("2026-01-01T00:00:00+00:00".to_string()),
             // Deliberately empty: the output type is not in the types map.
             types: Map::new(),
             tools: vec![BridgeToolDef {
@@ -1918,6 +2007,17 @@ mod tests {
     fn pump_does_not_reset_on_the_first_page() {
         assert_eq!(pump_step(None, Some("a"), 7, 0), PumpStep::Advance);
         assert_eq!(pump_step(None, Some("a"), 0, 0), PumpStep::Idle);
+    }
+
+    #[test]
+    fn a_bridge_replacement_is_detected_by_instance_id() {
+        assert!(bridge_replaced(Some("old"), Some("new")));
+        assert!(!bridge_replaced(Some("same"), Some("same")));
+        // Unknown is not continuity: a catalog that cannot identify its bridge
+        // must not be assumed to be the same process.
+        assert!(bridge_replaced(None, Some("new")));
+        assert!(bridge_replaced(Some("old"), None));
+        assert!(!bridge_replaced(None, None));
     }
 
     #[test]
@@ -2119,5 +2219,29 @@ mod tests {
         assert_eq!(detail["trace_id"], "at-def");
         assert_eq!(detail["trace"]["outcome"], "failed");
         assert_eq!(result.structured_content.unwrap()["trace_id"], "at-def");
+    }
+
+    #[test]
+    fn a_tool_error_keeps_the_typed_recovery_object() {
+        let payload = BridgeActionEnvelope {
+            success: false,
+            error: Some(BridgeError {
+                code: ErrorCode("4206".into()),
+                message: "stale".into(),
+                name: Some("STALE_REFERENCE".into()),
+                category: Some("nvda_state".into()),
+                retry_policy: Some("after_state_change".into()),
+                details: Some(json!({"reason_code": "window", "ref": "f"})),
+                recovery: Some(json!({"action": "observe", "hint": "Call observe again."})),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let result = NvdaServer::error_result(&payload);
+        let structured = result.structured_content.expect("structured error content");
+        assert_eq!(structured["error"]["name"], "STALE_REFERENCE");
+        assert_eq!(structured["error"]["details"]["reason_code"], "window");
+        assert_eq!(structured["error"]["recovery"]["action"], "observe");
     }
 }

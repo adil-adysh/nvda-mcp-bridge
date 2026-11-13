@@ -1,0 +1,4906 @@
+{
+  "api_level": 1,
+  "count": 32,
+  "tools": [
+    {
+      "category": "action",
+      "defaults": {
+        "exact": false,
+        "expect": null,
+        "handle": 0,
+        "title": ""
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Bring a top-level window to the foreground.",
+        "properties": {
+          "exact": {
+            "type": "boolean"
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "handle": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "activate_window",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "The window that ended up in front, and how it got there.",
+        "properties": {
+          "activated": {
+            "type": "boolean"
+          },
+          "focus_in_window": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "focus_window": {
+            "type": "string"
+          },
+          "handle": {
+            "type": "integer"
+          },
+          "matches": {
+            "type": "integer"
+          },
+          "method": {
+            "type": "string"
+          },
+          "previous_title": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "restored": {
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          },
+          "waited_ms": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "activated",
+          "handle",
+          "title"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Bring a top-level window to the foreground by title (or handle), and verify it took. Raises the window itself; the returned ref points at the window so it can be searched with 'within'. 'focus_in_window' says whether the screen reader's focus followed: a window can be in front while the keyboard focus, and so the reader, is still in the previous one.",
+      "read_only": false,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [
+          "projection"
+        ],
+        "expectation_field": "expect",
+        "supported": true
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "action",
+      "defaults": {
+        "button": "left",
+        "expect": null
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Click absolute screen coordinates.",
+        "properties": {
+          "button": {
+            "enum": [
+              "left",
+              "right",
+              "middle"
+            ],
+            "type": "string"
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "click_at",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Result of a raw pointer click.",
+        "properties": {
+          "button": {
+            "type": "string"
+          },
+          "cursor": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "hit": {
+            "anyOf": [
+              {
+                "additionalProperties": {},
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "on_target": {
+            "type": "boolean"
+          },
+          "x": {
+            "type": "integer"
+          },
+          "y": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "button"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Click absolute screen coordinates. Last resort when nothing is actionable; reports the object that was under the point.",
+      "read_only": false,
+      "reference_inputs": [],
+      "required": [
+        "x",
+        "y"
+      ],
+      "verification": {
+        "evidence_sources": [
+          "projection"
+        ],
+        "expectation_field": "expect",
+        "supported": true
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "action",
+      "defaults": {
+        "expect": null
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Dismiss the current dialog.",
+        "properties": {
+          "expect": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "dismiss",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "What dismiss tried, and whether a dialog remained.",
+        "properties": {
+          "dialog_name": {
+            "type": "string"
+          },
+          "dismissed": {
+            "type": "boolean"
+          },
+          "steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "dismissed"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Leave a dialog: Escape first, then an explicit Cancel, No, Close, Abort, or Stop button. Never activates a dialog's default button. Allowed in modal and menu states so an agent can get out of a dialog it entered.",
+      "read_only": false,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [
+          "projection"
+        ],
+        "expectation_field": "expect",
+        "supported": true
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "developer",
+      "defaults": {
+        "capture_vars": null,
+        "snapshot_vars": false
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Execute Python code in NVDA.",
+        "properties": {
+          "capture_vars": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "snapshot_vars": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "execute_python",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Python execution result.",
+        "properties": {
+          "captured_variables": {
+            "anyOf": [
+              {
+                "additionalProperties": {},
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stderr": {
+            "type": "string"
+          },
+          "stdout": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Execute Python source inside NVDA and return console output/result.",
+      "read_only": false,
+      "reference_inputs": [],
+      "required": [
+        "code"
+      ],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "action",
+      "defaults": {
+        "expect": null
+      },
+      "error_codes": [
+        4103,
+        4205,
+        4206
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Move focus to a referenced object.",
+        "properties": {
+          "expect": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ref": {
+            "pattern": "^[a-z][a-z0-9]*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "focus",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Result of a focus request.",
+        "properties": {
+          "ref": {
+            "type": "string"
+          },
+          "requested": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ref",
+          "requested"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Move keyboard focus to an object by ref, then wait for the UI to settle.",
+      "read_only": false,
+      "reference_inputs": [
+        "ref"
+      ],
+      "required": [
+        "ref"
+      ],
+      "verification": {
+        "evidence_sources": [
+          "projection"
+        ],
+        "expectation_field": "expect",
+        "supported": true
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "diagnostics",
+      "defaults": {},
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Identify one action trace to read back.",
+        "properties": {
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id"
+        ],
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "get_action_trace",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "One retained action trace, or the reason it is not available.",
+        "properties": {
+          "found": {
+            "type": "boolean"
+          },
+          "missing_reason": {
+            "type": "string"
+          },
+          "retention": {
+            "anyOf": [
+              {
+                "additionalProperties": {},
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schema_version": {
+            "type": "integer"
+          },
+          "trace": {
+            "anyOf": [
+              {
+                "additionalProperties": {},
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trace_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "trace_id",
+          "found"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Read back the retained diagnostic timeline for one action by its trace_id: lifecycle milestones, structured exceptions, the event window it spanned, the baseline and final UI projection, the expected-postcondition result, and best-effort native log matches. Every action response carries a trace_id. An expired trace returns found=false with the retention window.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [
+        "trace_id"
+      ],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "diagnostics",
+      "defaults": {
+        "max_ancestors": 10
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Get focus lineage with ancestors.",
+        "properties": {
+          "max_ancestors": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "get_focus_lineage",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Focus lineage with ancestors.",
+        "properties": {
+          "ancestor_count": {
+            "type": "integer"
+          },
+          "ancestors": {
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "focus": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "focus",
+          "ancestor_count",
+          "truncated",
+          "ancestors"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Get focused object with ancestor chain for hierarchy debugging.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "diagnostics",
+      "defaults": {
+        "after": 30,
+        "after_ms": null,
+        "before": 20,
+        "before_ms": null,
+        "include_raw": false,
+        "include_related_threads": true
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Return surrounding evidence for one previously found log entry.",
+        "properties": {
+          "after": {
+            "type": "integer"
+          },
+          "after_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "before": {
+            "type": "integer"
+          },
+          "before_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "entry_id": {
+            "type": "string"
+          },
+          "include_raw": {
+            "type": "boolean"
+          },
+          "include_related_threads": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entry_id"
+        ],
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "get_log_context",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "A chronological window around one log entry.",
+        "properties": {
+          "after": {
+            "type": "integer"
+          },
+          "anchor": {
+            "additionalProperties": false,
+            "description": "One native log record, parsed into structured evidence.",
+            "properties": {
+              "addon": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "derived_fields": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "enrichment": {
+                "anyOf": [
+                  {
+                    "additionalProperties": {},
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "entry_id": {
+                "type": "string"
+              },
+              "exception": {
+                "anyOf": [
+                  {
+                    "additionalProperties": {},
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "function": {
+                "type": "string"
+              },
+              "level": {
+                "type": "string"
+              },
+              "line_end": {
+                "type": "integer"
+              },
+              "line_start": {
+                "type": "integer"
+              },
+              "logger": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "parse_notes": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "parse_status": {
+                "type": "string"
+              },
+              "raw": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "subsystem": {
+                "type": "string"
+              },
+              "thread": {
+                "additionalProperties": false,
+                "description": "The thread named by one native log header.",
+                "properties": {
+                  "id": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              },
+              "timestamp": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timestamp_absolute": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timestamp_date": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timestamp_date_source": {
+                "type": "string"
+              },
+              "timestamp_ms": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "timestamp_timezone": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "entry_id",
+              "timestamp_date_source",
+              "timestamp_timezone",
+              "level",
+              "logger",
+              "module",
+              "function",
+              "subsystem",
+              "thread",
+              "message",
+              "line_start",
+              "line_end",
+              "parse_status"
+            ],
+            "type": "object"
+          },
+          "before": {
+            "type": "integer"
+          },
+          "complete_after": {
+            "type": "boolean"
+          },
+          "complete_before": {
+            "type": "boolean"
+          },
+          "diagnostics": {
+            "additionalProperties": false,
+            "description": "Completeness facts about a context window.",
+            "properties": {
+              "invalid_utf8_replacements": {
+                "type": "integer"
+              },
+              "limitations": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "parse_failures": {
+                "type": "integer"
+              },
+              "records_examined": {
+                "type": "integer"
+              },
+              "response_truncated": {
+                "type": "boolean"
+              },
+              "truncated": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "truncated",
+              "response_truncated",
+              "parse_failures",
+              "invalid_utf8_replacements",
+              "records_examined"
+            ],
+            "type": "object"
+          },
+          "entries": {
+            "items": {
+              "additionalProperties": false,
+              "description": "One native log record, parsed into structured evidence.",
+              "properties": {
+                "addon": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "derived_fields": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "enrichment": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": {},
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "entry_id": {
+                  "type": "string"
+                },
+                "exception": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": {},
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "function": {
+                  "type": "string"
+                },
+                "level": {
+                  "type": "string"
+                },
+                "line_end": {
+                  "type": "integer"
+                },
+                "line_start": {
+                  "type": "integer"
+                },
+                "logger": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "module": {
+                  "type": "string"
+                },
+                "parse_notes": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "parse_status": {
+                  "type": "string"
+                },
+                "raw": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "subsystem": {
+                  "type": "string"
+                },
+                "thread": {
+                  "additionalProperties": false,
+                  "description": "The thread named by one native log header.",
+                  "properties": {
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "timestamp": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_absolute": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_date": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_date_source": {
+                  "type": "string"
+                },
+                "timestamp_ms": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_timezone": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "entry_id",
+                "timestamp_date_source",
+                "timestamp_timezone",
+                "level",
+                "logger",
+                "module",
+                "function",
+                "subsystem",
+                "thread",
+                "message",
+                "line_start",
+                "line_end",
+                "parse_status"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "entry_id": {
+            "type": "string"
+          },
+          "include_related_threads": {
+            "type": "boolean"
+          },
+          "returned": {
+            "type": "integer"
+          },
+          "schema_version": {
+            "type": "integer"
+          },
+          "source": {
+            "additionalProperties": false,
+            "description": "Identity of the log generation a response was read from.",
+            "properties": {
+              "generation": {
+                "type": "string"
+              },
+              "size_bytes": {
+                "type": "integer"
+              },
+              "source": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "generation",
+              "size_bytes"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "schema_version",
+          "entry_id",
+          "anchor",
+          "entries",
+          "before",
+          "after",
+          "returned",
+          "complete_before",
+          "complete_after",
+          "include_related_threads",
+          "source",
+          "diagnostics"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Return the chronological native log records surrounding one entry_id found by search_logs. Expands evidence with bounded before/after counts or time windows, preserves thread and line information, and reports whether the window is complete.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [
+        "entry_id"
+      ],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "diagnostics",
+      "defaults": {
+        "filter_level": null,
+        "max_lines": 100,
+        "use_tail": true
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Get NVDA logs.",
+        "properties": {
+          "filter_level": {
+            "anyOf": [
+              {
+                "enum": [
+                  "DEBUG",
+                  "INFO",
+                  "WARNING",
+                  "ERROR",
+                  "CRITICAL"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_lines": {
+            "type": "integer"
+          },
+          "use_tail": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "get_logs",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Log entries.",
+        "properties": {
+          "file_size": {
+            "type": "integer"
+          },
+          "filter_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "log_file": {
+            "type": "string"
+          },
+          "max_lines": {
+            "type": "integer"
+          },
+          "returned_lines": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "log_file",
+          "returned_lines",
+          "max_lines",
+          "lines",
+          "file_size"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Retrieve recent log entries from NVDA log file with optional filtering.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "diagnostics",
+      "defaults": {
+        "include_addons": false,
+        "include_focus": true,
+        "include_logs": false,
+        "log_lines": 20
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Collect a small health summary. Detail is opt-in.",
+        "properties": {
+          "include_addons": {
+            "description": "Include add-on counts and the running add-on names.",
+            "type": "boolean"
+          },
+          "include_focus": {
+            "description": "Include the focused control and its top-level window.",
+            "type": "boolean"
+          },
+          "include_logs": {
+            "description": "Include the tail of NVDA's native log.",
+            "type": "boolean"
+          },
+          "log_lines": {
+            "description": "Log lines when include_logs is true.",
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "health_snapshot",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Health diagnostics snapshot.",
+        "properties": {
+          "addons": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "Lean add-on counts; names are included because a stale add-on is the common bug.",
+                "properties": {
+                  "available_count": {
+                    "type": "integer"
+                  },
+                  "running": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "running_count": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "running_count",
+                  "available_count"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error_count": {
+            "type": "integer"
+          },
+          "errors": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "One accessibility node, with the reference that points at it.",
+                "properties": {
+                  "location": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "description": "Screen rectangle in pixels; the same shape everywhere.",
+                        "properties": {
+                          "height": {
+                            "type": "integer"
+                          },
+                          "left": {
+                            "type": "integer"
+                          },
+                          "top": {
+                            "type": "integer"
+                          },
+                          "width": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "left",
+                          "top",
+                          "width",
+                          "height"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "name": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "ref": {
+                    "pattern": "^[a-z][a-z0-9]*$",
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "states": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "ref",
+                  "role"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "logs": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "Log entries.",
+                "properties": {
+                  "file_size": {
+                    "type": "integer"
+                  },
+                  "filter_level": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "lines": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "log_file": {
+                    "type": "string"
+                  },
+                  "max_lines": {
+                    "type": "integer"
+                  },
+                  "returned_lines": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "log_file",
+                  "returned_lines",
+                  "max_lines",
+                  "lines",
+                  "file_size"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "nvda": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": "integer"
+          },
+          "top_window": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "The top-level window that scopes an observation or action.",
+                "properties": {
+                  "class_name": {
+                    "type": "string"
+                  },
+                  "handle": {
+                    "type": "integer"
+                  },
+                  "ref": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "timestamp",
+          "ok",
+          "error_count"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": true,
+        "truncation_reported": false
+      },
+      "purpose": "Collect one-call diagnostics snapshot for NVDA addon debugging.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "diagnostics",
+      "defaults": {
+        "source": "focus"
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Inspect app module metadata.",
+        "properties": {
+          "source": {
+            "enum": [
+              "focus",
+              "navigator",
+              "desktop"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "inspect_app_module",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "App module information.",
+        "properties": {
+          "app_module": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "object": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "object",
+          "app_module"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Inspect app module metadata for focus/navigator/desktop source.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "diagnostics",
+      "defaults": {
+        "include_relations": false,
+        "target": "focus"
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Inspect object with rich metadata.",
+        "properties": {
+          "include_relations": {
+            "type": "boolean"
+          },
+          "target": {
+            "enum": [
+              "focus",
+              "navigator",
+              "desktop"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "inspect_object",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Rich object inspection.",
+        "properties": {
+          "object": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "object"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Inspect focus/navigator/desktop object with rich metadata.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "action",
+      "defaults": {
+        "action": null,
+        "expect": null
+      },
+      "error_codes": [
+        4103,
+        4205,
+        4206
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Invoke an object's default action, or a named one.",
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ref": {
+            "pattern": "^[a-z][a-z0-9]*$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref"
+        ],
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "invoke",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Result of invoking an object action.",
+        "properties": {
+          "action_name": {
+            "type": "string"
+          },
+          "available": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "index": {
+            "type": "integer"
+          },
+          "invoked": {
+            "type": "boolean"
+          },
+          "ref": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "invoked",
+          "index",
+          "action_name"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Invoke an object's default or named action (press it) by ref, then wait for the UI to settle. Works on an unfocused control; returns changed/delta.",
+      "read_only": false,
+      "reference_inputs": [
+        "ref"
+      ],
+      "required": [
+        "ref"
+      ],
+      "verification": {
+        "evidence_sources": [
+          "projection"
+        ],
+        "expectation_field": "expect",
+        "supported": true
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "diagnostics",
+      "defaults": {
+        "scope": "running"
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "List loaded addons.",
+        "properties": {
+          "scope": {
+            "enum": [
+              "running",
+              "available",
+              "all"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "list_loaded_addons",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "List of addon metadata.",
+        "properties": {
+          "addons": {
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "available_count": {
+            "type": "integer"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "running_count": {
+            "type": "integer"
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "count",
+          "running_count",
+          "available_count",
+          "addons"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "List running/available NVDA addons with metadata.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "observation",
+      "defaults": {
+        "item": "heading",
+        "limit": 20,
+        "timeout_ms": 1000,
+        "within": null
+      },
+      "error_codes": [
+        4103,
+        4205,
+        4206
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Enumerate a document's positions of one kind, without moving the cursor.",
+        "properties": {
+          "item": {
+            "type": "string"
+          },
+          "limit": {
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "timeout_ms": {
+            "maximum": 5000,
+            "minimum": 50,
+            "type": "integer"
+          },
+          "within": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "list_reading_targets",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "A document's positions of one kind, in the order a reader meets them.",
+        "properties": {
+          "available": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "browse_mode": {
+            "type": "boolean"
+          },
+          "document": {
+            "type": "string"
+          },
+          "elapsed_ms": {
+            "type": "number"
+          },
+          "interface": {
+            "type": "string"
+          },
+          "item": {
+            "type": "string"
+          },
+          "pass_through": {
+            "type": "boolean"
+          },
+          "scanned": {
+            "type": "integer"
+          },
+          "source": {
+            "type": "string"
+          },
+          "stopped": {
+            "type": "string"
+          },
+          "targets": {
+            "items": {
+              "additionalProperties": false,
+              "description": "One position in a document, in reading order.",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "level": {
+                  "type": "integer"
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "timeout_ms": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": true,
+        "truncation_reported": false
+      },
+      "purpose": "List a document's positions of one kind in reading order \u2014 headings, links, landmarks, form fields, tables, and so on \u2014 without moving the cursor. This is the screen reader's Elements List as data: one call gives the structure of a page or document, with refs where a control backs the position. 'available' says what this document can be searched by (browsers, Word and PDFs only); 'stopped' and 'truncated' say why the list ends where it does.",
+      "read_only": true,
+      "reference_inputs": [
+        "within"
+      ],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "observation",
+      "defaults": {
+        "detail": "summary",
+        "exact": false,
+        "limit": 10,
+        "max_nodes": 400,
+        "name": null,
+        "role": null,
+        "timeout_ms": 500,
+        "within": null
+      },
+      "error_codes": [
+        4103,
+        4205,
+        4206
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Search for controls by role and name.",
+        "properties": {
+          "detail": {
+            "description": "summary leaves path, depth, automation id and states empty.",
+            "enum": [
+              "summary",
+              "full"
+            ],
+            "type": "string"
+          },
+          "exact": {
+            "type": "boolean"
+          },
+          "limit": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "max_nodes": {
+            "maximum": 2000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeout_ms": {
+            "maximum": 3000,
+            "minimum": 50,
+            "type": "integer"
+          },
+          "within": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "locate",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "The outcome of one search.",
+        "properties": {
+          "elapsed_ms": {
+            "type": "number"
+          },
+          "matches": {
+            "items": {
+              "additionalProperties": false,
+              "description": "One control found by ``locate``.",
+              "properties": {
+                "automation_id": {
+                  "type": "string"
+                },
+                "depth": {
+                  "type": "integer"
+                },
+                "location": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "description": "Screen rectangle in pixels; the same shape everywhere.",
+                      "properties": {
+                        "height": {
+                          "type": "integer"
+                        },
+                        "left": {
+                          "type": "integer"
+                        },
+                        "top": {
+                          "type": "integer"
+                        },
+                        "width": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "left",
+                        "top",
+                        "width",
+                        "height"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "path": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "ref": {
+                  "pattern": "^[a-z][a-z0-9]*$",
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "states": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "target": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "ref",
+                "role"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "method": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "searched": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": true,
+        "truncation_reported": false
+      },
+      "purpose": "Find controls by role and/or name anywhere in the current window (or under a ref), and return a ref for each match. Searches with the application's own UIA provider when it can, otherwise with a bounded walk; 'method' says which answered. Use it to reach a control that is not the focus or next to it.",
+      "read_only": true,
+      "reference_inputs": [
+        "within"
+      ],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "action",
+      "defaults": {
+        "expect": null,
+        "ref": null
+      },
+      "error_codes": [
+        4103,
+        4205,
+        4206
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Move through the accessibility tree.",
+        "properties": {
+          "direction": {
+            "enum": [
+              "next",
+              "previous",
+              "first",
+              "last",
+              "parent",
+              "child"
+            ],
+            "type": "string"
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "direction"
+        ],
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "navigate",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Result of moving through the tree.",
+        "properties": {
+          "direction": {
+            "type": "string"
+          },
+          "focused": {
+            "type": "boolean"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "direction",
+          "focused"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Move through the accessibility tree (next/previous/first/last/parent/child) from a ref or the focus, focus the result and return its ref.",
+      "read_only": false,
+      "reference_inputs": [
+        "ref"
+      ],
+      "required": [
+        "direction"
+      ],
+      "verification": {
+        "evidence_sources": [
+          "projection"
+        ],
+        "expectation_field": "expect",
+        "supported": true
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "action",
+      "defaults": {
+        "direction": "next",
+        "expect": null,
+        "item": "heading",
+        "steps": 1,
+        "timeout_ms": 1000,
+        "within": null
+      },
+      "error_codes": [
+        4103,
+        4205,
+        4206
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Move the document's reading position.",
+        "properties": {
+          "direction": {
+            "type": "string"
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "item": {
+            "type": "string"
+          },
+          "steps": {
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "timeout_ms": {
+            "maximum": 5000,
+            "minimum": 50,
+            "type": "integer"
+          },
+          "within": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "navigate_reading",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Where the reading position landed.",
+        "properties": {
+          "browse_mode": {
+            "type": "boolean"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "document": {
+            "type": "string"
+          },
+          "elapsed_ms": {
+            "type": "number"
+          },
+          "interface": {
+            "type": "string"
+          },
+          "item": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "landed": {
+            "type": "boolean"
+          },
+          "level": {
+            "type": "integer"
+          },
+          "pass_through": {
+            "type": "boolean"
+          },
+          "reached": {
+            "type": "integer"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "steps": {
+            "type": "integer"
+          },
+          "stopped": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "timeout_ms": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": true,
+        "truncation_reported": false
+      },
+      "purpose": "Move a document's reading position like the screen reader's quick nav key: 'next' heading, 'previous' link, 'first', 'last'. 'steps' skips ahead (three headings is one call). Works in browse-mode documents only \u2014 browsers, Word, PDFs \u2014 and moves the real cursor, so the screen reader announces it. 'reached' and 'stopped' report a move that ended early instead of pretending it finished.",
+      "read_only": false,
+      "reference_inputs": [
+        "within"
+      ],
+      "required": [],
+      "verification": {
+        "evidence_sources": [
+          "projection"
+        ],
+        "expectation_field": "expect",
+        "supported": true
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "observation",
+      "defaults": {
+        "detail": "summary",
+        "max_bytes": 0,
+        "max_text": 120
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "What to capture in one observation.",
+        "properties": {
+          "detail": {
+            "description": "summary leaves states empty; full includes them.",
+            "enum": [
+              "summary",
+              "full"
+            ],
+            "type": "string"
+          },
+          "include": {
+            "description": "Optional sections beyond focus and the top-level window.",
+            "items": {
+              "enum": [
+                "focus",
+                "ancestors",
+                "children",
+                "selection",
+                "dialog"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "max_bytes": {
+            "description": "Bound the serialized observation; 0 disables the bound. Truncation is reported.",
+            "maximum": 200000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "max_text": {
+            "description": "Maximum characters per value.",
+            "maximum": 2000,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "observe",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "One observation of the screen.",
+        "properties": {
+          "ancestors": {
+            "items": {
+              "additionalProperties": false,
+              "description": "One accessibility node, with the reference that points at it.",
+              "properties": {
+                "location": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "description": "Screen rectangle in pixels; the same shape everywhere.",
+                      "properties": {
+                        "height": {
+                          "type": "integer"
+                        },
+                        "left": {
+                          "type": "integer"
+                        },
+                        "top": {
+                          "type": "integer"
+                        },
+                        "width": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "left",
+                        "top",
+                        "width",
+                        "height"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "ref": {
+                  "pattern": "^[a-z][a-z0-9]*$",
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "states": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "ref",
+                "role"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "children": {
+            "items": {
+              "additionalProperties": false,
+              "description": "One accessibility node, with the reference that points at it.",
+              "properties": {
+                "location": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "description": "Screen rectangle in pixels; the same shape everywhere.",
+                      "properties": {
+                        "height": {
+                          "type": "integer"
+                        },
+                        "left": {
+                          "type": "integer"
+                        },
+                        "top": {
+                          "type": "integer"
+                        },
+                        "width": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "left",
+                        "top",
+                        "width",
+                        "height"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "ref": {
+                  "pattern": "^[a-z][a-z0-9]*$",
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "states": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "ref",
+                "role"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "dialog": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "A dialog node, with the actionable children captured for it.",
+                "properties": {
+                  "children": {
+                    "items": {
+                      "additionalProperties": false,
+                      "description": "One accessibility node, with the reference that points at it.",
+                      "properties": {
+                        "location": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "description": "Screen rectangle in pixels; the same shape everywhere.",
+                              "properties": {
+                                "height": {
+                                  "type": "integer"
+                                },
+                                "left": {
+                                  "type": "integer"
+                                },
+                                "top": {
+                                  "type": "integer"
+                                },
+                                "width": {
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "left",
+                                "top",
+                                "width",
+                                "height"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "ref": {
+                          "pattern": "^[a-z][a-z0-9]*$",
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "states": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "value": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "ref",
+                        "role"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "location": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "description": "Screen rectangle in pixels; the same shape everywhere.",
+                        "properties": {
+                          "height": {
+                            "type": "integer"
+                          },
+                          "left": {
+                            "type": "integer"
+                          },
+                          "top": {
+                            "type": "integer"
+                          },
+                          "width": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "left",
+                          "top",
+                          "width",
+                          "height"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "name": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "ref": {
+                    "pattern": "^[a-z][a-z0-9]*$",
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "states": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "ref",
+                  "role"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "focus": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "One accessibility node, with the reference that points at it.",
+                "properties": {
+                  "location": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "description": "Screen rectangle in pixels; the same shape everywhere.",
+                        "properties": {
+                          "height": {
+                            "type": "integer"
+                          },
+                          "left": {
+                            "type": "integer"
+                          },
+                          "top": {
+                            "type": "integer"
+                          },
+                          "width": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "left",
+                          "top",
+                          "width",
+                          "height"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "name": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "ref": {
+                    "pattern": "^[a-z][a-z0-9]*$",
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "states": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "ref",
+                  "role"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "more_available": {
+            "type": "boolean"
+          },
+          "refs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "revision": {
+            "type": "integer"
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state_version": {
+            "type": "integer"
+          },
+          "top_window": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "description": "The top-level window that scopes an observation or action.",
+                "properties": {
+                  "class_name": {
+                    "type": "string"
+                  },
+                  "handle": {
+                    "type": "integer"
+                  },
+                  "ref": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "truncated_sections": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "truncation_hint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state_version",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": true,
+        "truncation_reported": true
+      },
+      "purpose": "Capture the screen once: focus, ancestors, children, dialog and window, each with a ref. References are locators for invoke/focus/read, valid until the observation is superseded; state_version identifies this observation.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "input",
+      "defaults": {
+        "delay_ms": 0,
+        "expect": null,
+        "repeat": 1
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Send keyboard keys.",
+        "properties": {
+          "delay_ms": {
+            "maximum": 5000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "keys": {
+            "description": "Gesture name, e.g. control+a or down.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "repeat": {
+            "maximum": 20,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "keys"
+        ],
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "press",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Result of a keyboard dispatch.",
+        "properties": {
+          "cancelled": {
+            "type": "boolean"
+          },
+          "delay_ms": {
+            "type": "integer"
+          },
+          "dispatched": {
+            "type": "boolean"
+          },
+          "normalized_keys": {
+            "type": "string"
+          },
+          "repeat": {
+            "type": "integer"
+          },
+          "requested": {
+            "type": "string"
+          },
+          "sent": {
+            "type": "boolean"
+          },
+          "sent_count": {
+            "type": "integer"
+          },
+          "uncertain": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "requested",
+          "normalized_keys",
+          "repeat",
+          "delay_ms",
+          "sent",
+          "sent_count",
+          "dispatched"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": true,
+        "truncation_reported": false
+      },
+      "purpose": "Send keyboard keys (e.g. 'tab', 'control+a'), then wait for the UI to settle. 'dispatched' means the input was posted; changed/delta say what the UI did.",
+      "read_only": false,
+      "reference_inputs": [],
+      "required": [
+        "keys"
+      ],
+      "verification": {
+        "evidence_sources": [
+          "projection"
+        ],
+        "expectation_field": "expect",
+        "supported": true
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "observation",
+      "defaults": {
+        "max_chars": 4000,
+        "ref": null,
+        "scope": "line"
+      },
+      "error_codes": [
+        4103,
+        4205,
+        4206
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Read text from a referenced object, or the focus.",
+        "properties": {
+          "max_chars": {
+            "maximum": 100000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scope": {
+            "enum": [
+              "line",
+              "selection",
+              "document",
+              "subtree"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "read",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Text read from a scope.",
+        "properties": {
+          "ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scope": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "scope",
+          "source"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": true,
+        "truncation_reported": false
+      },
+      "purpose": "Read text from an object by ref (or the focus) at a scope: line, selection, document or subtree. Bounded by max_chars, reports truncation.",
+      "read_only": true,
+      "reference_inputs": [
+        "ref"
+      ],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "system",
+      "defaults": {},
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Marker type for tools with no input.",
+        "properties": {},
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "reload_plugins",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Result of reloading global plugins and app modules.",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Reload all global plugins and app modules from scratchpad.",
+      "read_only": false,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "system",
+      "defaults": {
+        "debug_logging": false,
+        "disable_addons": false
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Restart NVDA with options.",
+        "properties": {
+          "debug_logging": {
+            "type": "boolean"
+          },
+          "disable_addons": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "restart_nvda",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "NVDA restart result.",
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Restart NVDA with optional parameters (disable addons, debug logging).",
+      "read_only": false,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "action",
+      "defaults": {
+        "amount": "page",
+        "direction": "down",
+        "expect": null,
+        "ref": null
+      },
+      "error_codes": [
+        4103,
+        4205,
+        4206
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Scroll the focused container.",
+        "properties": {
+          "amount": {
+            "enum": [
+              "page",
+              "line"
+            ],
+            "type": "string"
+          },
+          "direction": {
+            "enum": [
+              "up",
+              "down",
+              "left",
+              "right"
+            ],
+            "type": "string"
+          },
+          "expect": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "scroll",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "How a scroll was performed.",
+        "properties": {
+          "amount": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "direction",
+          "amount",
+          "method",
+          "key"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Scroll the focused container up/down/left/right by page or line, then settle.",
+      "read_only": false,
+      "reference_inputs": [
+        "ref"
+      ],
+      "required": [],
+      "verification": {
+        "evidence_sources": [
+          "projection"
+        ],
+        "expectation_field": "expect",
+        "supported": true
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "diagnostics",
+      "defaults": {
+        "addon": null,
+        "cursor": null,
+        "include_raw": false,
+        "limit": 20,
+        "max_scan_records": 500000,
+        "min_level": null,
+        "order": "newest_first",
+        "trace_id": null
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Search native NVDA log records with structured filters.",
+        "properties": {
+          "addon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "include_raw": {
+            "type": "boolean"
+          },
+          "levels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "max_scan_records": {
+            "maximum": 5000000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "message": {
+            "additionalProperties": false,
+            "description": "Substring or bounded-regex filtering of a record's message.",
+            "properties": {
+              "case_sensitive": {
+                "type": "boolean"
+              },
+              "contains": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "regex": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "min_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "order": {
+            "enum": [
+              "newest_first",
+              "oldest_first"
+            ],
+            "type": "string"
+          },
+          "sources": {
+            "additionalProperties": false,
+            "description": "Glob filters over the native logger/source string.",
+            "properties": {
+              "exclude": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "include": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "threads": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "time": {
+            "additionalProperties": false,
+            "description": "Time-of-day relative or absolute range.",
+            "properties": {
+              "end": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "last_seconds": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "start": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "search_logs",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Structured native log search response.",
+        "properties": {
+          "diagnostics": {
+            "additionalProperties": false,
+            "description": "Completeness and precision facts about one search.",
+            "properties": {
+              "invalid_utf8_replacements": {
+                "type": "integer"
+              },
+              "limitations": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "matched_records": {
+                "type": "integer"
+              },
+              "parse_failures": {
+                "type": "integer"
+              },
+              "records_examined": {
+                "type": "integer"
+              },
+              "response_truncated": {
+                "type": "boolean"
+              },
+              "scan_budget_exhausted": {
+                "type": "boolean"
+              },
+              "time_filter_precision": {
+                "type": "string"
+              },
+              "truncated": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "truncated",
+              "parse_failures",
+              "time_filter_precision",
+              "scan_budget_exhausted",
+              "response_truncated",
+              "invalid_utf8_replacements",
+              "records_examined",
+              "matched_records"
+            ],
+            "type": "object"
+          },
+          "entries": {
+            "items": {
+              "additionalProperties": false,
+              "description": "One native log record, parsed into structured evidence.",
+              "properties": {
+                "addon": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "derived_fields": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "enrichment": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": {},
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "entry_id": {
+                  "type": "string"
+                },
+                "exception": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": {},
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "function": {
+                  "type": "string"
+                },
+                "level": {
+                  "type": "string"
+                },
+                "line_end": {
+                  "type": "integer"
+                },
+                "line_start": {
+                  "type": "integer"
+                },
+                "logger": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "module": {
+                  "type": "string"
+                },
+                "parse_notes": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "parse_status": {
+                  "type": "string"
+                },
+                "raw": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "subsystem": {
+                  "type": "string"
+                },
+                "thread": {
+                  "additionalProperties": false,
+                  "description": "The thread named by one native log header.",
+                  "properties": {
+                    "id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "timestamp": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_absolute": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_date": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_date_source": {
+                  "type": "string"
+                },
+                "timestamp_ms": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp_timezone": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "entry_id",
+                "timestamp_date_source",
+                "timestamp_timezone",
+                "level",
+                "logger",
+                "module",
+                "function",
+                "subsystem",
+                "thread",
+                "message",
+                "line_start",
+                "line_end",
+                "parse_status"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "page": {
+            "additionalProperties": false,
+            "description": "One stable page of search results.",
+            "properties": {
+              "has_more": {
+                "type": "boolean"
+              },
+              "limit": {
+                "type": "integer"
+              },
+              "next_cursor": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "order": {
+                "type": "string"
+              },
+              "returned": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "returned",
+              "has_more",
+              "limit",
+              "order"
+            ],
+            "type": "object"
+          },
+          "schema_version": {
+            "type": "integer"
+          },
+          "source": {
+            "additionalProperties": false,
+            "description": "Identity of the log generation a response was read from.",
+            "properties": {
+              "generation": {
+                "type": "string"
+              },
+              "size_bytes": {
+                "type": "integer"
+              },
+              "source": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "generation",
+              "size_bytes"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "schema_version",
+          "entries",
+          "page",
+          "source",
+          "diagnostics"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": true,
+        "truncation_reported": true
+      },
+      "purpose": "Search native NVDA logs by severity, logger/source, add-on, message, thread, time and explicit trace_id. Returns paginated structured records with stable entry_id references, original times and line ranges, and explicit completeness metadata. Use to locate warnings, errors, or subsystem activity; it does not determine root cause.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "action",
+      "defaults": {
+        "expect": null
+      },
+      "error_codes": [
+        4103,
+        4205,
+        4206
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Set the value of a control.",
+        "properties": {
+          "expect": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ref": {
+            "pattern": "^[a-z][a-z0-9]*$",
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "value"
+        ],
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "set_value",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "How a value was set, and whether the control agrees.",
+        "properties": {
+          "mode": {
+            "type": "string"
+          },
+          "observed": {
+            "type": "string"
+          },
+          "previous": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "units": {
+            "type": "integer"
+          },
+          "value": {
+            "type": "string"
+          },
+          "value_source": {
+            "type": "string"
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ref",
+          "mode",
+          "value"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Set a control's value by ref; an empty string clears it. Uses the platform value pattern when the control exposes one, otherwise focus + select-all + type; 'mode' says which. Reads the control back afterwards: 'verified' says the write landed, 'observed' carries what the control actually contains when it did not.",
+      "read_only": false,
+      "reference_inputs": [
+        "ref"
+      ],
+      "required": [
+        "ref",
+        "value"
+      ],
+      "verification": {
+        "evidence_sources": [
+          "projection"
+        ],
+        "expectation_field": "expect",
+        "supported": true
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "ui",
+      "defaults": {},
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Show a UI message to the user.",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "show_message",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Message display result.",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Show a UI message to the user.",
+      "read_only": false,
+      "reference_inputs": [],
+      "required": [
+        "message"
+      ],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "speech",
+      "defaults": {},
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Speak text using NVDA's speech system.",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "speak_text",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Speech action result.",
+        "properties": {
+          "spoken": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "spoken"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Speak the given text using NVDA's speech system.",
+      "read_only": false,
+      "reference_inputs": [],
+      "required": [
+        "text"
+      ],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "action",
+      "defaults": {
+        "expect": null,
+        "within": null
+      },
+      "error_codes": [
+        4103,
+        4205,
+        4206
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Start browse mode for a document NVDA is reading in focus mode.",
+        "properties": {
+          "expect": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "within": {
+            "anyOf": [
+              {
+                "pattern": "^[a-z][a-z0-9]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "mutating": true,
+      "name": "start_browse_mode",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "The document that is now readable, and whether this call created it.",
+        "properties": {
+          "browse_mode": {
+            "type": "boolean"
+          },
+          "created": {
+            "type": "boolean"
+          },
+          "document": {
+            "type": "string"
+          },
+          "elapsed_ms": {
+            "type": "number"
+          },
+          "interface": {
+            "type": "string"
+          },
+          "pass_through": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Start browse mode for a document NVDA is reading in focus mode, the way NVDA+space does, and report the implementation that now answers. The reading tools need this: Word and some PDF readers keep documents in focus mode until asked, so list_reading_targets and navigate_reading refuse until a model exists. Changes the user's session; 'created' is false when one was already there, so asking twice is harmless.",
+      "read_only": false,
+      "reference_inputs": [
+        "within"
+      ],
+      "required": [],
+      "verification": {
+        "evidence_sources": [
+          "projection"
+        ],
+        "expectation_field": "expect",
+        "supported": true
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "diagnostics",
+      "defaults": {
+        "addon": null,
+        "limit": 20,
+        "max_scan_records": 500000,
+        "min_level": null
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Compute bounded deterministic statistics over native log records.",
+        "properties": {
+          "addon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "group_by": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "include": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "levels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "max_scan_records": {
+            "type": "integer"
+          },
+          "min_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sources": {
+            "additionalProperties": false,
+            "description": "Glob filters over the native logger/source string.",
+            "properties": {
+              "exclude": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "include": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "threads": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "time": {
+            "additionalProperties": false,
+            "description": "Time-of-day relative or absolute range.",
+            "properties": {
+              "end": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "last_seconds": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "start": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "summarize_logs",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Deterministic summary of native log evidence.",
+        "properties": {
+          "coverage": {
+            "additionalProperties": false,
+            "description": "What a summary examined and what it could not claim.",
+            "properties": {
+              "complete": {
+                "type": "boolean"
+              },
+              "generation": {
+                "type": "string"
+              },
+              "group_by": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "invalid_utf8_replacements": {
+                "type": "integer"
+              },
+              "limitations": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "parse_failures": {
+                "type": "integer"
+              },
+              "records_examined": {
+                "type": "integer"
+              },
+              "records_matched": {
+                "type": "integer"
+              },
+              "scan_ms": {
+                "type": "number"
+              },
+              "size_bytes": {
+                "type": "integer"
+              },
+              "source": {
+                "type": "string"
+              },
+              "time_budget_exhausted": {
+                "type": "boolean"
+              },
+              "time_filter_precision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "records_examined",
+              "records_matched",
+              "complete",
+              "time_budget_exhausted",
+              "parse_failures",
+              "invalid_utf8_replacements",
+              "time_filter_precision",
+              "source",
+              "generation",
+              "size_bytes",
+              "scan_ms"
+            ],
+            "type": "object"
+          },
+          "schema_version": {
+            "type": "integer"
+          },
+          "summary": {
+            "additionalProperties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "schema_version",
+          "summary",
+          "coverage"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Compute bounded, deterministic statistics and repeated diagnostic patterns from native NVDA logs: severity/source distribution, normalized repeated messages, exception and warning groups, time buckets, noise share and anomaly candidates. Use when the relevant error, logger or subsystem is not yet known.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "observation",
+      "defaults": {
+        "journal_id": null,
+        "kinds": null,
+        "limit": 50,
+        "since": null,
+        "timeout_ms": 1000
+      },
+      "error_codes": [
+        4103,
+        4204
+      ],
+      "event_dependencies": [
+        "event_journal"
+      ],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Wait for the next coalesced transition.",
+        "properties": {
+          "journal_id": {
+            "anyOf": [
+              {
+                "description": "Journal generation that issued `since`. Omit only for a current-journal convenience.",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kinds": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "limit": {
+            "maximum": 500,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "minimum": 0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timeout_ms": {
+            "maximum": 30000,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "wait_for_events",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Coalesced transitions observed while waiting.",
+        "properties": {
+          "cancelled": {
+            "type": "boolean"
+          },
+          "cursor_status": {
+            "type": "string"
+          },
+          "earliest_available_version": {
+            "type": "integer"
+          },
+          "events": {
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "expired": {
+            "type": "boolean"
+          },
+          "from_version": {
+            "type": "integer"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "history_complete": {
+            "type": "boolean"
+          },
+          "journal_id": {
+            "type": "string"
+          },
+          "resync_from": {
+            "anyOf": [
+              {
+                "additionalProperties": {},
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resync_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resync_required": {
+            "type": "boolean"
+          },
+          "timed_out": {
+            "type": "boolean"
+          },
+          "to_version": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "journal_id",
+          "from_version",
+          "to_version"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": true,
+        "truncation_reported": false
+      },
+      "purpose": "Block until the next coalesced UI transition (or timeout) and return the transition kinds. Use for idle waits instead of polling observe.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "diagnostics",
+      "defaults": {
+        "max_children": 20,
+        "max_depth": 3,
+        "target": "focus"
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Walk object tree with bounds.",
+        "properties": {
+          "max_children": {
+            "type": "integer"
+          },
+          "max_depth": {
+            "type": "integer"
+          },
+          "target": {
+            "enum": [
+              "focus",
+              "navigator",
+              "desktop"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "walk_object_tree",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Object tree snapshot.",
+        "properties": {
+          "max_children": {
+            "type": "integer"
+          },
+          "max_depth": {
+            "type": "integer"
+          },
+          "target": {
+            "type": "string"
+          },
+          "tree": {
+            "additionalProperties": {},
+            "type": "object"
+          }
+        },
+        "required": [
+          "target",
+          "max_depth",
+          "max_children",
+          "tree"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Walk a bounded object subtree for focus/navigator/desktop.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    }
+  ]
+}

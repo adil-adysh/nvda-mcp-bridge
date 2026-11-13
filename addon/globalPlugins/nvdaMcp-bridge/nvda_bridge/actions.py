@@ -45,6 +45,10 @@ def identity_of(obj: Any) -> dict[str, Any]:
 		"name": _safe_get(obj, "name"),
 		"windowClassName": _safe_get(obj, "windowClassName"),
 		"windowControlID": _safe_get(obj, "windowControlID"),
+		# Window identity is checked with the process and class beside the
+		# handle, because Windows reuses handles. The title is not identity.
+		"windowHandle": _safe_get(obj, "windowHandle"),
+		"processID": _safe_get(obj, "processID"),
 	}
 
 

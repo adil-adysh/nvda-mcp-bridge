@@ -63,12 +63,94 @@ def build_report(addon_root: Path) -> str:
 	return "\n".join(lines)
 
 
+def build_inventory(addon_root: Path) -> list[dict]:
+	"""Machine-readable inventory of the exposed tool surface.
+
+	Derived from the registry, never hand-written: a tool that changes its
+	schema changes this file on the next generation, which is the point.
+	"""
+	bootstrap_addon_package(addon_root)
+	registry = importlib.import_module("nvdaMcpBridge.tools.registry").NVDA_TOOLS_REGISTRY
+	entries: list[dict] = []
+	for meta in registry.list_tools():
+		tool = registry.get(meta.name, meta.version)
+		input_model = tool.get_input_schema().model
+		input_schema = tool.get_input_schema().to_json_schema()
+		output_schema = tool.get_output_schema().to_json_schema()
+		properties = input_schema.get("properties", {})
+		defaults = {
+			field.name: field.default
+			for field in dataclasses.fields(input_model)
+			if field.default is not dataclasses.MISSING
+		}
+		reference_inputs = [
+			name
+			for name in properties
+			if name in {"ref", "within"} or name.endswith("_ref") or name.endswith("Ref")
+		]
+		error_codes = [4103]
+		if reference_inputs:
+			error_codes.extend([4206, 4205])
+		if meta.name == "wait_for_events":
+			error_codes.append(4204)
+		# Tools whose handler wraps the action in a settle round accept a typed
+		# expectation and can report verification/evidence.
+		verification = "expect" in properties
+		entries.append(
+			{
+				"name": meta.name,
+				"version": meta.version,
+				"purpose": meta.description,
+				"category": meta.category,
+				"read_only": bool(meta.read_only),
+				"mutating": not bool(meta.read_only),
+				"input_schema": input_schema,
+				"output_schema": output_schema,
+				"required": input_schema.get("required", []),
+				"defaults": defaults,
+				"reference_inputs": reference_inputs,
+				"event_dependencies": ["event_journal"] if meta.name == "wait_for_events" else [],
+				"output_size_limits": {
+					"input_bounded": any("maximum" in spec or "maxLength" in spec for spec in properties.values()),
+					"truncation_reported": meta.name in {"observe"} or "page" in output_schema.get("properties", {}),
+				},
+				"verification": {
+					"supported": verification,
+					"expectation_field": "expect" if verification else None,
+					"evidence_sources": ["projection"] if verification else [],
+				},
+				"error_codes": sorted(set(error_codes)),
+			}
+		)
+	return entries
+
+
 def main() -> int:
 	parser = argparse.ArgumentParser(description=__doc__)
 	parser.add_argument("--output", "-o", default=None)
+	parser.add_argument(
+		"--json",
+		action="store_true",
+		help="Emit the machine-readable inventory instead of the Markdown table.",
+	)
 	args = parser.parse_args()
 	repo_root = Path(__file__).resolve().parent.parent
 	addon_root = repo_root / "addon" / "globalPlugins" / "nvdaMcp-bridge"
+	if args.json:
+		payload = json.dumps(
+			{"api_level": 1, "count": None, "tools": build_inventory(addon_root.resolve())},
+			indent=2,
+			sort_keys=True,
+		)
+		# Count after serialization so the field always matches the list.
+		decoded = json.loads(payload)
+		decoded["count"] = len(decoded["tools"])
+		payload = json.dumps(decoded, indent=2, sort_keys=True)
+		if args.output:
+			Path(args.output).write_text(payload + "\n", encoding="utf-8")
+		else:
+			print(payload)
+		return 0
 	report = build_report(addon_root.resolve())
 	if args.output:
 		Path(args.output).write_text(report, encoding="utf-8")

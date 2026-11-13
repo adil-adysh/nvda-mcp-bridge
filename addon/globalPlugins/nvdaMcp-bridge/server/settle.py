@@ -28,6 +28,7 @@ and waiting happens on the calling worker thread.
 
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
@@ -58,6 +59,50 @@ MAX_ROUNDS = 2
 #: window's completeness is reported separately, so a truncated list is never
 #: mistaken for a quiet UI.
 SETTLE_EVENT_LIMIT = 50
+
+#: The only verification values permitted in a result. ``confirmed`` requires a
+#: post-action observation that matches a declared expectation; successful
+#: dispatch is never enough on its own. ``unavailable`` is *not* uncertainty:
+#: it says no reliable read-back existed for this action.
+VERIFICATION_CONFIRMED = "confirmed"
+VERIFICATION_CONTRADICTED = "contradicted"
+VERIFICATION_UNAVAILABLE = "unavailable"
+VERIFICATION_VALUES = (
+	VERIFICATION_CONFIRMED,
+	VERIFICATION_CONTRADICTED,
+	VERIFICATION_UNAVAILABLE,
+)
+
+#: Evidence must describe observations, not the request. This is the closed
+#: source vocabulary; adding a source here is a contract change.
+EVIDENCE_SOURCES = frozenset(
+	{
+		"platform_value",
+		"uia_value",
+		"accessibility_tree",
+		"projection",
+		"focused_element",
+		"document_text",
+	}
+)
+
+#: Bounds applied to every evidence block: entry count, per-string length and
+#: total serialized size. Evidence is a hint for the next step, not a payload.
+MAX_EVIDENCE_ENTRIES = 8
+MAX_EVIDENCE_TEXT = 200
+MAX_EVIDENCE_BYTES = 2048
+
+#: Path fragments whose values are not echoed into evidence.
+_SENSITIVE_FRAGMENTS = (
+	"password",
+	"passwd",
+	"secret",
+	"token",
+	"credential",
+	"api_key",
+	"apikey",
+	"private_key",
+)
 
 
 @dataclass
@@ -95,6 +140,17 @@ class SettleOutcome:
 	settling_status: str = "settled"
 	budget_ms: int = 0
 	budget_expired: bool = False
+	#: Post-action verification, derived from an observation that actually
+	#: happened. ``unavailable`` when there was no expectation or no projection.
+	verification: str = VERIFICATION_UNAVAILABLE
+	#: Bounded observations behind ``verification``. Never synthesised from the
+	#: requested command.
+	evidence: list[dict[str, Any]] = field(default_factory=list)
+	#: Whether a post-action projection was actually obtained.
+	observed: bool = False
+	#: True when a cancellation stopped the round before an observation could be
+	#: trusted. ``uncertain`` stays reserved for the action's outcome.
+	cancelled: bool = False
 
 	@property
 	def projection_changed(self) -> bool:
@@ -122,9 +178,15 @@ class SettleOutcome:
 			# caller that wants to know whether the observation was complete can
 			# now tell without fetching the trace.
 			"projection_available": self.projection_available,
+			"observed": self.observed,
 			"events_complete": self.events_complete,
 			"settling_status": self.settling_status,
+			"budget_expired": self.budget_expired,
+			"verification": self.verification,
+			"evidence": self.evidence,
 		}
+		if self.cancelled:
+			payload["cancelled"] = True
 		if self.completed is not None:
 			payload["completed"] = self.completed
 		if self.expect_mismatch:
@@ -172,6 +234,80 @@ def evaluate_expect(projection: Optional[dict], expect: Optional[dict[str, Any]]
 		elif actual != wanted:
 			mismatch[path] = {"expected": wanted, "actual": actual}
 	return _Expectation(mismatch or None)
+
+
+def _bounded_text(value: Any, limit: int = MAX_EVIDENCE_TEXT) -> Any:
+	"""Bound one evidence value without pretending it was complete."""
+	if isinstance(value, str):
+		return value if len(value) <= limit else value[:limit] + "…"
+	if isinstance(value, (int, float, bool)) or value is None:
+		return value
+	try:
+		text = json.dumps(value, ensure_ascii=False, default=str)
+	except Exception:  # noqa: BLE001
+		text = str(value)
+	return text if len(text) <= limit else text[:limit] + "…"
+
+
+def _is_sensitive(path: str) -> bool:
+	lowered = path.lower()
+	return any(fragment in lowered for fragment in _SENSITIVE_FRAGMENTS)
+
+
+def build_expectation_evidence(
+	projection: Optional[dict],
+	expect: Optional[dict[str, Any]],
+	state_version: Optional[int] = None,
+) -> list[dict[str, Any]]:
+	"""Turn an observed projection and an expectation into bounded evidence.
+
+	Evidence is only ever produced from a projection that was actually taken
+	after the action. It is not derived from ``expect`` alone, and a sensitive
+	path never echoes its value.
+	"""
+	if projection is None or not expect:
+		return []
+	entries: list[dict[str, Any]] = []
+	for index, (path, wanted) in enumerate(expect.items()):
+		if index >= MAX_EVIDENCE_ENTRIES:
+			break
+		actual = lookup(projection, path)
+		entry: dict[str, Any] = {
+			"source": "projection",
+			"path": _bounded_text(path, 80),
+			"matched": actual == wanted
+			or (isinstance(wanted, list) and isinstance(actual, list) and list(actual) == list(wanted)),
+		}
+		if entry["matched"]:
+			entry["value"] = _bounded_text(actual)
+		else:
+			entry["expected"] = _bounded_text(wanted)
+			entry["observed"] = _bounded_text(actual)
+		if _is_sensitive(path):
+			entry.pop("value", None)
+			entry.pop("observed", None)
+			entry.pop("expected", None)
+			entry["redacted"] = True
+		if state_version is not None:
+			entry["state_version"] = int(state_version)
+		entries.append(entry)
+	return _bound_evidence(entries)
+
+
+def _bound_evidence(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+	"""Enforce the entry-count and serialized-size caps on an evidence list."""
+	bounded: list[dict[str, Any]] = []
+	total = 0
+	for entry in entries[:MAX_EVIDENCE_ENTRIES]:
+		try:
+			size = len(json.dumps(entry, ensure_ascii=False, default=str))
+		except Exception:  # noqa: BLE001
+			size = MAX_EVIDENCE_BYTES
+		if total + size > MAX_EVIDENCE_BYTES:
+			break
+		total += size
+		bounded.append(entry)
+	return bounded
 
 
 class Settler:
@@ -226,6 +362,21 @@ class Settler:
 		start = self._clock()
 		deadline = start + budget / 1000.0
 
+		# A cancellation observed before the action runs means nothing was
+		# dispatched. Report that explicitly instead of running the action and
+		# calling the result uncertain.
+		if cancellation_event is not None and cancellation_event.is_set():
+			return SettleOutcome(
+				changed=False,
+				state_version=self._projector.state_version,
+				settled_ms=0.0,
+				settling_status="cancelled",
+				budget_ms=budget,
+				cancelled=True,
+				observed=False,
+				verification=VERIFICATION_UNAVAILABLE,
+			)
+
 		journal = self._journal
 		journal_id = getattr(journal, "journal_id", None)
 		from_version = journal.version if journal is not None else None
@@ -239,6 +390,22 @@ class Settler:
 		# deadlock if the main thread were busy waiting for the action itself.
 		action_result = action_fn()
 		uncertain = bool(action_result.get("uncertain")) if isinstance(action_result, dict) else False
+
+		# Cancelled after dispatch, before any trustworthy observation: the
+		# action may have run. Saying "cancelled" is honest about dispatch;
+		# `uncertain` is what says the consequential outcome is unknown.
+		if cancellation_event is not None and cancellation_event.is_set():
+			return SettleOutcome(
+				changed=False,
+				state_version=self._projector.state_version,
+				settled_ms=round((self._clock() - start) * 1000.0, 1),
+				uncertain=True,
+				settling_status="cancelled",
+				budget_ms=budget,
+				cancelled=True,
+				observed=False,
+				verification=VERIFICATION_UNAVAILABLE,
+			)
 
 		saw_activity = self._projector.wait_for_revision(revision, min(FIRST_ACTIVITY_MS, budget))
 		if not saw_activity:
@@ -304,6 +471,18 @@ class Settler:
 		else:
 			settling_status = "settled"
 
+		# Verification is a statement about an observation, not about dispatch.
+		# No expectation or no projection means `unavailable`: truthful, and not
+		# the same thing as "uncertain", which stays about the action's outcome.
+		if expect and projection is not None:
+			verification = (
+				VERIFICATION_CONFIRMED if expectation.satisfied else VERIFICATION_CONTRADICTED
+			)
+			evidence = build_expectation_evidence(projection, expect, version_now)
+		else:
+			verification = VERIFICATION_UNAVAILABLE
+			evidence = []
+
 		outcome = SettleOutcome(
 			changed=changed,
 			state_version=version_now,
@@ -321,6 +500,9 @@ class Settler:
 			settling_status=settling_status,
 			budget_ms=budget,
 			budget_expired=budget_expired,
+			verification=verification,
+			evidence=evidence,
+			observed=projection is not None,
 		)
 		self._record_events(outcome, journal, from_version)
 		self._record_observation(outcome)

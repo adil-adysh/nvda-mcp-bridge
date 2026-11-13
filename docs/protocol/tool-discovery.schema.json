@@ -207,6 +207,15 @@
     "schema_hash": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
+    },
+    "instance_id": {
+      "type": "string",
+      "pattern": "^$|^[0-9a-f]{32}$",
+      "description": "Bridge process identity; absent only from older bridges."
+    },
+    "started_at": {
+      "type": "string",
+      "maxLength": 64
     }
   }
 }

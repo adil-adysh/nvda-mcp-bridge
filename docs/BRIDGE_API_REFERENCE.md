@@ -23,6 +23,8 @@ reads it when `NVDA_BRIDGE_TOKEN` is unset.
   "bridge_version": "0.10.0",
   "api_level": 1,
   "supported_api_levels": [1],
+  "instance_id": "9f3c…",
+  "started_at": "2026-11-14T03:00:00+00:00",
   "schema_hash": "…",
   "types": { "ObserveResult": { "…": "envelope schema" } },
   "tools": [
@@ -55,7 +57,12 @@ content keeps the envelope metadata).
   "action": "observe",
   "duration_ms": 18.2,
   "trace_id": "at-…",
-  "bridge": { "bridge_version": "0.10.0", "api_level": 1 },
+  "bridge": {
+    "bridge_version": "0.10.0",
+    "api_level": 1,
+    "instance_id": "9f3c…",
+    "started_at": "2026-11-14T03:00:00+00:00"
+  },
   "nvda_status_snapshot": {
     "secure_screen": false,
     "modal_blocking": false,
@@ -68,6 +75,11 @@ content keeps the envelope metadata).
     "delta": { "focus": { "from": "…", "to": "…" } },
     "settled_ms": 120.0,
     "uncertain": false,
+    "observed": true,
+    "verification": "confirmed",
+    "evidence": [
+      { "source": "projection", "path": "focus.name", "value": "Save", "matched": true }
+    ],
     "scope": {
       "ref": "w",
       "title": "Notepad",
@@ -83,9 +95,16 @@ content keeps the envelope metadata).
 * `result.scope` is the top-level window that scoped the call.
 * `result.changed` is a projection diff, not a claim about the whole screen.
 * `result.uncertain` is set when the action was dispatched but the effect could
-  not be confirmed.
+  not be confirmed. It is not a synonym for missing evidence.
+* `result.observed` says a post-action projection was actually obtained.
+* `result.verification` is `confirmed`, `contradicted` or `unavailable`.
+  `confirmed` requires a matching post-action observation of the caller's
+  `expect`; successful dispatch alone is never `confirmed`.
+* `result.evidence` is a bounded list of observations (source, matched,
+  optional value/expected/observed/state_version). Sensitive paths are redacted.
 * Failures set `success: false`, omit `data`, and carry `error` with `code`,
-  `name`, `message`, `category`, `retry_policy` and optional `details`.
+  `name`, `message`, `category`, `retry_policy`, `details` and `recovery`.
+  `recovery.action` is a stable enum; its hint never orders an automatic replay.
 
 ## References and state
 
@@ -119,12 +138,65 @@ content keeps the envelope metadata).
 * A reference is a string matching `^[a-z][a-z0-9]*$`.
 * `within` on `locate`/reading tools must be one of those references. A window
   title is rejected with a validation error naming the argument.
-* A reference is valid for the `state_version` that produced it. A stale
-  reference is `4206` and includes a `recovery` hint; mutating actions are never
-  retried automatically.
+* A reference is **not** valid only for one `state_version`. Validity is
+  identity-based: it ends when the TTL expires, the object's identity changes,
+  its owning window is replaced, the Bridge instance changes, or the target is
+  no longer available. An unrelated projection change does not invalidate it.
+* A stale reference is `4206` with `details.reason_code` one of `ttl`,
+  `identity`, `window`, `bridge_instance`, `unavailable`, plus `details.ref`,
+  `details.scope` and a typed `recovery`. Mutating actions are never retried or
+  re-targeted automatically.
 * `observe` defaults to focus + dialog + top window. `ancestors`, `children`
   and `selection` are opt-in. `detail="summary"` (default) omits states;
-  `detail="full"` includes them.
+  `detail="full"` includes them. `max_bytes` bounds the serialized payload and
+  reports `truncated`, `truncated_sections` and a continuation hint.
+
+## Event journal
+
+Two journals exist: coalesced `transitions` (the default) and `raw` per-event
+history (debug only). A response identifies the generation that issued it:
+
+```json
+{
+  "journal_id": "5f0c…",
+  "from_version": 42,
+  "to_version": 48,
+  "earliest_available_version": 35,
+  "cursor": { "journal_id": "5f0c…", "version": 48 },
+  "expired": false,
+  "resync_required": false,
+  "resync_reason": null,
+  "resync_from": null,
+  "history_complete": true,
+  "truncated": false,
+  "has_more": false,
+  "cursor_status": "ok",
+  "events": []
+}
+```
+
+* `state_version` is the projected UI revision; `event_version` is the journal
+  head. They are different counters and `state_version` is never a cursor.
+* No cursor: `wait_for_events` starts at the current head and waits for future
+  events; it does not replay history.
+* Explicit catch-up: send `since` together with `journal_id`. A cursor from a
+  different generation returns `cursor_status: "journal_mismatch"`,
+  `resync_required: true`, no events, the current identity and a typed
+  `resync_from`. A bare numeric `since` remains a current-journal convenience.
+* Evicted history returns `expired: true`, `resync_required: true`,
+  `earliest_available_version` and a typed `resync_from`; the returned page is
+  explicitly marked incomplete (`history_complete: false`).
+* Paging advances `to_version`, never the head: no event is skipped while
+  `has_more` is true.
+* A journal reset (including an NVDA/Bridge restart) generates a new random
+  `journal_id` and restarts its own sequence at 0.
+
+## Bridge identity
+
+`GET /health`, `GET /tools` and every action envelope expose `instance_id` and
+`started_at`. The id is generated per Bridge process and never reused. A changed
+id means previous references, event cursors and journal assumptions belong to a
+different process; re-observe before acting.
 
 ## Tool groups
 
@@ -139,8 +211,9 @@ content keeps the envelope metadata).
 
 ### Defaults that matter
 
-* `wait_for_events(since=None)` starts at the current `state_version`; pass
-  `since=0` to read history.
+* `wait_for_events(since=None)` starts at the current event-journal head; pair
+  `since` with `journal_id` for explicit catch-up, or pass `since=0` to read
+  retained history.
 * `health_snapshot()` returns status, focus/window and errors. Add-on names and
   logs are opt-in with `include_addons` / `include_logs`.
 * `locate(detail="summary")` omits `path`, `depth`, `automation_id` and `states`.
@@ -156,8 +229,8 @@ content keeps the envelope metadata).
 | `GET` | `/tools` | Tool catalog (`?category=` filters) |
 | `POST` | `/action` | Execute one tool |
 | `GET` | `/state` | Current projection (no refs; read-only) |
-| `GET` | `/events?since=&limit=` | Event journal page |
-| `GET` | `/health` | Liveness and NVDA status |
+| `GET` | `/events?since=&limit=&timeout_ms=&journal_id=` | Event journal page |
+| `GET` | `/health` | Liveness, instance identity and NVDA status |
 
 ## Error codes
 
@@ -174,12 +247,14 @@ content keeps the envelope metadata).
 | 4204 | `ACTION_CANCELLED` | Caller cancelled |
 | 4205 | `TARGET_UNAVAILABLE` | Object cannot be acted on |
 | 4206 | `STALE_REFERENCE` | Reference expired; observe again |
-| 5001 | `NVDA_COM_TIMEOUT` | COMVoice/UIA timed out |
-| 5004 | `ACTION_TIMEOUT` | Budget expired |
-| 5303 | `INTERNAL_ERROR` | Unclassified bridge failure |
+| 5001 | `NVDA_COM_TIMEOUT` | NVDA COM/UIA call timed out |
+| 5003 | `TOOL_EXECUTION_EXCEPTION` | Handler raised or produced an invalid result |
+| 5004 | `EXECUTION_TIMEOUT` | Execution budget expired |
+| 5303 | `BRIDGE_INTERNAL_ERROR` | Unclassified bridge failure |
 
 A `4103` includes the field path and expected shape. A `4206` includes
-`details.ref`, `details.reason` and `details.recovery`.
+`details.ref`, `details.reason_code`, `details.expected_reference`,
+`details.received`, `details.scope` and a typed `recovery`.
 
 ## Safety
 

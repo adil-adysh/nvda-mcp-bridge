@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import secrets
 import threading
 import time
 import uuid
@@ -389,6 +390,9 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 		# Raw per-event history is a debugging view; the default surface is the
 		# coalesced transition, because one user action produces many events.
 		raw = (query.get("raw", ["0"])[0] or "0").lower() in ("1", "true", "yes")
+		# ``journal_id`` turns ``since`` into a typed cursor. Omitting it keeps
+		# the documented current-journal convenience for numeric callers.
+		journal_id = (query.get("journal_id", [""])[0] or "").strip() or None
 
 		payload = self.server.event_journal.wait(
 			since=since,
@@ -396,6 +400,7 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			limit=limit,
 			kinds=kinds,
 			raw=raw,
+			journal_id=journal_id,
 		)
 		self._send_json_response(payload)
 
@@ -426,10 +431,15 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			raise RuntimeError("Invalid or empty output type registry")
 
 		payload = build_tools_payload(tools, types)
-		# A single digest over the whole contract. The companion compares it
-		# across refreshes instead of diffing several hundred kilobytes of
-		# schema, and re-fetches the catalog only when it moves.
+		# The digest describes the tool contract only; identity is added after
+		# it so a Bridge restart does not look like a schema change. The
+		# companion still refreshes because `instance_id` itself changed.
 		payload["schema_hash"] = _schema_hash(payload)
+		# A caller must be able to tell a replaced Bridge from the one whose
+		# references and journal it remembers.
+		payload["instance_id"] = getattr(self.server, "instance_id", "")
+		started_at = getattr(self.server, "started_at", None)
+		payload["started_at"] = started_at.isoformat() if started_at is not None else ""
 		validate_tools_discovery_payload(payload)
 		self._send_json_response(payload)
 
@@ -878,6 +888,11 @@ class NVDAHTTPBridge:
 		self.port = port
 		self.shutdown_event = shutdown_event or threading.Event()
 		self.permission_policy = permission_policy or PermissionPolicy()
+		#: Identity of *this* Bridge process. Regenerated on every construction;
+		#: never persisted, because the point is to distinguish a replacement
+		#: from the instance whose references and journal a caller remembers.
+		self.instance_id = secrets.token_hex(16)
+		self.started_at = datetime.now(timezone.utc)
 		# Versioned UI event journal: backs /events (long-poll and history) and
 		# the MCP companion's resource-update notifications. Raw per-event history
 		# is a debugging aid (`/events?raw=1`); the default surface is coalesced
@@ -899,7 +914,9 @@ class NVDAHTTPBridge:
 		self.assembler = DiagnosticAssembler()
 		self._native_log_enabled = True
 		# References captured by `observe`. Bounded and expiring; never scanned.
-		self.refs = ReferenceTable()
+		# Bound to this Bridge instance so a process replacement cannot leave an
+		# old ref addressable.
+		self.refs = ReferenceTable(instance_id=self.instance_id)
 		self._ref_lock = threading.Lock()
 		self._ref_sequence = 0
 		if permission_policy is None:
@@ -1075,20 +1092,42 @@ class NVDAHTTPBridge:
 		return payload
 
 	def _resolve_ref(self, ref: str) -> Any:
-		"""Resolve a reference to its captured object. Main thread only."""
+		"""Resolve a reference to its captured object. Main thread only.
+
+		The submitted value must *look* like a reference before it is looked up.
+		A window title here is an argument error (4103), not a stale reference:
+		telling a caller its title "expired" would hide the actual mistake.
+		Nothing in this path searches for a replacement object.
+		"""
 		from ..nvda_bridge import actions, uia
 
 		if not isinstance(ref, str) or not ref.strip():
 			raise ValueError("'ref' must be a non-empty string")
 		cleaned = ref.strip()
+		if not cleaned[0].islower() or not cleaned.isalnum():
+			raise ValueError(
+				"'ref' must be a reference returned by observe or locate (for example 'f' or 'n3'), "
+				f"not {ref!r}; call observe and pass a ref from its refs map"
+			)
+		scope = self._scope_label()
 		# Peek first: the kind recorded at capture time chooses the identity
 		# reader, and reading identity is the step that can report staleness.
 		# Probing the object instead would raise on exactly the dead elements this
 		# check exists to report.
-		entry = self.refs.get(cleaned)
+		entry = self.refs.get(cleaned, scope=scope)
 		reader = uia.identity_of if entry.target_kind == "uia" else actions.identity_of
-		entry = self.refs.get(cleaned, identity_of=reader)
+		entry = self.refs.get(cleaned, identity_of=reader, scope=scope)
 		return entry.obj
+
+	def _scope_label(self) -> str:
+		"""A bounded, human-readable name for the current top-level window."""
+		projection = self.projector.projection or {}
+		window = projection.get("top_window")
+		if isinstance(window, dict):
+			title = str(window.get("title") or "").strip()
+			if title:
+				return title[:120]
+		return ""
 
 	def _register_ref(self, obj: Any) -> str:
 		"""Capture an arbitrary object under a fresh ref. Main thread only."""
@@ -1140,6 +1179,9 @@ class NVDAHTTPBridge:
 			return {
 				"state_version": version,
 				"revision": self.projector.revision,
+				"instance_id": self.instance_id,
+				"journal_id": self.event_journal.journal_id,
+				"event_version": self.event_journal.version,
 				"focus": projection.get("focus"),
 				"ancestors": projection.get("ancestors"),
 				"children": projection.get("children"),
@@ -1286,7 +1328,27 @@ class NVDAHTTPBridge:
 			"menu_open": bool(status.get("menu_open", False)),
 		}
 
+	def _bridge_meta(self) -> Dict[str, Any]:
+		"""Identity of this Bridge instance, attached to every response.
+
+		Read from one place so a response cannot mix the version of one
+		instance with the id of another.
+		"""
+		return {
+			"bridge_version": BRIDGE_VERSION,
+			"api_level": API_LEVEL,
+			"instance_id": self.instance_id,
+			"started_at": self.started_at.isoformat(),
+		}
+
 	def get_health_payload(self) -> Dict[str, Any]:
+		capabilities = {
+			"event_cursors": "typed",
+			"event_journal": True,
+			"structured_actions": True,
+			"action_verification": True,
+			"reference_identity": "identity",
+		}
 		return {
 			"status": "ok",
 			"protocol": PROTOCOL,
@@ -1294,6 +1356,9 @@ class NVDAHTTPBridge:
 			"bridge_version": BRIDGE_VERSION,
 			"api_level": API_LEVEL,
 			"supported_api_levels": list(SUPPORTED_API_LEVELS),
+			"instance_id": self.instance_id,
+			"started_at": self.started_at.isoformat(),
+			"capabilities": capabilities,
 			"uptime_seconds": int(max(0.0, time.monotonic() - self.started_at_monotonic)),
 			"timestamp_utc": datetime.now(timezone.utc).isoformat(),
 			"nvda_status": self.get_nvda_status(),
@@ -1414,7 +1479,7 @@ class NVDAHTTPBridge:
 						"success": False,
 						"action": action_name,
 						"duration_ms": round((time.perf_counter() - start_time) * 1000, 2),
-						"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
+						"bridge": self._bridge_meta(),
 						"nvda_status_snapshot": self.get_nvda_status_snapshot(),
 						"error": {
 							"code": 4102,
@@ -1539,7 +1604,7 @@ class NVDAHTTPBridge:
 						"success": True,
 						"action": action_name,
 						"duration_ms": round(duration_ms, 2),
-						"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
+						"bridge": self._bridge_meta(),
 						"nvda_status_snapshot": self.get_nvda_status_snapshot(),
 						"result": self._result_payload(execution_context),
 						"data": result.get("output"),
@@ -1573,7 +1638,7 @@ class NVDAHTTPBridge:
 					"success": False,
 					"action": action_name,
 					"duration_ms": round(duration_ms, 2),
-					"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
+					"bridge": self._bridge_meta(),
 					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
 					"result": {"ok": False, "state_version": self.projector.state_version},
 					"error": {
@@ -1610,7 +1675,7 @@ class NVDAHTTPBridge:
 					"success": False,
 					"action": action_name,
 					"duration_ms": round(duration_ms, 2),
-					"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
+					"bridge": self._bridge_meta(),
 					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
 					"error": {
 						"code": 5004,
@@ -1636,7 +1701,7 @@ class NVDAHTTPBridge:
 					"success": False,
 					"action": action_name,
 					"duration_ms": round(duration_ms, 2),
-					"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
+					"bridge": self._bridge_meta(),
 					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
 					"error": {
 						"code": 4103,
@@ -1663,7 +1728,7 @@ class NVDAHTTPBridge:
 					"success": False,
 					"action": action_name,
 					"duration_ms": round(duration_ms, 2),
-					"bridge": {"bridge_version": BRIDGE_VERSION, "api_level": API_LEVEL},
+					"bridge": self._bridge_meta(),
 					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
 					"error": {
 						"code": 5003,
