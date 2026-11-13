@@ -133,7 +133,8 @@ class OutputCoercionTests(unittest.TestCase):
 			_core.ToolMetadata(name="output_ok", version="1.0.0", description="test", category="test"),
 			_models.PressResult,
 			lambda: {
-				"gesture": "shift",
+				"requested": "shift",
+				"normalized_keys": "shift",
 				"repeat": 1,
 				"delay_ms": 0,
 				"sent": True,
@@ -157,7 +158,7 @@ class CoordinatorTests(unittest.TestCase):
 		def handler(input_obj, context):
 			seen["context"] = context
 			seen["keys"] = input_obj.keys
-			return {"gesture": "shift", "repeat": 1, "delay_ms": 0, "sent": True, "sent_count": 1, "dispatched": True}
+			return {"requested": "shift", "normalized_keys": "shift", "repeat": 1, "delay_ms": 0, "sent": True, "sent_count": 1, "dispatched": True}
 
 		tool = _core.TypedToolImpl.from_coordinator(
 			_core.ToolMetadata(
@@ -189,7 +190,15 @@ class CoordinatorTests(unittest.TestCase):
 
 	def test_main_thread_tool_ignores_context(self):
 		def handler(input_obj):
-			return {"gesture": input_obj.keys, "repeat": 1, "delay_ms": 0, "sent": True, "sent_count": 1, "dispatched": True}
+			return {
+				"requested": input_obj.keys,
+				"normalized_keys": input_obj.keys,
+				"repeat": 1,
+				"delay_ms": 0,
+				"sent": True,
+				"sent_count": 1,
+				"dispatched": True,
+			}
 
 		tool = _core.TypedToolImpl.from_handler(
 			_core.ToolMetadata(name="plain_tool", version="1.0.0", description="test", category="test"),
@@ -218,8 +227,8 @@ class NullHandlingTests(unittest.TestCase):
 			{
 				"scope": "running",
 				"count": 1,
-				"runningCount": 1,
-				"availableCount": 0,
+				"running_count": 1,
+				"available_count": 0,
 				"addons": [{"name": "example", "isEnabled": None, "isBlocked": None}],
 			},
 			_models.AddonMetadataList,
@@ -233,23 +242,15 @@ class NullHandlingTests(unittest.TestCase):
 		output = validate_and_map(
 			{
 				"timestamp": 1,
-				"options": {
-					"include_logs": True,
-					"log_lines": 5,
-					"include_tree": False,
-					"tree_depth": 1,
-					"tree_max_children": 5,
-					"addon_scope": "running",
-				},
 				"errors": {},
 				"ok": True,
-				"errorCount": 0,
+				"error_count": 0,
 				"logs": {"log_file": "x", "returned_lines": 0, "max_lines": 5, "lines": [], "file_size": 0, "filter_level": None},
 			},
 			_models.HealthSnapshot,
 		)
 
-		self.assertIsNone(output.logs["filter_level"])
+		self.assertIsNone(output.logs.filter_level)
 
 	def test_typed_required_field_still_rejects_null(self):
 		from nvdaMcpBridge.validation.dataclass_validator import (

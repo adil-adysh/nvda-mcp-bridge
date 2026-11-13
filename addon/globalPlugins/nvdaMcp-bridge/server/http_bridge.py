@@ -886,6 +886,12 @@ class NVDAHTTPBridge:
 		# Current observation and its two counters. The projector reads NVDA
 		# objects, so every refresh goes through the main-thread executor.
 		self.projector = StateProjector(self._project)
+		# Seed the projection once so the first action already has a scope and a
+		# state_version even when the caller did not observe first.
+		try:
+			self.projector.adopt(self._project())
+		except Exception:  # noqa: BLE001 — a cold start without focus is still usable
+			pass
 		self.recorder = EventRecorder(self.event_journal, self.projector)
 		# Diagnostic records for actions, bounded and in memory only. The store
 		# is what `get_action_trace` reads; nothing here executes an action.
@@ -1024,27 +1030,45 @@ class NVDAHTTPBridge:
 		projection, _objects = observation.capture()
 		return projection
 
-	def _observe(self, include: list[str], max_text: int) -> Dict[str, Any]:
+	def _observe(self, include: list[str], max_text: int, detail: str = "summary") -> Dict[str, Any]:
 		"""Capture an observation and register its references. Main thread only."""
 		from ..nvda_bridge import actions, observation
+		from .refs import _kind_of
 
 		wanted = {item for item in (include or ()) if item}
 		projection, objects = observation.capture(
 			max_text=max(0, int(max_text)),
 			include_children="children" in wanted,
 			include_selection="selection" in wanted,
+			include_states=detail != "summary",
 		)
 		projection, _changes, version = self.projector.adopt(projection)
 		self.refs.register(objects, version, actions.identity_of)
 
+		refs: Dict[str, str] = {}
+		if projection.get("focus"):
+			refs["f"] = "focus"
+		if "ancestors" in wanted:
+			refs.update({ref: _kind_of(ref) for ref in objects if ref.startswith("a")})
+		if "children" in wanted:
+			refs.update({ref: _kind_of(ref) for ref in objects if ref.startswith("c")})
+		if "dialog" in wanted and projection.get("dialog"):
+			refs.update({ref: _kind_of(ref) for ref in objects if ref.startswith("d") or ref == "f"})
+			if projection["dialog"].get("ref"):
+				refs[projection["dialog"]["ref"]] = "dialog"
+		window = projection.get("top_window") or {}
+		if window.get("ref"):
+			refs[window["ref"]] = "window"
+
 		payload: Dict[str, Any] = {
 			"state_version": version,
 			"revision": self.projector.revision,
+			"refs": refs,
 			"focus": projection.get("focus"),
 			"ancestors": projection.get("ancestors") if "ancestors" in wanted else [],
 			"children": projection.get("children") if "children" in wanted else [],
 			"dialog": projection.get("dialog") if "dialog" in wanted else None,
-			"window": projection.get("window"),
+			"top_window": projection.get("top_window"),
 		}
 		if "selection" in wanted:
 			payload["selection"] = projection.get("selection")
@@ -1084,22 +1108,24 @@ class NVDAHTTPBridge:
 		return ref
 
 	def _result_payload(self, context: ExecutionContext) -> Dict[str, Any]:
-		"""Build the uniform §4.1 result block for the response envelope.
+		"""Build the uniform result block for the response envelope.
 
-		The block lives beside ``data`` rather than inside it: the fields mean the
-		same thing for every tool, so putting them in each of the twenty-odd closed
-		output schemas would duplicate them and break every published schema for no
-		gain. ``data`` stays the tool's own typed payload.
-
-		``state_version`` is the version this answer is valid for, so a caller can
-		detect staleness without a second call. When a settle round ran, it is the
-		version that round observed; otherwise it is the last known projection.
+		Every result carries ``ok``, ``state_version`` and ``scope`` (the
+		top-level window). The block lives beside ``data`` rather than inside it:
+		the fields mean the same thing for every tool, so putting them in each
+		closed output schema would duplicate them everywhere.
 		"""
 		meta = context.result
 		settle = getattr(meta, "settle", None) if meta is not None else None
 		if settle is not None:
-			return settle.as_dict()
-		return {"ok": True, "state_version": self.projector.state_version}
+			payload = settle.as_dict()
+		else:
+			payload = {"ok": True, "state_version": self.projector.state_version}
+		projection = self.projector.projection or {}
+		window = projection.get("top_window")
+		if isinstance(window, dict):
+			payload["scope"] = window
+		return payload
 
 	def get_state_payload(self, timeout: float = 2.0) -> Dict[str, Any]:
 		"""Collect the current observation for the ``nvda://ui/state`` resource.
@@ -1118,7 +1144,7 @@ class NVDAHTTPBridge:
 				"ancestors": projection.get("ancestors"),
 				"children": projection.get("children"),
 				"dialog": projection.get("dialog"),
-				"window": projection.get("window"),
+				"top_window": projection.get("top_window"),
 			}
 
 		payload = self.main_thread_executor.execute(_collect, timeout=timeout)
@@ -1469,6 +1495,8 @@ class NVDAHTTPBridge:
 				register=self._register_ref,
 				observe=self._observe,
 				wait_events=self.event_journal.wait,
+				state_version=lambda: self.projector.state_version,
+				event_version=lambda: self.event_journal.version,
 				result=result_meta,
 				trace_store=self.trace_store,
 			)

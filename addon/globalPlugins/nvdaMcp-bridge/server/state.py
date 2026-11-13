@@ -72,12 +72,17 @@ def _describe_states(obj: Any) -> list[str]:
 		return []
 
 
-def describe(obj: Any, max_value: int = 200) -> dict:
-	"""Return a JSON-ready description of one object."""
+def describe(obj: Any, max_value: int = 200, include_states: bool = True) -> dict:
+	"""Return a JSON-ready description of one object.
+
+	``location`` is always the same ``{left, top, width, height}`` object, so a
+	caller never has to branch on whether it got an array or an object.
+	"""
 	location = _safe_get(obj, "location")
 	if location is not None:
 		try:
-			location = [int(part) for part in location]
+			left, top, width, height = (int(part) for part in location)
+			location = {"left": left, "top": top, "width": width, "height": height}
 		except (TypeError, ValueError):
 			location = None
 
@@ -89,7 +94,7 @@ def describe(obj: Any, max_value: int = 200) -> dict:
 		"role": _enum_name(_safe_get(obj, "role")),
 		"name": _safe_get(obj, "name"),
 		"value": value,
-		"states": _describe_states(obj),
+		"states": _describe_states(obj) if include_states else [],
 		"location": location,
 	}
 
@@ -131,8 +136,8 @@ def _window_name(observation: Optional[dict]) -> Optional[str]:
 
 
 def _window_label(observation: Optional[dict]) -> Optional[str]:
-	"""Prefer the captured foreground-window title; fall back to the ancestor chain."""
-	window = (observation or {}).get("window")
+	"""Prefer the captured top-window title; fall back to the ancestor chain."""
+	window = (observation or {}).get("top_window")
 	if isinstance(window, dict) and window.get("title"):
 		return window["title"]
 	return _window_name(observation)
@@ -158,8 +163,8 @@ def diff(before: Optional[dict], after: Optional[dict]) -> dict:
 		if old != new:
 			changes[field] = {"from": old, "to": new}
 
-	if before.get("window") or after.get("window"):
-		window_changed = before.get("window") != after.get("window")
+	if before.get("top_window") or after.get("top_window"):
+		window_changed = before.get("top_window") != after.get("top_window")
 	else:
 		window_changed = before.get("ancestors") != after.get("ancestors")
 	if window_changed:

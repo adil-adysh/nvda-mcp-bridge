@@ -127,7 +127,8 @@ def _fake_activate_window(title="", handle=0, exact=False):
 
 def _fake_send_keyboard(gesture, repeat=1, delay_ms=0, **kwargs):
 	return {
-		"gesture": gesture,
+		"requested": gesture,
+		"normalized_keys": gesture,
 		"repeat": repeat,
 		"delay_ms": delay_ms,
 		"sent": True,
@@ -197,7 +198,7 @@ def tearDownModule():
 		_package.__dict__.pop("nvda_bridge", None)
 
 
-sys.modules.setdefault("api", types.SimpleNamespace(getFocusObject=lambda: "focus-object"))
+sys.modules["api"] = types.SimpleNamespace(getFocusObject=lambda: "focus-object")
 
 handlers = importlib.import_module(f"{_PACKAGE_NAME}.tools.handlers")
 registry_module = importlib.import_module(f"{_PACKAGE_NAME}.tools.registry")
@@ -245,7 +246,7 @@ class FakeContext:
 		self.calls.append(("observe", include, max_text))
 		return {"state_version": 4, "revision": 9, "focus": {"ref": "f", "name": "field"}}
 
-	def wait_events(self, since, timeout_ms, kinds):
+	def wait_events(self, since, timeout_ms, kinds, limit=100):
 		self.calls.append(("wait_events", since, timeout_ms, kinds))
 		return self._wait_result or {"from_version": since, "to_version": since, "events": []}
 
@@ -379,7 +380,7 @@ class HandlerTests(unittest.TestCase):
 		self.assertIn(("resolve", "f"), context.calls)
 		self.assertIn(("do_action", None), ACTION_CALLS)
 		self.assertTrue(any(call[0] == "settle" and call[1] == {"focus.name": "b"} for call in context.calls))
-		self.assertEqual(result["actionName"], "Press")
+		self.assertEqual(result["action_name"], "Press")
 		self.assertEqual(result["index"], 1)
 		self.assertTrue(result["invoked"])
 		self.assertIsNotNone(context.result.settle)
@@ -389,7 +390,7 @@ class HandlerTests(unittest.TestCase):
 		result = handlers.press(keys="tab", repeat=2, delay_ms=10, expect=None, context=context)
 		self.assertTrue(result["dispatched"])
 		self.assertEqual(result["sent_count"], 2)
-		self.assertEqual(result["gesture"], "tab")
+		self.assertEqual(result["normalized_keys"], "tab")
 
 	def test_read_does_not_settle(self):
 		context = FakeContext()
@@ -560,7 +561,7 @@ class HandlerTests(unittest.TestCase):
 		context = FakeContext(projections=[{"dialog": {"name": "Save"}}, {"dialog": {"name": "Save"}}])
 		result = handlers.dismiss(expect=None, context=context)
 		self.assertFalse(result["dismissed"])
-		self.assertEqual(result["dialogName"], "Save")
+		self.assertEqual(result["dialog_name"], "Save")
 
 	def test_click_at_reports_the_hit_object(self):
 		context = FakeContext()
@@ -582,6 +583,43 @@ class HandlerTests(unittest.TestCase):
 		self.assertFalse(result["timed_out"])
 		self.assertEqual(result["to_version"], 8)
 		self.assertEqual(result["events"], [{"kind": "focus"}])
+
+
+class NewContractDefaultsTests(unittest.TestCase):
+	def test_observe_defaults_to_focus_and_dialog(self):
+		defaults = registry_module.NVDA_TOOLS_REGISTRY.get_input_schema("observe", "1.0.0").model()
+		self.assertEqual(defaults.include, ["focus", "dialog"])
+		self.assertEqual(defaults.detail, "summary")
+		self.assertLessEqual(defaults.max_text, 120)
+
+	def test_health_snapshot_defaults_to_lean(self):
+		defaults = registry_module.NVDA_TOOLS_REGISTRY.get_input_schema("health_snapshot", "1.0.0").model()
+		self.assertTrue(defaults.include_focus)
+		self.assertFalse(defaults.include_addons)
+		self.assertFalse(defaults.include_logs)
+
+	def test_wait_for_events_defaults_to_the_event_journal_head(self):
+		class EventContext(FakeContext):
+			def event_version(self):
+				return 99
+
+		context = EventContext(wait_result={"from_version": 99, "to_version": 99, "events": []})
+		handlers.wait_for_events(since=None, timeout_ms=1, kinds=None, context=context)
+		self.assertIn(("wait_events", 99, 1, None), context.calls)
+
+	def test_wait_for_events_defaults_to_the_current_state_version(self):
+		class StatefulContext(FakeContext):
+			def state_version(self):
+				return 42
+
+		context = StatefulContext(wait_result={"from_version": 42, "to_version": 42, "events": []})
+		handlers.wait_for_events(since=None, timeout_ms=1, kinds=None, context=context)
+		self.assertIn(("wait_events", 42, 1, None), context.calls)
+
+	def test_within_rejects_a_window_title(self):
+		with self.assertRaises(ValueError) as caught:
+			handlers.locate("BUTTON", None, False, "AI Assistant Settings", 10, 400, 500, FakeContext())
+		self.assertIn("reference", str(caught.exception))
 
 
 if __name__ == "__main__":

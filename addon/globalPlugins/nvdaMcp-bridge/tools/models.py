@@ -11,6 +11,10 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Optional
 
 
+#: Every reference handed out by ``observe``/``locate`` matches this shape.
+REF_PATTERN = r"^[a-z][a-z0-9]*$"
+
+
 # ============================================================================
 # INPUT MODELS
 # ============================================================================
@@ -83,14 +87,24 @@ class ListLoadedAddonsInput:
 
 @dataclass(frozen=True)
 class HealthSnapshotInput:
-	"""Collect diagnostics snapshot."""
+	"""Collect a small health summary. Detail is opt-in."""
 
-	include_logs: bool = False
-	log_lines: int = 100
-	include_tree: bool = False
-	tree_depth: int = 2
-	tree_max_children: int = 10
-	addon_scope: Literal["running", "available", "all"] = "running"
+	include_focus: bool = field(
+		default=True,
+		metadata={"description": "Include the focused control and its top-level window."},
+	)
+	include_addons: bool = field(
+		default=False,
+		metadata={"description": "Include add-on counts and the running add-on names."},
+	)
+	include_logs: bool = field(
+		default=False,
+		metadata={"description": "Include the tail of NVDA's native log."},
+	)
+	log_lines: int = field(
+		default=20,
+		metadata={"minimum": 1, "maximum": 500, "description": "Log lines when include_logs is true."},
+	)
 
 
 @dataclass(frozen=True)
@@ -147,7 +161,10 @@ class LogTimeFilter:
 
 @dataclass(frozen=True)
 class SearchLogsInput:
-	"""Search native NVDA log records with structured filters."""
+	"""Search native NVDA log records with structured filters.
+
+	Use either ``levels`` (exact set) or ``min_level`` (threshold), not both.
+	"""
 
 	levels: list[str] = field(default_factory=list)
 	min_level: Optional[str] = None
@@ -157,11 +174,11 @@ class SearchLogsInput:
 	time: LogTimeFilter = field(default_factory=LogTimeFilter)
 	threads: list[str] = field(default_factory=list)
 	trace_id: Optional[str] = None
-	limit: int = 50
+	limit: int = field(default=20, metadata={"minimum": 1, "maximum": 200})
 	cursor: Optional[str] = None
 	order: Literal["newest_first", "oldest_first"] = "newest_first"
 	include_raw: bool = False
-	max_scan_records: int = 500000
+	max_scan_records: int = field(default=500000, metadata={"minimum": 1, "maximum": 5000000})
 
 
 @dataclass(frozen=True)
@@ -219,24 +236,39 @@ class ExecutePythonInput:
 # ============================================================================
 
 #: A postcondition an action can be asked to confirm, e.g. ``{"focus.name": "Search"}``.
-Expectation = Optional[dict[str, Any]]
+#: Values are scalars or lists of scalars; arbitrary nested objects are rejected so
+#: a typo is a schema error rather than an expectation that can never match.
+ExpectationValue = str | int | float | bool | list[str]
+Expectation = Optional[dict[str, ExpectationValue]]
 
 
 @dataclass(frozen=True)
 class ObserveInput:
-	"""What to capture in one observation."""
+	"""What to capture in one observation.
+
+	The default is deliberately small: focus, dialog and the top-level window.
+	Ancestry, children and selection cost a main-thread read each and are opt-in.
+	"""
 
 	include: list[Literal["focus", "ancestors", "children", "selection", "dialog"]] = field(
-		default_factory=lambda: ["focus", "ancestors", "children", "dialog"]
+		default_factory=lambda: ["focus", "dialog"],
+		metadata={"description": "Optional sections beyond focus and the top-level window."},
 	)
-	max_text: int = 200
+	max_text: int = field(
+		default=120,
+		metadata={"minimum": 0, "maximum": 2000, "description": "Maximum characters per value."},
+	)
+	detail: Literal["summary", "full"] = field(
+		default="summary",
+		metadata={"description": "summary leaves states empty; full includes them."},
+	)
 
 
 @dataclass(frozen=True)
 class InvokeInput:
 	"""Invoke an object's default action, or a named one."""
 
-	ref: str
+	ref: str = field(metadata={"pattern": REF_PATTERN})
 	action: Optional[str] = None
 	expect: Expectation = None
 
@@ -245,7 +277,7 @@ class InvokeInput:
 class SetValueInput:
 	"""Set the value of a control."""
 
-	ref: str
+	ref: str = field(metadata={"pattern": REF_PATTERN})
 	value: str
 	expect: Expectation = None
 
@@ -254,7 +286,7 @@ class SetValueInput:
 class FocusInput:
 	"""Move focus to a referenced object."""
 
-	ref: str
+	ref: str = field(metadata={"pattern": REF_PATTERN})
 	expect: Expectation = None
 
 
@@ -270,11 +302,18 @@ class ActivateWindowInput:
 
 @dataclass(frozen=True)
 class PressInput:
-	"""Send keyboard keys."""
+	"""Send keyboard keys.
 
-	keys: str
-	repeat: int = 1
-	delay_ms: int = 0
+	``keys`` accepts NVDA gesture spelling plus the aliases agents type:
+	``ctrl``, ``win``, ``esc``, ``return``, ``pgup``, ``pgdn``, and the arrow
+	names ``up``/``down``/``left``/``right``.
+	"""
+
+	keys: str = field(
+		metadata={"minLength": 1, "description": "Gesture name, e.g. control+a or down."},
+	)
+	repeat: int = field(default=1, metadata={"minimum": 1, "maximum": 20})
+	delay_ms: int = field(default=0, metadata={"minimum": 0, "maximum": 5000})
 	expect: Expectation = None
 
 
@@ -282,9 +321,9 @@ class PressInput:
 class ReadInput:
 	"""Read text from a referenced object, or the focus."""
 
-	ref: Optional[str] = None
+	ref: Optional[str] = field(default=None, metadata={"pattern": REF_PATTERN})
 	scope: Literal["line", "selection", "document", "subtree"] = "line"
-	max_chars: int = 4000
+	max_chars: int = field(default=4000, metadata={"minimum": 0, "maximum": 100000})
 
 
 @dataclass(frozen=True)
@@ -292,7 +331,7 @@ class NavigateInput:
 	"""Move through the accessibility tree."""
 
 	direction: Literal["next", "previous", "first", "last", "parent", "child"]
-	ref: Optional[str] = None
+	ref: Optional[str] = field(default=None, metadata={"pattern": REF_PATTERN})
 	expect: Expectation = None
 
 
@@ -302,7 +341,7 @@ class ScrollInput:
 
 	direction: Literal["up", "down", "left", "right"] = "down"
 	amount: Literal["page", "line"] = "page"
-	ref: Optional[str] = None
+	ref: Optional[str] = field(default=None, metadata={"pattern": REF_PATTERN})
 	expect: Expectation = None
 
 
@@ -325,30 +364,38 @@ class ClickAtInput:
 
 @dataclass(frozen=True)
 class WaitForEventsInput:
-	"""Wait for the next coalesced transition."""
+	"""Wait for the next coalesced transition.
 
-	since: int = 0
-	timeout_ms: int = 1000
+	``since`` defaults to the bridge's current state version, so the common
+	"wait for the next change" call never replays journal history. Pass ``0``
+	explicitly to read history.
+	"""
+
+	since: Optional[int] = field(default=None, metadata={"minimum": 0})
+	timeout_ms: int = field(default=1000, metadata={"minimum": 0, "maximum": 30000})
 	kinds: Optional[list[str]] = None
+	limit: int = field(default=50, metadata={"minimum": 1, "maximum": 500})
 
 
 @dataclass(frozen=True)
 class LocateInput:
 	"""Search for controls by role and name.
 
-	``within`` narrows the search to a referenced subtree; without it the search
-	runs over the containing dialog when one is open, otherwise the application
-	window. ``max_nodes`` and ``timeout_ms`` bound the fallback walk, which is the
-	only path that can be slow.
+	``within`` must be a reference returned by ``observe``/``locate``; a window
+	title is not a reference and is rejected with a validation error.
 	"""
 
 	role: Optional[str] = None
 	name: Optional[str] = None
 	exact: bool = False
-	within: Optional[str] = None
-	limit: int = 10
-	max_nodes: int = 400
-	timeout_ms: int = 500
+	within: Optional[str] = field(default=None, metadata={"pattern": REF_PATTERN})
+	limit: int = field(default=10, metadata={"minimum": 1, "maximum": 50})
+	max_nodes: int = field(default=400, metadata={"minimum": 1, "maximum": 2000})
+	timeout_ms: int = field(default=500, metadata={"minimum": 50, "maximum": 3000})
+	detail: Literal["summary", "full"] = field(
+		default="summary",
+		metadata={"description": "summary leaves path, depth, automation id and states empty."},
+	)
 
 
 # ============================================================================
@@ -357,6 +404,45 @@ class LocateInput:
 
 
 
+
+
+@dataclass(frozen=True)
+class Location:
+	"""Screen rectangle in pixels; the same shape everywhere."""
+
+	left: int
+	top: int
+	width: int
+	height: int
+
+
+@dataclass(frozen=True)
+class WindowInfo:
+	"""The top-level window that scopes an observation or action."""
+
+	ref: str = ""
+	title: str = ""
+	handle: int = 0
+	class_name: str = ""
+
+
+@dataclass(frozen=True)
+class Node:
+	"""One accessibility node, with the reference that points at it."""
+
+	ref: str = field(metadata={"pattern": REF_PATTERN})
+	role: str
+	name: Optional[str] = None
+	value: Optional[str] = None
+	states: list[str] = field(default_factory=list)
+	location: Optional[Location] = None
+
+
+@dataclass(frozen=True)
+class DialogNode(Node):
+	"""A dialog node, with the actionable children captured for it."""
+
+	children: list[Node] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -404,7 +490,7 @@ class FocusLineage:
 	"""Focus lineage with ancestors."""
 
 	focus: dict[str, Any]
-	ancestorCount: int
+	ancestor_count: int
 	truncated: bool
 	ancestors: list[dict[str, Any]]
 
@@ -415,7 +501,7 @@ class AppModuleInfo:
 
 	source: str
 	object: dict[str, Any]
-	appModule: dict[str, Any]
+	app_module: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -424,44 +510,37 @@ class AddonMetadataList:
 
 	scope: str
 	count: int
-	runningCount: int
-	availableCount: int
+	running_count: int
+	available_count: int
 	addons: list[dict[str, Any]]
 
 
 @dataclass(frozen=True)
-class HealthSnapshot:
-	"""Health diagnostics snapshot."""
+class AddonSummary:
+	"""Lean add-on counts; names are included because a stale add-on is the common bug."""
 
-	timestamp: int
-	options: "SnapshotOptions"
-	errors: dict[str, Any]
-	ok: bool
-	errorCount: int
-	window: Optional[dict[str, Any]] = None
-	focus: Optional[dict[str, Any]] = None
-	navigator: Optional[dict[str, Any]] = None
-	appModule: Optional[dict[str, Any]] = None
-	addons: Optional[dict[str, Any]] = None
-	focusLineage: Optional[dict[str, Any]] = None
-	focusTree: Optional[dict[str, Any]] = None
-	logs: Optional[dict[str, Any]] = None
+	running_count: int
+	available_count: int
+	running: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
-class SnapshotOptions:
-	"""The options a health_snapshot call was made with, echoed back.
+class HealthSnapshot:
+	"""Health diagnostics snapshot.
 
-	Typed rather than ``dict[str, Any]`` so the published schema declares the
-	fields instead of degrading to a permissive object.
+	The default response is status, focus/window and errors. Logs and add-on
+	names are opt-in, because they were the bulk of the old payload.
 	"""
 
-	include_logs: bool
-	log_lines: int
-	include_tree: bool
-	tree_depth: int
-	tree_max_children: int
-	addon_scope: str
+	timestamp: int
+	ok: bool
+	error_count: int
+	errors: dict[str, Any] = field(default_factory=dict)
+	nvda: dict[str, Any] = field(default_factory=dict)
+	focus: Optional[Node] = None
+	top_window: Optional[WindowInfo] = None
+	addons: Optional[AddonSummary] = None
+	logs: Optional["LogEntries"] = None
 
 
 @dataclass(frozen=True)
@@ -658,24 +737,31 @@ class ReloadResult:
 class ObserveResult:
 	"""One observation of the screen.
 
-	Every entry carries a ``ref``. References are locators captured in this
-	observation, not indices: they are resolved by re-reading the object they were
-	taken from, never by scanning the tree.
+	``refs`` maps every reference in this payload to its kind (``focus``,
+	``ancestor``, ``child``, ``dialog``, ``window``). ``state_version`` is the
+	version these references are valid for; every action result repeats it.
 	"""
 
 	state_version: int
 	revision: int
-	focus: Optional[dict[str, Any]] = None
-	ancestors: list[dict[str, Any]] = field(default_factory=list)
-	children: list[dict[str, Any]] = field(default_factory=list)
-	dialog: Optional[dict[str, Any]] = None
-	window: Optional[dict[str, Any]] = None
+	refs: dict[str, str] = field(default_factory=dict)
+	focus: Optional[Node] = None
+	ancestors: list[Node] = field(default_factory=list)
+	children: list[Node] = field(default_factory=list)
+	dialog: Optional[DialogNode] = None
+	top_window: Optional[WindowInfo] = None
 	selection: Optional[str] = None
 
 
 @dataclass(frozen=True)
 class ReadResult:
-	"""Text read from a scope."""
+	"""Text read from a scope.
+
+	``source`` is ``textinfo``, ``uia``, ``tree`` (the accessibility tree was
+	used because the text interface yielded no text) or ``unavailable`` (neither
+	worked). A ``text`` of ``""`` with ``source: "unavailable"`` is an answer,
+	not a silent success.
+	"""
 
 	text: str
 	scope: str
@@ -691,27 +777,18 @@ class InvokeResult:
 	ref: str
 	invoked: bool
 	index: int
-	actionName: str
+	action_name: str
 	available: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class SetValueResult:
-	"""How a value was set, and whether the control agrees.
-
-	``mode`` is ``platform`` for a UIA ``ValuePattern`` assignment, and
-	``keyboard`` for focus + select-all + type. They are not equivalent, and a
-	caller that needs atomicity should know which one it got.
-
-	``verified`` is the read-back: the value was read from the control afterwards
-	and matched. When it did not match, ``observed`` carries what the control
-	actually contains, and the response's ``uncertain`` flag is set — a keyboard
-	write can be dispatched successfully and still not reach the field.
-	"""
+	"""How a value was set, and whether the control agrees."""
 
 	ref: str
 	mode: str
 	value: str
+	previous: str = ""
 	units: int = 0
 	verified: bool = True
 	observed: str = ""
@@ -759,9 +836,14 @@ class FocusResult:
 
 @dataclass(frozen=True)
 class PressResult:
-	"""Result of a keyboard dispatch."""
+	"""Result of a keyboard dispatch.
 
-	gesture: str
+	``requested`` is what the caller sent; ``normalized_keys`` is the NVDA
+	gesture spelling that was actually dispatched.
+	"""
+
+	requested: str
+	normalized_keys: str
 	repeat: int
 	delay_ms: int
 	sent: bool
@@ -796,16 +878,16 @@ class DismissResult:
 
 	dismissed: bool
 	steps: list[str] = field(default_factory=list)
-	dialogName: str = ""
+	dialog_name: str = ""
 
 
 @dataclass(frozen=True)
 class ClickAtResult:
 	"""Result of a raw pointer click.
 
-	``onTarget`` is read back from the pointer after the click: ``SendInput`` only
-	says the events were accepted, and a click that landed somewhere else must not
-	look successful.
+	``on_target`` is read back from the pointer after the click: ``SendInput``
+	only says the events were accepted, and a click that landed somewhere else
+	must not look successful.
 	"""
 
 	x: int
@@ -813,7 +895,7 @@ class ClickAtResult:
 	button: str
 	hit: Optional[dict[str, Any]] = None
 	cursor: list[int] = field(default_factory=list)
-	onTarget: bool = True
+	on_target: bool = True
 
 
 @dataclass(frozen=True)
@@ -851,17 +933,18 @@ class LocateMatch:
 	* ``nvda`` — an NVDA object from the bounded walk; identical to an
 	  observation reference, so every action works as usual.
 
-	``location`` is ``[left, top, width, height]`` in screen pixels, the same
-	shape an observed node uses; its centre is a legal ``click_at`` point.
+	``location`` is a ``{left, top, width, height}`` rectangle in screen pixels,
+	the same shape an observed node uses; its centre is a legal ``click_at``
+	point.
 	"""
 
-	ref: str
+	ref: str = field(metadata={"pattern": REF_PATTERN})
 	role: str
 	name: str = ""
 	value: str = ""
 	states: list[str] = field(default_factory=list)
-	location: list[int] = field(default_factory=list)
-	automationId: str = ""
+	location: Optional[Location] = None
+	automation_id: str = ""
 	depth: int = -1
 	path: list[str] = field(default_factory=list)
 	target: str = "uia"
@@ -910,9 +993,9 @@ class ListReadingTargetsInput:
 	"""
 
 	item: str = "heading"
-	limit: int = 20
-	within: Optional[str] = None
-	timeout_ms: int = 1000
+	limit: int = field(default=20, metadata={"minimum": 1, "maximum": 200})
+	within: Optional[str] = field(default=None, metadata={"pattern": REF_PATTERN})
+	timeout_ms: int = field(default=1000, metadata={"minimum": 50, "maximum": 5000})
 
 
 @dataclass(frozen=True)
@@ -986,8 +1069,8 @@ class StartBrowseModeInput:
 	read and a read-only client cannot do it.
 	"""
 
-	within: Optional[str] = None
-	expect: Optional[dict[str, Any]] = None
+	within: Optional[str] = field(default=None, metadata={"pattern": REF_PATTERN})
+	expect: Expectation = None
 
 
 @dataclass(frozen=True)
@@ -1022,10 +1105,10 @@ class NavigateReadingInput:
 
 	item: str = "heading"
 	direction: str = "next"
-	steps: int = 1
-	within: Optional[str] = None
-	timeout_ms: int = 1000
-	expect: Optional[dict[str, Any]] = None
+	steps: int = field(default=1, metadata={"minimum": 1, "maximum": 50})
+	within: Optional[str] = field(default=None, metadata={"pattern": REF_PATTERN})
+	timeout_ms: int = field(default=1000, metadata={"minimum": 50, "maximum": 5000})
+	expect: Expectation = None
 
 
 @dataclass(frozen=True)
@@ -1089,4 +1172,3 @@ class ActionTraceResult:
 	retention: Optional[dict[str, Any]] = None
 	missing_reason: str = ""
 	"""Why the record is unavailable: ``expired_or_unknown`` or ``not_stored``."""
-

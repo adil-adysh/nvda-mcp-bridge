@@ -411,6 +411,21 @@ class TestKeyboardDispatchSemantics(unittest.TestCase):
         self.assertEqual(set(result), schema_properties)
         self.assertEqual({field.name for field in dataclasses.fields(models.PressResult)}, schema_properties)
 
+class GestureAliasTests(unittest.TestCase):
+	def test_arrow_and_modifier_aliases_are_normalized(self):
+		cases = {
+			"down": "downArrow",
+			"up": "upArrow",
+			"ctrl+left": "control+leftArrow",
+			"shift+return": "shift+enter",
+		}
+		for requested, expected in cases.items():
+			with self.subTest(requested=requested):
+				result = send_keyboard(requested, main_thread_fn=lambda resolved: None)
+				self.assertEqual(result["requested"], requested)
+				self.assertEqual(result["normalized_keys"], expected)
+
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -22,7 +22,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 
 mod protocol;
 use protocol::{
-    API_LEVEL, PROTOCOL_NAME, SUPPORTED_API_LEVELS, TOKEN_HEADER,
+    API_LEVEL, PROTOCOL_NAME, TOKEN_HEADER,
     BridgeActionEnvelope, BridgeError, BridgeMeta,
     BridgeToolDef, BridgeToolsResponse,
     ErrorCode, NvdaStatusSnapshot,
@@ -30,6 +30,16 @@ use protocol::{
 };
 
 static REQUEST_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+/// Extract the tool's own `data` schema from an output type envelope.
+fn data_schema(output_schema_value: &Value) -> Option<&Value> {
+    let inner = output_schema_value
+        .as_object()
+        .and_then(|obj| obj.get("properties"))
+        .and_then(|props| props.as_object())
+        .and_then(|props| props.get("data"));
+    inner.or(Some(output_schema_value))
+}
 
 /// The one resource this companion serves: a snapshot of the NVDA UI state.
 const STATE_URI: &str = "nvda://ui/state";
@@ -327,12 +337,23 @@ impl BridgeClient {
                 def.output_schema.clone().map(Value::Object)
             };
 
-            let mcp_tool = Tool::new(
-                def.name.clone(),
-                format!("{} [category={}, version={}]", def.description, def.category, def.version),
-                def.input_schema.clone(),
-            )
-            .annotate(annotation_for_tool(&def));
+            let mcp_tool = {
+                let mut tool = Tool::new(
+                    def.name.clone(),
+                    format!("{} [category={}, version={}]", def.description, def.category, def.version),
+                    def.input_schema.clone(),
+                )
+                .annotate(annotation_for_tool(&def));
+                // Advertise the same output contract the companion validates.
+                // The bridge publishes the data model directly here; the
+                // `types` map wraps it in the success/error envelope.
+                tool.output_schema = output_schema_value
+                    .as_ref()
+                    .and_then(data_schema)
+                    .and_then(|schema| schema.as_object().cloned())
+                    .map(Arc::new);
+                tool
+            };
 
 
             info!(
@@ -668,8 +689,6 @@ impl NvdaServer {
     ///
     /// The output type schemas in `schema.json` define `{success, data: {...}, error}` envelopes,
     /// while the actual HTTP response also carries transport metadata (`request_id`, `action`,
-    /// `duration_ms`, `bridge`, `nvda_status_snapshot`).  We validate only the `data` field against
-    /// the inner schema to avoid false rejections from extra envelope fields.
     fn validate_output(runtime: &ToolRuntime, payload: &BridgeActionEnvelope) -> Result<()> {
         if !payload.success {
             return Ok(());
@@ -685,12 +704,7 @@ impl NvdaServer {
 
         // Extract the inner `data` schema from the output type envelope
         // schema: `{success, data: {...}, error}` → `{...}` (the data schema).
-        let inner_schema = output_schema_value
-            .as_object()
-            .and_then(|obj| obj.get("properties"))
-            .and_then(|props| props.as_object())
-            .and_then(|props| props.get("data"))
-            .unwrap_or(output_schema_value);
+        let inner_schema = data_schema(output_schema_value).unwrap_or(output_schema_value);
 
         if jsonschema::is_valid(inner_schema, &data_value) {
             return Ok(());
@@ -712,10 +726,11 @@ impl NvdaServer {
         );
     }
 
-    /// Build MCP content from a successful bridge response.
-    /// Includes protocol metadata (`request_id`, `action`, `duration_ms`, `bridge`,
-    /// `nvda_status_snapshot`) for downstream AI agent observability and traceability.
-    fn success_content(payload: &BridgeActionEnvelope) -> Vec<ContentBlock> {
+    /// Build the MCP result for a successful bridge response.
+    ///
+    /// The same envelope is returned as `structuredContent` and as pretty text,
+    /// so a structured-content client and a text-only client see one contract.
+    fn success_result(payload: &BridgeActionEnvelope) -> CallToolResult {
         let mut envelope = json!({
             "success": true,
         });
@@ -761,13 +776,26 @@ impl NvdaServer {
             }
         }
 
-        vec![ContentBlock::text(serde_json::to_string_pretty(&envelope).unwrap_or_default())]
+        let mut result = CallToolResult::success(vec![ContentBlock::text(
+            serde_json::to_string_pretty(&envelope).unwrap_or_default(),
+        )]);
+        // `outputSchema` describes the tool's own `data`; structuredContent is
+        // exactly that object, while the text keeps the envelope metadata.
+        result.structured_content = Some(
+            envelope
+                .get("data")
+                .cloned()
+                .unwrap_or_else(|| Value::Object(Map::new())),
+        );
+        result
     }
 
-    /// Build MCP content from a failed bridge response.
-    /// Includes protocol metadata (`request_id`, `action`, `duration_ms`, `bridge`,
-    /// `nvda_status_snapshot`) for downstream AI agent observability and traceability.
-    fn error_content(payload: &BridgeActionEnvelope) -> Vec<ContentBlock> {
+    /// Build the MCP result for a failed bridge response.
+    ///
+    /// The failure envelope is structured content too: an agent can branch on
+    /// `error.code` without parsing prose, while the first text block remains a
+    /// one-line summary.
+    fn error_result(payload: &BridgeActionEnvelope) -> CallToolResult {
         let err = payload.error.clone().unwrap_or(BridgeError {
             code: ErrorCode("BRIDGE_ERROR".into()),
             message: "Unknown bridge error".into(),
@@ -842,10 +870,12 @@ impl NvdaServer {
             }
         }
 
-        vec![
+        let mut result = CallToolResult::error(vec![
             ContentBlock::text(summary),
             ContentBlock::text(serde_json::to_string_pretty(&detail).unwrap_or_default()),
-        ]
+        ]);
+        result.structured_content = Some(detail);
+        result
     }
 }
 
@@ -1070,8 +1100,8 @@ impl ServerHandler for NvdaServer {
                         trace_id: None,
                         trace: None,
                     };
-                    return Ok(CallToolResponse::Complete(CallToolResult::error(
-                        Self::error_content(&error_envelope),
+                    return Ok(CallToolResponse::Complete(Self::error_result(
+                        &error_envelope,
                     )));
                 }
             };
@@ -1084,13 +1114,9 @@ impl ServerHandler for NvdaServer {
             }
 
             if bridge_result.success {
-                Ok(CallToolResponse::Complete(CallToolResult::success(
-                    Self::success_content(&bridge_result),
-                )))
+                Ok(CallToolResponse::Complete(Self::success_result(&bridge_result)))
             } else {
-                Ok(CallToolResponse::Complete(CallToolResult::error(
-                    Self::error_content(&bridge_result),
-                )))
+                Ok(CallToolResponse::Complete(Self::error_result(&bridge_result)))
             }
         }
     }
@@ -1833,7 +1859,7 @@ mod tests {
             protocol_version: "1.0.0".to_string(),
             bridge_version: "1.0.0".to_string(),
             api_level: API_LEVEL,
-            supported_api_levels: SUPPORTED_API_LEVELS.to_vec().into(),
+            supported_api_levels: Some(vec![API_LEVEL]),
             // Deliberately empty: the output type is not in the types map.
             types: Map::new(),
             tools: vec![BridgeToolDef {
@@ -1989,9 +2015,9 @@ mod tests {
     #[test]
     fn api_level_is_refused_when_the_bridge_cannot_serve_it() {
         let refused = validate_tools_payload(
-            PROTOCOL_NAME, "1.0.0", "1.0.0", 2, &[1, 2], 1, 1,
+            PROTOCOL_NAME, "1.0.0", "1.0.0", 3, &[2, 3], 1, 1,
         );
-        let message = refused.expect_err("a bridge serving only level 2 cannot satisfy level 3");
+        let message = refused.expect_err("a bridge serving only levels 2 and 3 cannot satisfy level 1");
         assert!(message.contains("does not support"), "{message}");
     }
 
@@ -2004,11 +2030,10 @@ mod tests {
             ..Default::default()
         };
 
-        let blocks = NvdaServer::success_content(&payload);
-        let text = match &blocks[0] {
-            ContentBlock::Text(text) => text.text.clone(),
-            _ => panic!("expected text content"),
-        };
+        let result = NvdaServer::success_result(&payload);
+        let structured = result.structured_content.expect("structured content");
+        assert_eq!(structured["sent"], true);
+        let text = first_text(&result.content);
         let envelope: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(envelope["result"]["state_version"], 7);
         assert_eq!(envelope["data"]["sent"], true);
@@ -2064,11 +2089,13 @@ mod tests {
             ..Default::default()
         };
 
-        let text = first_text(&NvdaServer::success_content(&payload));
+        let result = NvdaServer::success_result(&payload);
+        let text = first_text(&result.content);
         let envelope: Value = serde_json::from_str(&text).unwrap();
 
         assert_eq!(envelope["trace_id"], "at-abc");
         assert_eq!(envelope["trace"]["outcome"], "succeeded");
+        assert_eq!(result.structured_content.unwrap()["sent"], true);
     }
 
     #[test]
@@ -2085,11 +2112,12 @@ mod tests {
             ..Default::default()
         };
 
-        let blocks = NvdaServer::error_content(&payload);
+        let result = NvdaServer::error_result(&payload);
         // [summary, detail]
-        let detail: Value = serde_json::from_str(&first_text(&blocks[1..])).unwrap();
+        let detail: Value = serde_json::from_str(&first_text(&result.content[1..])).unwrap();
 
         assert_eq!(detail["trace_id"], "at-def");
         assert_eq!(detail["trace"]["outcome"], "failed");
+        assert_eq!(result.structured_content.unwrap()["trace_id"], "at-def");
     }
 }

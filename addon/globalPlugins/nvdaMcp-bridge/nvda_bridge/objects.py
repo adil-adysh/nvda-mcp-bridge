@@ -18,7 +18,7 @@ def _nvda_obj_role(obj: Any) -> Tuple[Optional[int], str]:
 
 	All object-info responses share the same two-field role schema:
 	  "role"     – numeric controlTypes.Role value (None if unavailable)
-	  "roleText" – human-readable string (empty string if unavailable)
+	  "role_text" – human-readable string (empty string if unavailable)
 
 	Centralising this avoids the previous inconsistency where
 	get_current_focus returned an int while move_focus and
@@ -26,7 +26,7 @@ def _nvda_obj_role(obj: Any) -> Tuple[Optional[int], str]:
 	"""
 	raw_role = getattr(obj, "role", None)
 	role_int = int(raw_role) if raw_role is not None else None
-	role_text = getattr(obj, "roleText", None) or ""
+	role_text = getattr(obj, "role_text", None) or ""
 
 	# UIA objects frequently expose no roleText at all. Fall back to the role's
 	# own display label so the field is never empty for a valid role.
@@ -97,7 +97,7 @@ def _iter_children(obj: Any, max_children: int) -> list[Any]:
 	if limit == 0:
 		return children
 
-	child_count = getattr(obj, "childCount", 0)
+	child_count = getattr(obj, "child_count", 0)
 	try:
 		child_count = int(child_count)
 	except Exception:
@@ -135,14 +135,14 @@ def _serialize_object(obj: Any, include_relations: bool = False) -> Dict[str, An
 	data: Dict[str, Any] = {
 		"name": getattr(obj, "name", None) or "",
 		"role": role_int,
-		"roleText": role_text,
+		"role_text": role_text,
 		"value": getattr(obj, "value", None) or "",
 		"description": getattr(obj, "description", None) or "",
 		"states": str(getattr(obj, "states", "")),
-		"windowClassName": getattr(obj, "windowClassName", None) or "",
-		"windowControlID": int(getattr(obj, "windowControlID", 0) or 0),
-		"childCount": int(getattr(obj, "childCount", 0) or 0),
-		"pythonClass": type(obj).__name__,
+		"window_class_name": getattr(obj, "window_class_name", None) or "",
+		"window_control_id": int(getattr(obj, "window_control_id", 0) or 0),
+		"child_count": int(getattr(obj, "child_count", 0) or 0),
+		"python_class": type(obj).__name__,
 	}
 
 	location = _extract_location(obj)
@@ -295,7 +295,7 @@ def get_focus_lineage(max_ancestors: int = 15) -> Dict[str, Any]:
 
 	return {
 		"focus": _serialize_object(focus, include_relations=True),
-		"ancestorCount": len(ancestors),
+		"ancestor_count": len(ancestors),
 		"truncated": truncated,
 		"ancestors": ancestors,
 	}
@@ -318,12 +318,12 @@ def get_navigator_object() -> Dict[str, Any]:
 	return {
 		"name": data["name"],
 		"role": data["role"],
-		"roleText": data["roleText"],
+		"role_text": data["role_text"],
 		"value": data["value"],
 		"description": data["description"],
 		"states": data["states"],
-		"windowClassName": data["windowClassName"],
-		"windowControlID": data["windowControlID"],
+		"window_class_name": data["window_class_name"],
+		"window_control_id": data["window_control_id"],
 	}
 
 
@@ -344,12 +344,12 @@ def get_desktop_object() -> Dict[str, Any]:
 	return {
 		"name": data["name"],
 		"role": data["role"],
-		"roleText": data["roleText"],
+		"role_text": data["role_text"],
 		"value": data["value"],
 		"description": data["description"],
 		"states": data["states"],
-		"windowClassName": data["windowClassName"],
-		"windowControlID": data["windowControlID"],
+		"window_class_name": data["window_class_name"],
+		"window_control_id": data["window_control_id"],
 	}
 
 
@@ -416,5 +416,5 @@ def inspect_app_module(source: str = "focus") -> Dict[str, Any]:
 	return {
 		"source": source.lower(),
 		"object": _serialize_object(obj),
-		"appModule": app_module_payload,
+		"app_module": app_module_payload,
 	}

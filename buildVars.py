@@ -29,14 +29,16 @@ Perfect for building automated accessibility solutions, AI assistants, and integ
 The add-on runs in the background on localhost:8765 and safely queues all NVDA operations to the main thread
 to prevent crashes. Use it with any tool that can make HTTP requests—no special protocol required."""),
 	# version
-	addon_version="1.0.0",
+	addon_version="0.10.0",
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version to be shown in the add-on store
-	addon_changelog=_("""Version 1.0.0:
-- Improved request validation and error handling for bridge endpoints
-- Added safer token comparison and clarified API response behavior
-- Updated tool/action wiring and documentation for current project structure
-- General cleanup for maintainability"""),
+	addon_changelog=_("""Version 0.10.0:
+- Rewrote the MCP tool contract for agents: lean defaults, bounded payloads, snake_case fields
+- observe now returns refs and top_window; every action carries state_version and scope
+- press normalizes key aliases and reports normalized_keys
+- Health, logs and locate default to summaries; detail is opt-in
+- Added outputSchema/structuredContent to the MCP companion
+- API level reset to 1 for the first public release"""),
 	# Author(s)
 	addon_author="adil shaikh <ah.shaikh97@gmail.com>",
 	# URL for the add-on documentation support

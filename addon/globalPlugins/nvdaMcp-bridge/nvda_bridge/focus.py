@@ -28,12 +28,12 @@ def get_current_focus() -> Dict[str, Any]:
 	return {
 		"name": getattr(focus, "name", None) or "",
 		"role": role_int,
-		"roleText": role_text,
+		"role_text": role_text,
 		"value": getattr(focus, "value", None) or "",
 		"description": getattr(focus, "description", None) or "",
 		"states": str(getattr(focus, "states", "")),
-		"windowClassName": getattr(focus, "windowClassName", None) or "",
-		"windowControlID": getattr(focus, "windowControlID", 0),
+		"window_class_name": getattr(focus, "window_class_name", None) or "",
+		"window_control_id": getattr(focus, "window_control_id", 0),
 	}
 
 
@@ -73,11 +73,11 @@ def move_focus(direction: str) -> Dict[str, Any]:
 		role_int, role_text = _nvda_obj_role(next_obj)
 		return {
 			"direction": "next",
-			"pendingFocus": True,
-			"newFocus": {
+			"pending_focus": True,
+			"new_focus": {
 				"name": getattr(next_obj, "name", None) or "",
 				"role": role_int,
-				"roleText": role_text,
+				"role_text": role_text,
 			},
 		}
 
@@ -92,11 +92,11 @@ def move_focus(direction: str) -> Dict[str, Any]:
 		role_int, role_text = _nvda_obj_role(prev_obj)
 		return {
 			"direction": "previous",
-			"pendingFocus": True,
-			"newFocus": {
+			"pending_focus": True,
+			"new_focus": {
 				"name": getattr(prev_obj, "name", None) or "",
 				"role": role_int,
-				"roleText": role_text,
+				"role_text": role_text,
 			},
 		}
 	else:
@@ -146,7 +146,7 @@ def get_focus_lineage(max_ancestors: int = 15) -> Dict[str, Any]:
 
 	return {
 		"focus": _serialize_object(focus, include_relations=True),
-		"ancestorCount": len(ancestors),
+		"ancestor_count": len(ancestors),
 		"truncated": truncated,
 		"ancestors": ancestors,
 	}

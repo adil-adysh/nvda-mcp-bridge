@@ -61,19 +61,20 @@ class OutputTypeRegistryTests(unittest.TestCase):
 		self.assertIn("text", read_data["properties"])
 		self.assertIn("source", read_data["properties"])
 
-	def test_health_snapshot_options_allow_expected_fields(self):
+	def test_health_snapshot_is_lean_by_default(self):
 		registry = build_output_type_registry()
 		health_data = registry["HealthSnapshot"]["properties"]["data"]
-		options = health_data["properties"]["options"]
 
-		self.assertIn("include_logs", options["properties"])
-		self.assertIn("tree_max_children", options["properties"])
+		self.assertIn("error_count", health_data["properties"])
+		self.assertIn("nvda", health_data["properties"])
+		self.assertNotIn("options", health_data["properties"])
 
 	def test_press_result_schema_exists(self):
 		registry = build_output_type_registry()
 		press_data = registry["PressResult"]["properties"]["data"]
 
-		self.assertEqual(press_data["properties"]["gesture"]["type"], "string")
+		self.assertEqual(press_data["properties"]["requested"]["type"], "string")
+		self.assertEqual(press_data["properties"]["normalized_keys"]["type"], "string")
 		self.assertEqual(press_data["properties"]["repeat"]["type"], "integer")
 		self.assertEqual(press_data["properties"]["delay_ms"]["type"], "integer")
 		self.assertEqual(press_data["properties"]["sent"]["type"], "boolean")

@@ -220,11 +220,21 @@ def read_text(obj: Any, scope: str = "line", max_chars: int = 4000) -> dict[str,
 		text = info.text or ""
 		source = "textinfo"
 	except (NotImplementedError, AttributeError, RuntimeError):
-		# A control with no text interface at all — a link, a button — is
-		# described by its name; its value is often a URL or a flag, which reads
-		# as an answer while saying nothing about what the control is.
-		text = str(_safe_get(obj, "name") or _safe_get(obj, "value") or "")
+		text = ""
 		source = "fallback"
+	# Some WebView/Chromium documents answer with only object-replacement
+	# characters (U+FFFC) even though their accessibility tree has the text. A
+	# silent "￼" is worse than no answer, so fall back to the tree and say so.
+	if not text.strip() or all(char in "\ufffc\r\n\t " for char in text):
+		tree_text = _subtree_text(obj)
+		if tree_text.strip():
+			text = tree_text
+			source = "tree"
+		else:
+			text = ""
+			source = "unavailable"
+	elif source == "fallback":
+		text = str(_safe_get(obj, "name") or _safe_get(obj, "value") or "")
 	return {
 		"text": text[:max_chars] if max_chars > 0 else text,
 		"scope": scope,
@@ -393,20 +403,27 @@ def dialog_object() -> Any:
 	return find_dialog()
 
 
-def default_dialog_button(dialog: Any) -> Any:
-	"""Return the dialog's default button, by state then by role."""
+_SAFE_DIALOG_DISMISS_LABELS = {"cancel", "no", "close", "abort", "stop"}
+
+
+def cancel_dialog_button(dialog: Any) -> Any:
+	"""Return a clearly non-affirmative dialog button, if one is available.
+
+	Never fall back to a dialog's default button: on confirmation prompts that
+	button is commonly the affirmative action (for example, Yes/Install).
+	"""
 	from .observation import dialog_children
 
-	buttons: list[Any] = []
 	for child in dialog_children(dialog, 20):
 		role = _enum_name(_safe_get(child, "role"))
 		if role not in ("BUTTON", "PUSH_BUTTON", "SPLIT_BUTTON"):
 			continue
-		buttons.append(child)
-		try:
-			states = {_enum_name(state) for state in child.states}
-		except Exception:  # noqa: BLE001
-			states = set()
-		if "DEFAULT" in states:
+		label = _safe_get(child, "name")
+		if not isinstance(label, str):
+			continue
+		# Strip the UI accelerator marker and common trailing ellipses, but
+		# require an exact label so labels such as "No to All" are not guessed.
+		normalized = label.replace("&", "").strip().casefold().rstrip(" .…")
+		if normalized in _SAFE_DIALOG_DISMISS_LABELS:
 			return child
-	return buttons[0] if buttons else None
+	return None

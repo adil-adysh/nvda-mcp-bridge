@@ -20,15 +20,39 @@ except ImportError:
 
 T = TypeVar("T")
 
+#: Dataclass field metadata that is copied verbatim into the published schema.
+_SCHEMA_METADATA_KEYS = frozenset(
+	{
+		"description",
+		"title",
+		"examples",
+		"default",
+		"minimum",
+		"maximum",
+		"exclusiveMinimum",
+		"exclusiveMaximum",
+		"multipleOf",
+		"minLength",
+		"maxLength",
+		"pattern",
+		"minItems",
+		"maxItems",
+		"uniqueItems",
+		"deprecated",
+	}
+)
+
 
 def _hint_to_json_schema(field_type: Any) -> dict[str, Any]:
 	"""Map a Python type hint to a JSON Schema Draft 7 fragment.
 
-	Handles ``str``, ``int``, ``bool``, ``float``, ``list[...]`` and
-	``Literal[...]`` (emitted as an ``enum``). Unsupported hints fall back to a
-	permissive ``object``.
+	Handles ``str``, ``int``, ``bool``, ``float``, ``list[...]``,
+	``dict[str, ...]``, ``Literal[...]`` (emitted as an ``enum``), dataclasses,
+	and non-optional ``Union``/``|`` members (emitted as ``anyOf``).
+	Unsupported hints fall back to a permissive ``object``.
 	"""
 	import typing
+	from types import UnionType
 
 	origin = typing.get_origin(field_type)
 	args = typing.get_args(field_type)
@@ -36,6 +60,11 @@ def _hint_to_json_schema(field_type: Any) -> dict[str, Any]:
 	# Any accepts anything, so emit an unconstrained schema.
 	if field_type is Any:
 		return {}
+
+	# Union[...] -> {"anyOf": [...]} after Optional has been unwrapped by the
+	# caller.
+	if origin in (typing.Union, UnionType):
+		return {"anyOf": [_hint_to_json_schema(arg) for arg in args]}
 
 	# Literal[...] -> {"type": "string", "enum": [...]}
 	if origin is Literal or str(origin) == "typing.Literal":
@@ -115,6 +144,13 @@ def dataclass_to_json_schema(model: Any, *, allow_extra_fields: bool = False) ->
 
 		field_schema = _hint_to_json_schema(field_type)
 
+		# Field metadata is the one place bounds and descriptions live; carrying
+		# it into the published schema is what makes discovery match runtime
+		# validation instead of merely resembling it.
+		for key, value in (f.metadata or {}).items():
+			if key in _SCHEMA_METADATA_KEYS:
+				field_schema[key] = value
+
 		if is_optional:
 			# Emit an unambiguous nullable schema. Using {"type": [base, "null"]}
 			# alongside an "enum" is misleading (the enum would still reject null),
@@ -137,6 +173,9 @@ def dataclass_to_json_schema(model: Any, *, allow_extra_fields: bool = False) ->
 	}
 	if required:
 		schema["required"] = required
+	description = (getattr(model, "__doc__", None) or "").strip()
+	if description:
+		schema["description"] = description.splitlines()[0]
 	return schema
 
 

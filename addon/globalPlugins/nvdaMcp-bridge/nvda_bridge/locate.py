@@ -214,8 +214,8 @@ def _walk_record(node: Any, depth: int, trail: tuple[str, ...]) -> dict:
 		"name": described["name"] or "",
 		"value": described["value"] or "",
 		"states": described["states"],
-		"location": described["location"] or [],
-		"automationId": "",
+		"location": described["location"],
+		"automation_id": "",
 		"depth": depth,
 		"path": list(trail),
 	}

@@ -14,11 +14,11 @@ from typing import Any, Dict, Optional
 
 DEFAULT_BRIDGE_TOKEN = ""
 TOKEN_HEADER = "X-NVDA-Bridge-Token"
-BRIDGE_VERSION = "1.0.0"
+BRIDGE_VERSION = "0.10.0"
 PROTOCOL = "nvda-bridge-protocol"
 PROTOCOL_VERSION = "1.0.0"
-API_LEVEL = 4
-SUPPORTED_API_LEVELS = (2, 3, 4)
+API_LEVEL = 1
+SUPPORTED_API_LEVELS = (1,)
 MAX_REQUEST_BODY_SIZE = 1048576
 MAX_REQUEST_ID_LENGTH = 128
 
@@ -88,6 +88,8 @@ class BridgeActionEnvelope:
     data: Optional[Dict[str, Any]] = field(default=None)
     error: Optional[Dict[str, Any]] = field(default=None)
     result: Optional[Dict[str, Any]] = field(default=None)
+    trace_id: Optional[str] = field(default=None)
+    trace: Optional[Dict[str, Any]] = field(default=None)
 
 @dataclass
 class BridgeToolConstraints:

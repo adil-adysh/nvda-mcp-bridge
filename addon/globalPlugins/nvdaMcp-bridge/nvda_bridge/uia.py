@@ -101,9 +101,9 @@ def identity_of(element: Any) -> dict[str, Any]:
 	not a structural field — labels legitimately change while the control lives.
 	"""
 	return {
-		"controlType": int(element.CurrentControlType),
-		"automationId": str(element.CurrentAutomationId or ""),
-		"runtimeId": [int(part) for part in (element.GetRuntimeId() or ())],
+		"control_type": int(element.CurrentControlType),
+		"automation_id": str(element.CurrentAutomationId or ""),
+		"runtime_id": [int(part) for part in (element.GetRuntimeId() or ())],
 		"name": element.CurrentName or "",
 	}
 
@@ -115,22 +115,18 @@ def _safe(reader: Any, default: Any = None) -> Any:
 		return default
 
 
-def _bounds(element: Any) -> list[int]:
-	"""Return the element's screen rectangle as ``[left, top, width, height]``.
-
-	Same shape as an NVDA object's ``location``, so a located node and an observed
-	node can be compared without a second convention.
-	"""
+def _bounds(element: Any) -> dict[str, int] | None:
+	"""Return the element's screen rectangle as a ``{left, top, width, height}`` object."""
 	rect = _safe(lambda: element.CurrentBoundingRectangle)
 	if rect is None:
-		return []
+		return None
 	try:
 		left, top, right, bottom = int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
 	except Exception:  # noqa: BLE001
-		return []
+		return None
 	if right <= left or bottom <= top:
-		return []
-	return [left, top, right - left, bottom - top]
+		return None
+	return {"left": left, "top": top, "width": right - left, "height": bottom - top}
 
 
 def _states(element: Any) -> list[str]:
@@ -183,7 +179,7 @@ def describe(element: Any, max_text: int = DEFAULT_MAX_TEXT) -> dict[str, Any]:
 		"value": _value_text(element, max_text),
 		"states": _states(element),
 		"location": _bounds(element),
-		"automationId": str(_safe(lambda: element.CurrentAutomationId, "") or "")[:max_text],
+		"automation_id": str(_safe(lambda: element.CurrentAutomationId, "") or "")[:max_text],
 	}
 
 
@@ -212,7 +208,6 @@ _ACTION_ALIASES = {
 
 def _perform(element: Any, pattern_name: str, what: str) -> None:
 	"""Run the action a pattern provides, translating a missing element."""
-	U = _uia()
 	pattern = _pattern(element, pattern_name)
 	if pattern is None:
 		raise DomainUnavailableError(

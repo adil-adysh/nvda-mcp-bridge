@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.0
+
+### Changed
+
+- Reset the unreleased contract to `api_level` 1 and the add-on version to `0.10.0`.
+- Lean, bounded defaults: `health_snapshot`, `observe`, `locate`, logs and
+  `wait_for_events` no longer return detail or history nobody asked for.
+- `observe` returns a `refs` map and `top_window`; every action result carries
+  `state_version` and `scope`.
+- `press` normalizes key aliases and reports `requested` / `normalized_keys`.
+- All JSON is snake_case; `location` is one object shape everywhere.
+- The MCP companion advertises `outputSchema` and returns `structuredContent`.
+- Removed legacy architecture/migration documents and API-4 history.
+
 
 ### ≡ƒÜÇ Features
 

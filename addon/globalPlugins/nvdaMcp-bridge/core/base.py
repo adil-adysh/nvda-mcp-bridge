@@ -85,6 +85,12 @@ class ExecutionContext:
 	wait_events: Callable[..., dict] | None = None
 	"""Block on the transition journal. Worker thread only."""
 
+	state_version: Callable[[], int] | None = None
+	"""Return the projector's current state version, for defaults such as ``since``."""
+
+	event_version: Callable[[], int] | None = None
+	"""Return the event journal's current head, used as the default event cursor."""
+
 	result: ResultMeta | None = None
 	"""Per-request result metadata; the bridge serialises it into the envelope."""
 

@@ -122,13 +122,13 @@ def _find_dialog(focus: object, ancestors: list) -> object | None:
 	return None
 
 
-def _node(obj: object, ref: str, max_text: int) -> dict:
-	described = describe(obj, max_value=max_text)
+def _node(obj: object, ref: str, max_text: int, include_states: bool = True) -> dict:
+	described = describe(obj, max_value=max_text, include_states=include_states)
 	described["ref"] = ref
 	return described
 
 
-def _window(primary: object, ancestors: list) -> dict | None:
+def _window(primary: object, ancestors: list) -> tuple[dict | None, object | None]:
 	"""Describe the top-level application window: the last non-desktop ``WINDOW``.
 
 	The *last* such window, not the nearest: a dialog is also a window, and the
@@ -141,22 +141,32 @@ def _window(primary: object, ancestors: list) -> dict | None:
 			chosen = candidate
 	if chosen is not None:
 		handle = _safe_get(chosen, "windowHandle")
-		return {
-			"title": _safe_get(chosen, "name") or "",
-			"handle": int(handle) if isinstance(handle, int) else 0,
-			"className": _safe_get(chosen, "windowClassName") or "",
-		}
+		return (
+			{
+				"ref": "w",
+				"title": _safe_get(chosen, "name") or "",
+				"handle": int(handle) if isinstance(handle, int) else 0,
+				"class_name": _safe_get(chosen, "windowClassName") or "",
+			},
+			chosen,
+		)
 	try:
 		from . import ui as nvda_ui
+		from .windows import object_for_handle
 
 		foreground = nvda_ui.get_window_title()
+		window_object = object_for_handle(foreground.get("handle", 0))
 	except Exception:  # noqa: BLE001
-		return None
-	return {
-		"title": foreground.get("title", ""),
-		"handle": foreground.get("handle", 0),
-		"className": foreground.get("className", ""),
-	}
+		return None, None
+	return (
+		{
+			"ref": "w" if window_object is not None else "",
+			"title": foreground.get("title", ""),
+			"handle": foreground.get("handle", 0),
+			"class_name": foreground.get("className", ""),
+		},
+		window_object,
+	)
 
 
 #: Container roles a dialog wraps its controls in. A dialog's immediate children
@@ -209,6 +219,7 @@ def capture(
 	max_text: int = 200,
 	include_children: bool = True,
 	include_selection: bool = False,
+	include_states: bool = True,
 ) -> tuple[dict, dict]:
 	"""Return ``(projection, objects_by_ref)`` for the current focus.
 
@@ -218,7 +229,13 @@ def capture(
 	"""
 	focus = api.getFocusObject()
 	if focus is None:
-		return {"focus": None, "ancestors": [], "children": [], "dialog": None, "window": None}, {}
+		return {
+			"focus": None,
+			"ancestors": [],
+			"children": [],
+			"dialog": None,
+			"top_window": None,
+		}, {}
 
 	# Invalidate the focus and its ancestors *before* reading anything: reads
 	# below share these objects, and NVDA's per-object cache does not notice a
@@ -236,11 +253,14 @@ def capture(
 		ancestors.append(node)
 
 	projection: dict = {
-		"focus": _node(focus, "f", max_text),
-		"ancestors": [_node(ancestor, f"a{index}", max_text) for index, ancestor in enumerate(ancestors, 1)],
+		"focus": _node(focus, "f", max_text, include_states),
+		"ancestors": [
+			_node(ancestor, f"a{index}", max_text, include_states)
+			for index, ancestor in enumerate(ancestors, 1)
+		],
 		"children": [],
 		"dialog": None,
-		"window": None,
+		"top_window": None,
 	}
 	objects["f"] = focus
 	for index, ancestor in enumerate(ancestors, 1):
@@ -250,7 +270,7 @@ def capture(
 		for index, child in enumerate(_children_of(focus, max_children), 1):
 			_invalidate(child)
 			ref = f"c{index}"
-			projection["children"].append(_node(child, ref, max_text))
+			projection["children"].append(_node(child, ref, max_text, include_states))
 			objects[ref] = child
 
 	dialog = _find_dialog(focus, ancestors)
@@ -262,17 +282,20 @@ def capture(
 		if dialog_ref is None:
 			dialog_ref = "d0"
 			objects[dialog_ref] = dialog
-		dialog_node = _node(dialog, dialog_ref, max_text)
+		dialog_node = _node(dialog, dialog_ref, max_text, include_states)
 		dialog_children_projection = []
 		for index, child in enumerate(dialog_children(dialog), 1):
 			_invalidate(child)
 			ref = f"d{index}"
-			dialog_children_projection.append(_node(child, ref, max_text))
+			dialog_children_projection.append(_node(child, ref, max_text, include_states))
 			objects[ref] = child
 		dialog_node["children"] = dialog_children_projection
 		projection["dialog"] = dialog_node
 
-	projection["window"] = _window(focus, ancestors)
+	window, window_object = _window(focus, ancestors)
+	projection["top_window"] = window
+	if window_object is not None:
+		objects["w"] = window_object
 
 	if include_selection:
 		projection["selection"] = selection_text(focus, max_text)

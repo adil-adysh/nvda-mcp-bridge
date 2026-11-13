@@ -86,7 +86,10 @@ def generate_python(defn: Dict[str, Any]) -> str:
     lines.append(f'PROTOCOL_VERSION = {json.dumps(proto["version"])}')
     lines.append(f"API_LEVEL = {proto['api_level']}")
     supported = proto.get("supported_api_levels", [proto["api_level"]])
-    lines.append(f"SUPPORTED_API_LEVELS = ({', '.join(str(level) for level in supported)})")
+    supported_literal = ", ".join(str(level) for level in supported)
+    if len(supported) == 1:
+        supported_literal += ","
+    lines.append(f"SUPPORTED_API_LEVELS = ({supported_literal})")
     lines.append(f"MAX_REQUEST_BODY_SIZE = {proto['max_request_body_size']}")
     lines.append(f"MAX_REQUEST_ID_LENGTH = {proto['max_request_id_length']}")
 
@@ -317,6 +320,7 @@ def generate_rust(defn: Dict[str, Any]) -> str:
     lines.append(f'pub const BRIDGE_VERSION: &str = {json.dumps(proto["bridge_version"])};')
     lines.append(f"pub const API_LEVEL: u32 = {proto['api_level']};")
     supported = proto.get("supported_api_levels", [proto["api_level"]])
+    lines.append("#[allow(dead_code)]")
     lines.append(f"pub const SUPPORTED_API_LEVELS: &[u32] = &[{', '.join(str(level) for level in supported)}];")
     lines.append(f'pub const TOKEN_HEADER: &str = {json.dumps(proto["token_header"])};')
     lines.append("#[allow(dead_code)]")

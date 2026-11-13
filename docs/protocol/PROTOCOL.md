@@ -1,7 +1,7 @@
 # NVDA Bridge Protocol Specification
 
 - Protocol: `nvda-bridge-protocol`
-- Version: `1.0.0`
+- Version: `1.0.0` (bridge/add-on `0.10.0`, API level `1`)
 - Status: Stable (v1 bridge release)
 
 This document standardizes communication between:
@@ -166,7 +166,7 @@ Error object:
 - `5001` `NVDA_COM_TIMEOUT`
 - `5002` `MAIN_THREAD_TIMEOUT`
 - `5003` `TOOL_EXECUTION_EXCEPTION`
-- `5004` `UNSUPPORTED_ACTION_FOR_API_LEVEL`
+- `5004` `ACTION_TIMEOUT`
 
 ### 530x Bridge / Internal
 

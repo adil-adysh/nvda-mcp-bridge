@@ -1,8 +1,8 @@
 {
   "protocol": "nvda-bridge-protocol",
   "protocol_version": "1.0.0",
-  "bridge_version": "1.0.0",
-  "api_level": 4,
+  "bridge_version": "0.10.0",
+  "api_level": 1,
   "types": {
     "ActivateWindowResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -61,7 +61,8 @@
             "activated",
             "handle",
             "title"
-          ]
+          ],
+          "description": "The window that ended up in front, and how it got there."
         },
         "error": {
           "type": "object",
@@ -122,7 +123,7 @@
                 "type": "integer"
               }
             },
-            "onTarget": {
+            "on_target": {
               "type": "boolean"
             }
           },
@@ -131,7 +132,8 @@
             "x",
             "y",
             "button"
-          ]
+          ],
+          "description": "Result of a raw pointer click."
         },
         "error": {
           "type": "object",
@@ -175,14 +177,15 @@
                 "type": "string"
               }
             },
-            "dialogName": {
+            "dialog_name": {
               "type": "string"
             }
           },
           "additionalProperties": false,
           "required": [
             "dismissed"
-          ]
+          ],
+          "description": "What dismiss tried, and whether a dialog remained."
         },
         "error": {
           "type": "object",
@@ -245,7 +248,8 @@
               ]
             }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "description": "Python execution result."
         },
         "error": {
           "type": "object",
@@ -291,7 +295,8 @@
           "required": [
             "ref",
             "requested"
-          ]
+          ],
+          "description": "Result of a focus request."
         },
         "error": {
           "type": "object",
@@ -365,7 +370,8 @@
           "required": [
             "trace_id",
             "found"
-          ]
+          ],
+          "description": "One retained action trace, or the reason it is not available."
         },
         "error": {
           "type": "object",
@@ -404,7 +410,7 @@
               "type": "object",
               "additionalProperties": {}
             },
-            "ancestorCount": {
+            "ancestor_count": {
               "type": "integer"
             },
             "truncated": {
@@ -421,10 +427,11 @@
           "additionalProperties": false,
           "required": [
             "focus",
-            "ancestorCount",
+            "ancestor_count",
             "truncated",
             "ancestors"
-          ]
+          ],
+          "description": "Focus lineage with ancestors."
         },
         "error": {
           "type": "object",
@@ -562,7 +569,8 @@
                   "additionalProperties": false,
                   "required": [
                     "name"
-                  ]
+                  ],
+                  "description": "The thread named by one native log header."
                 },
                 "message": {
                   "type": "string"
@@ -636,7 +644,8 @@
                 "line_start",
                 "line_end",
                 "parse_status"
-              ]
+              ],
+              "description": "One native log record, parsed into structured evidence."
             },
             "entries": {
               "type": "array",
@@ -737,7 +746,8 @@
                     "additionalProperties": false,
                     "required": [
                       "name"
-                    ]
+                    ],
+                    "description": "The thread named by one native log header."
                   },
                   "message": {
                     "type": "string"
@@ -811,7 +821,8 @@
                   "line_start",
                   "line_end",
                   "parse_status"
-                ]
+                ],
+                "description": "One native log record, parsed into structured evidence."
               }
             },
             "before": {
@@ -849,7 +860,8 @@
               "required": [
                 "generation",
                 "size_bytes"
-              ]
+              ],
+              "description": "Identity of the log generation a response was read from."
             },
             "diagnostics": {
               "type": "object",
@@ -883,7 +895,8 @@
                 "parse_failures",
                 "invalid_utf8_replacements",
                 "records_examined"
-              ]
+              ],
+              "description": "Completeness facts about a context window."
             }
           },
           "additionalProperties": false,
@@ -900,7 +913,8 @@
             "include_related_threads",
             "source",
             "diagnostics"
-          ]
+          ],
+          "description": "A chronological window around one log entry."
         },
         "error": {
           "type": "object",
@@ -971,7 +985,8 @@
             "max_lines",
             "lines",
             "file_size"
-          ]
+          ],
+          "description": "Log entries."
         },
         "error": {
           "type": "object",
@@ -1009,86 +1024,123 @@
             "timestamp": {
               "type": "integer"
             },
-            "options": {
-              "type": "object",
-              "properties": {
-                "include_logs": {
-                  "type": "boolean"
-                },
-                "log_lines": {
-                  "type": "integer"
-                },
-                "include_tree": {
-                  "type": "boolean"
-                },
-                "tree_depth": {
-                  "type": "integer"
-                },
-                "tree_max_children": {
-                  "type": "integer"
-                },
-                "addon_scope": {
-                  "type": "string"
-                }
-              },
-              "additionalProperties": false,
-              "required": [
-                "include_logs",
-                "log_lines",
-                "include_tree",
-                "tree_depth",
-                "tree_max_children",
-                "addon_scope"
-              ]
+            "ok": {
+              "type": "boolean"
+            },
+            "error_count": {
+              "type": "integer"
             },
             "errors": {
               "type": "object",
               "additionalProperties": {}
             },
-            "ok": {
-              "type": "boolean"
-            },
-            "errorCount": {
-              "type": "integer"
-            },
-            "window": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "additionalProperties": {}
-                },
-                {
-                  "type": "null"
-                }
-              ]
+            "nvda": {
+              "type": "object",
+              "additionalProperties": {}
             },
             "focus": {
               "anyOf": [
                 {
                   "type": "object",
-                  "additionalProperties": {}
+                  "properties": {
+                    "ref": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9]*$"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "states": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "location": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "left": {
+                              "type": "integer"
+                            },
+                            "top": {
+                              "type": "integer"
+                            },
+                            "width": {
+                              "type": "integer"
+                            },
+                            "height": {
+                              "type": "integer"
+                            }
+                          },
+                          "additionalProperties": false,
+                          "required": [
+                            "left",
+                            "top",
+                            "width",
+                            "height"
+                          ],
+                          "description": "Screen rectangle in pixels; the same shape everywhere."
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "ref",
+                    "role"
+                  ],
+                  "description": "One accessibility node, with the reference that points at it."
                 },
                 {
                   "type": "null"
                 }
               ]
             },
-            "navigator": {
+            "top_window": {
               "anyOf": [
                 {
                   "type": "object",
-                  "additionalProperties": {}
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "appModule": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "additionalProperties": {}
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "handle": {
+                      "type": "integer"
+                    },
+                    "class_name": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "The top-level window that scopes an observation or action."
                 },
                 {
                   "type": "null"
@@ -1099,29 +1151,26 @@
               "anyOf": [
                 {
                   "type": "object",
-                  "additionalProperties": {}
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "focusLineage": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "additionalProperties": {}
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "focusTree": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "additionalProperties": {}
+                  "properties": {
+                    "running_count": {
+                      "type": "integer"
+                    },
+                    "available_count": {
+                      "type": "integer"
+                    },
+                    "running": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "running_count",
+                    "available_count"
+                  ],
+                  "description": "Lean add-on counts; names are included because a stale add-on is the common bug."
                 },
                 {
                   "type": "null"
@@ -1132,7 +1181,45 @@
               "anyOf": [
                 {
                   "type": "object",
-                  "additionalProperties": {}
+                  "properties": {
+                    "log_file": {
+                      "type": "string"
+                    },
+                    "returned_lines": {
+                      "type": "integer"
+                    },
+                    "max_lines": {
+                      "type": "integer"
+                    },
+                    "lines": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "file_size": {
+                      "type": "integer"
+                    },
+                    "filter_level": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "log_file",
+                    "returned_lines",
+                    "max_lines",
+                    "lines",
+                    "file_size"
+                  ],
+                  "description": "Log entries."
                 },
                 {
                   "type": "null"
@@ -1143,11 +1230,10 @@
           "additionalProperties": false,
           "required": [
             "timestamp",
-            "options",
-            "errors",
             "ok",
-            "errorCount"
-          ]
+            "error_count"
+          ],
+          "description": "Health diagnostics snapshot."
         },
         "error": {
           "type": "object",
@@ -1189,7 +1275,7 @@
               "type": "object",
               "additionalProperties": {}
             },
-            "appModule": {
+            "app_module": {
               "type": "object",
               "additionalProperties": {}
             }
@@ -1198,8 +1284,9 @@
           "required": [
             "source",
             "object",
-            "appModule"
-          ]
+            "app_module"
+          ],
+          "description": "App module information."
         },
         "error": {
           "type": "object",
@@ -1246,7 +1333,8 @@
           "required": [
             "target",
             "object"
-          ]
+          ],
+          "description": "Rich object inspection."
         },
         "error": {
           "type": "object",
@@ -1290,7 +1378,7 @@
             "index": {
               "type": "integer"
             },
-            "actionName": {
+            "action_name": {
               "type": "string"
             },
             "available": {
@@ -1305,8 +1393,9 @@
             "ref",
             "invoked",
             "index",
-            "actionName"
-          ]
+            "action_name"
+          ],
+          "description": "Result of invoking an object action."
         },
         "error": {
           "type": "object",
@@ -1347,10 +1436,10 @@
             "count": {
               "type": "integer"
             },
-            "runningCount": {
+            "running_count": {
               "type": "integer"
             },
-            "availableCount": {
+            "available_count": {
               "type": "integer"
             },
             "addons": {
@@ -1365,10 +1454,11 @@
           "required": [
             "scope",
             "count",
-            "runningCount",
-            "availableCount",
+            "running_count",
+            "available_count",
             "addons"
-          ]
+          ],
+          "description": "List of addon metadata."
         },
         "error": {
           "type": "object",
@@ -1448,7 +1538,8 @@
                     "type": "integer"
                   }
                 },
-                "additionalProperties": false
+                "additionalProperties": false,
+                "description": "One position in a document, in reading order."
               }
             },
             "truncated": {
@@ -1467,7 +1558,8 @@
               "type": "number"
             }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "description": "A document's positions of one kind, in the order a reader meets them."
         },
         "error": {
           "type": "object",
@@ -1508,7 +1600,8 @@
                 "type": "object",
                 "properties": {
                   "ref": {
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]*$"
                   },
                   "role": {
                     "type": "string"
@@ -1526,12 +1619,38 @@
                     }
                   },
                   "location": {
-                    "type": "array",
-                    "items": {
-                      "type": "integer"
-                    }
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "left": {
+                            "type": "integer"
+                          },
+                          "top": {
+                            "type": "integer"
+                          },
+                          "width": {
+                            "type": "integer"
+                          },
+                          "height": {
+                            "type": "integer"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "left",
+                          "top",
+                          "width",
+                          "height"
+                        ],
+                        "description": "Screen rectangle in pixels; the same shape everywhere."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
-                  "automationId": {
+                  "automation_id": {
                     "type": "string"
                   },
                   "depth": {
@@ -1551,7 +1670,8 @@
                 "required": [
                   "ref",
                   "role"
-                ]
+                ],
+                "description": "One control found by ``locate``."
               }
             },
             "method": {
@@ -1570,7 +1690,8 @@
               "type": "string"
             }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "description": "The outcome of one search."
         },
         "error": {
           "type": "object",
@@ -1626,7 +1747,8 @@
           "required": [
             "direction",
             "focused"
-          ]
+          ],
+          "description": "Result of moving through the tree."
         },
         "error": {
           "type": "object",
@@ -1713,7 +1835,8 @@
               "type": "number"
             }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "description": "Where the reading position landed."
         },
         "error": {
           "type": "object",
@@ -1754,11 +1877,89 @@
             "revision": {
               "type": "integer"
             },
+            "refs": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
             "focus": {
               "anyOf": [
                 {
                   "type": "object",
-                  "additionalProperties": {}
+                  "properties": {
+                    "ref": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9]*$"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "states": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "location": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "left": {
+                              "type": "integer"
+                            },
+                            "top": {
+                              "type": "integer"
+                            },
+                            "width": {
+                              "type": "integer"
+                            },
+                            "height": {
+                              "type": "integer"
+                            }
+                          },
+                          "additionalProperties": false,
+                          "required": [
+                            "left",
+                            "top",
+                            "width",
+                            "height"
+                          ],
+                          "description": "Screen rectangle in pixels; the same shape everywhere."
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "ref",
+                    "role"
+                  ],
+                  "description": "One accessibility node, with the reference that points at it."
                 },
                 {
                   "type": "null"
@@ -1769,32 +1970,342 @@
               "type": "array",
               "items": {
                 "type": "object",
-                "additionalProperties": {}
+                "properties": {
+                  "ref": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]*$"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "states": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "location": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "left": {
+                            "type": "integer"
+                          },
+                          "top": {
+                            "type": "integer"
+                          },
+                          "width": {
+                            "type": "integer"
+                          },
+                          "height": {
+                            "type": "integer"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "left",
+                          "top",
+                          "width",
+                          "height"
+                        ],
+                        "description": "Screen rectangle in pixels; the same shape everywhere."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "ref",
+                  "role"
+                ],
+                "description": "One accessibility node, with the reference that points at it."
               }
             },
             "children": {
               "type": "array",
               "items": {
                 "type": "object",
-                "additionalProperties": {}
+                "properties": {
+                  "ref": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]*$"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "states": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "location": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "left": {
+                            "type": "integer"
+                          },
+                          "top": {
+                            "type": "integer"
+                          },
+                          "width": {
+                            "type": "integer"
+                          },
+                          "height": {
+                            "type": "integer"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "left",
+                          "top",
+                          "width",
+                          "height"
+                        ],
+                        "description": "Screen rectangle in pixels; the same shape everywhere."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "ref",
+                  "role"
+                ],
+                "description": "One accessibility node, with the reference that points at it."
               }
             },
             "dialog": {
               "anyOf": [
                 {
                   "type": "object",
-                  "additionalProperties": {}
+                  "properties": {
+                    "ref": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9]*$"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "states": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "location": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "left": {
+                              "type": "integer"
+                            },
+                            "top": {
+                              "type": "integer"
+                            },
+                            "width": {
+                              "type": "integer"
+                            },
+                            "height": {
+                              "type": "integer"
+                            }
+                          },
+                          "additionalProperties": false,
+                          "required": [
+                            "left",
+                            "top",
+                            "width",
+                            "height"
+                          ],
+                          "description": "Screen rectangle in pixels; the same shape everywhere."
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "children": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "ref": {
+                            "type": "string",
+                            "pattern": "^[a-z][a-z0-9]*$"
+                          },
+                          "role": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "value": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "states": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "location": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "left": {
+                                    "type": "integer"
+                                  },
+                                  "top": {
+                                    "type": "integer"
+                                  },
+                                  "width": {
+                                    "type": "integer"
+                                  },
+                                  "height": {
+                                    "type": "integer"
+                                  }
+                                },
+                                "additionalProperties": false,
+                                "required": [
+                                  "left",
+                                  "top",
+                                  "width",
+                                  "height"
+                                ],
+                                "description": "Screen rectangle in pixels; the same shape everywhere."
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "ref",
+                          "role"
+                        ],
+                        "description": "One accessibility node, with the reference that points at it."
+                      }
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "ref",
+                    "role"
+                  ],
+                  "description": "A dialog node, with the actionable children captured for it."
                 },
                 {
                   "type": "null"
                 }
               ]
             },
-            "window": {
+            "top_window": {
               "anyOf": [
                 {
                   "type": "object",
-                  "additionalProperties": {}
+                  "properties": {
+                    "ref": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "handle": {
+                      "type": "integer"
+                    },
+                    "class_name": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "The top-level window that scopes an observation or action."
                 },
                 {
                   "type": "null"
@@ -1816,7 +2327,8 @@
           "required": [
             "state_version",
             "revision"
-          ]
+          ],
+          "description": "One observation of the screen."
         },
         "error": {
           "type": "object",
@@ -1851,7 +2363,10 @@
           "$schema": "http://json-schema.org/draft-07/schema#",
           "type": "object",
           "properties": {
-            "gesture": {
+            "requested": {
+              "type": "string"
+            },
+            "normalized_keys": {
               "type": "string"
             },
             "repeat": {
@@ -1878,13 +2393,15 @@
           },
           "additionalProperties": false,
           "required": [
-            "gesture",
+            "requested",
+            "normalized_keys",
             "repeat",
             "delay_ms",
             "sent",
             "sent_count",
             "dispatched"
-          ]
+          ],
+          "description": "Result of a keyboard dispatch."
         },
         "error": {
           "type": "object",
@@ -1947,7 +2464,8 @@
             "text",
             "scope",
             "source"
-          ]
+          ],
+          "description": "Text read from a scope."
         },
         "error": {
           "type": "object",
@@ -1992,7 +2510,8 @@
           "additionalProperties": false,
           "required": [
             "status"
-          ]
+          ],
+          "description": "Result of reloading global plugins and app modules."
         },
         "error": {
           "type": "object",
@@ -2034,7 +2553,8 @@
           "additionalProperties": false,
           "required": [
             "status"
-          ]
+          ],
+          "description": "NVDA restart result."
         },
         "error": {
           "type": "object",
@@ -2088,7 +2608,8 @@
             "amount",
             "method",
             "key"
-          ]
+          ],
+          "description": "How a scroll was performed."
         },
         "error": {
           "type": "object",
@@ -2225,7 +2746,8 @@
                     "additionalProperties": false,
                     "required": [
                       "name"
-                    ]
+                    ],
+                    "description": "The thread named by one native log header."
                   },
                   "message": {
                     "type": "string"
@@ -2299,7 +2821,8 @@
                   "line_start",
                   "line_end",
                   "parse_status"
-                ]
+                ],
+                "description": "One native log record, parsed into structured evidence."
               }
             },
             "page": {
@@ -2334,7 +2857,8 @@
                 "has_more",
                 "limit",
                 "order"
-              ]
+              ],
+              "description": "One stable page of search results."
             },
             "source": {
               "type": "object",
@@ -2353,7 +2877,8 @@
               "required": [
                 "generation",
                 "size_bytes"
-              ]
+              ],
+              "description": "Identity of the log generation a response was read from."
             },
             "diagnostics": {
               "type": "object",
@@ -2399,7 +2924,8 @@
                 "invalid_utf8_replacements",
                 "records_examined",
                 "matched_records"
-              ]
+              ],
+              "description": "Completeness and precision facts about one search."
             }
           },
           "additionalProperties": false,
@@ -2409,7 +2935,8 @@
             "page",
             "source",
             "diagnostics"
-          ]
+          ],
+          "description": "Structured native log search response."
         },
         "error": {
           "type": "object",
@@ -2453,6 +2980,9 @@
             "value": {
               "type": "string"
             },
+            "previous": {
+              "type": "string"
+            },
             "units": {
               "type": "integer"
             },
@@ -2471,7 +3001,8 @@
             "ref",
             "mode",
             "value"
-          ]
+          ],
+          "description": "How a value was set, and whether the control agrees."
         },
         "error": {
           "type": "object",
@@ -2516,7 +3047,8 @@
           "additionalProperties": false,
           "required": [
             "message"
-          ]
+          ],
+          "description": "Message display result."
         },
         "error": {
           "type": "object",
@@ -2561,7 +3093,8 @@
           "additionalProperties": false,
           "required": [
             "spoken"
-          ]
+          ],
+          "description": "Speech action result."
         },
         "error": {
           "type": "object",
@@ -2615,7 +3148,8 @@
               "type": "number"
             }
           },
-          "additionalProperties": false
+          "additionalProperties": false,
+          "description": "The document that is now readable, and whether this call created it."
         },
         "error": {
           "type": "object",
@@ -2719,7 +3253,8 @@
                 "generation",
                 "size_bytes",
                 "scan_ms"
-              ]
+              ],
+              "description": "What a summary examined and what it could not claim."
             }
           },
           "additionalProperties": false,
@@ -2727,7 +3262,8 @@
             "schema_version",
             "summary",
             "coverage"
-          ]
+          ],
+          "description": "Deterministic summary of native log evidence."
         },
         "error": {
           "type": "object",
@@ -2789,7 +3325,8 @@
           "required": [
             "from_version",
             "to_version"
-          ]
+          ],
+          "description": "Coalesced transitions observed while waiting."
         },
         "error": {
           "type": "object",
@@ -2844,7 +3381,8 @@
             "max_depth",
             "max_children",
             "tree"
-          ]
+          ],
+          "description": "Object tree snapshot."
         },
         "error": {
           "type": "object",
@@ -2892,7 +3430,28 @@
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
               },
               {
                 "type": "null"
@@ -2900,7 +3459,8 @@
             ]
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Bring a top-level window to the foreground."
       },
       "outputType": "ActivateWindowResult",
       "outputSchema": {
@@ -2953,7 +3513,8 @@
           "activated",
           "handle",
           "title"
-        ]
+        ],
+        "description": "The window that ended up in front, and how it got there."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -3000,7 +3561,28 @@
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
               },
               {
                 "type": "null"
@@ -3012,7 +3594,8 @@
         "required": [
           "x",
           "y"
-        ]
+        ],
+        "description": "Click absolute screen coordinates."
       },
       "outputType": "ClickAtResult",
       "outputSchema": {
@@ -3045,7 +3628,7 @@
               "type": "integer"
             }
           },
-          "onTarget": {
+          "on_target": {
             "type": "boolean"
           }
         },
@@ -3054,7 +3637,8 @@
           "x",
           "y",
           "button"
-        ]
+        ],
+        "description": "Result of a raw pointer click."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -3077,7 +3661,7 @@
     {
       "name": "dismiss",
       "version": "1.0.0",
-      "description": "Leave a dialog: Escape first, then its default button. Allowed in modal and menu states so an agent can get out of a dialog it entered.",
+      "description": "Leave a dialog: Escape first, then an explicit Cancel, No, Close, Abort, or Stop button. Never activates a dialog's default button. Allowed in modal and menu states so an agent can get out of a dialog it entered.",
       "category": "action",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -3087,7 +3671,28 @@
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
               },
               {
                 "type": "null"
@@ -3095,7 +3700,8 @@
             ]
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Dismiss the current dialog."
       },
       "outputType": "DismissResult",
       "outputSchema": {
@@ -3111,14 +3717,15 @@
               "type": "string"
             }
           },
-          "dialogName": {
+          "dialog_name": {
             "type": "string"
           }
         },
         "additionalProperties": false,
         "required": [
           "dismissed"
-        ]
+        ],
+        "description": "What dismiss tried, and whether a dialog remained."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -3170,7 +3777,8 @@
         "additionalProperties": false,
         "required": [
           "code"
-        ]
+        ],
+        "description": "Execute Python code in NVDA."
       },
       "outputType": "PythonExecutionResult",
       "outputSchema": {
@@ -3205,7 +3813,8 @@
             ]
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Python execution result."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -3235,13 +3844,35 @@
         "type": "object",
         "properties": {
           "ref": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*$"
           },
           "expect": {
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
               },
               {
                 "type": "null"
@@ -3252,7 +3883,8 @@
         "additionalProperties": false,
         "required": [
           "ref"
-        ]
+        ],
+        "description": "Move focus to a referenced object."
       },
       "outputType": "FocusResult",
       "outputSchema": {
@@ -3270,7 +3902,8 @@
         "required": [
           "ref",
           "requested"
-        ]
+        ],
+        "description": "Result of a focus request."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -3306,7 +3939,8 @@
         "additionalProperties": false,
         "required": [
           "trace_id"
-        ]
+        ],
+        "description": "Identify one action trace to read back."
       },
       "outputType": "ActionTraceResult",
       "outputSchema": {
@@ -3352,7 +3986,8 @@
         "required": [
           "trace_id",
           "found"
-        ]
+        ],
+        "description": "One retained action trace, or the reason it is not available."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -3385,7 +4020,8 @@
             "type": "integer"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Get focus lineage with ancestors."
       },
       "outputType": "FocusLineage",
       "outputSchema": {
@@ -3396,7 +4032,7 @@
             "type": "object",
             "additionalProperties": {}
           },
-          "ancestorCount": {
+          "ancestor_count": {
             "type": "integer"
           },
           "truncated": {
@@ -3413,10 +4049,11 @@
         "additionalProperties": false,
         "required": [
           "focus",
-          "ancestorCount",
+          "ancestor_count",
           "truncated",
           "ancestors"
-        ]
+        ],
+        "description": "Focus lineage with ancestors."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -3484,7 +4121,8 @@
         "additionalProperties": false,
         "required": [
           "entry_id"
-        ]
+        ],
+        "description": "Return surrounding evidence for one previously found log entry."
       },
       "outputType": "LogContextResult",
       "outputSchema": {
@@ -3594,7 +4232,8 @@
                 "additionalProperties": false,
                 "required": [
                   "name"
-                ]
+                ],
+                "description": "The thread named by one native log header."
               },
               "message": {
                 "type": "string"
@@ -3668,7 +4307,8 @@
               "line_start",
               "line_end",
               "parse_status"
-            ]
+            ],
+            "description": "One native log record, parsed into structured evidence."
           },
           "entries": {
             "type": "array",
@@ -3769,7 +4409,8 @@
                   "additionalProperties": false,
                   "required": [
                     "name"
-                  ]
+                  ],
+                  "description": "The thread named by one native log header."
                 },
                 "message": {
                   "type": "string"
@@ -3843,7 +4484,8 @@
                 "line_start",
                 "line_end",
                 "parse_status"
-              ]
+              ],
+              "description": "One native log record, parsed into structured evidence."
             }
           },
           "before": {
@@ -3881,7 +4523,8 @@
             "required": [
               "generation",
               "size_bytes"
-            ]
+            ],
+            "description": "Identity of the log generation a response was read from."
           },
           "diagnostics": {
             "type": "object",
@@ -3915,7 +4558,8 @@
               "parse_failures",
               "invalid_utf8_replacements",
               "records_examined"
-            ]
+            ],
+            "description": "Completeness facts about a context window."
           }
         },
         "additionalProperties": false,
@@ -3932,7 +4576,8 @@
           "include_related_threads",
           "source",
           "diagnostics"
-        ]
+        ],
+        "description": "A chronological window around one log entry."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -3985,7 +4630,8 @@
             "type": "boolean"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Get NVDA logs."
       },
       "outputType": "LogEntries",
       "outputSchema": {
@@ -4028,7 +4674,8 @@
           "max_lines",
           "lines",
           "file_size"
-        ]
+        ],
+        "description": "Log entries."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -4057,31 +4704,27 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
         "properties": {
+          "include_focus": {
+            "type": "boolean",
+            "description": "Include the focused control and its top-level window."
+          },
+          "include_addons": {
+            "type": "boolean",
+            "description": "Include add-on counts and the running add-on names."
+          },
           "include_logs": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Include the tail of NVDA's native log."
           },
           "log_lines": {
-            "type": "integer"
-          },
-          "include_tree": {
-            "type": "boolean"
-          },
-          "tree_depth": {
-            "type": "integer"
-          },
-          "tree_max_children": {
-            "type": "integer"
-          },
-          "addon_scope": {
-            "type": "string",
-            "enum": [
-              "running",
-              "available",
-              "all"
-            ]
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "description": "Log lines when include_logs is true."
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Collect a small health summary. Detail is opt-in."
       },
       "outputType": "HealthSnapshot",
       "outputSchema": {
@@ -4091,86 +4734,123 @@
           "timestamp": {
             "type": "integer"
           },
-          "options": {
-            "type": "object",
-            "properties": {
-              "include_logs": {
-                "type": "boolean"
-              },
-              "log_lines": {
-                "type": "integer"
-              },
-              "include_tree": {
-                "type": "boolean"
-              },
-              "tree_depth": {
-                "type": "integer"
-              },
-              "tree_max_children": {
-                "type": "integer"
-              },
-              "addon_scope": {
-                "type": "string"
-              }
-            },
-            "additionalProperties": false,
-            "required": [
-              "include_logs",
-              "log_lines",
-              "include_tree",
-              "tree_depth",
-              "tree_max_children",
-              "addon_scope"
-            ]
+          "ok": {
+            "type": "boolean"
+          },
+          "error_count": {
+            "type": "integer"
           },
           "errors": {
             "type": "object",
             "additionalProperties": {}
           },
-          "ok": {
-            "type": "boolean"
-          },
-          "errorCount": {
-            "type": "integer"
-          },
-          "window": {
-            "anyOf": [
-              {
-                "type": "object",
-                "additionalProperties": {}
-              },
-              {
-                "type": "null"
-              }
-            ]
+          "nvda": {
+            "type": "object",
+            "additionalProperties": {}
           },
           "focus": {
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "properties": {
+                  "ref": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]*$"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "states": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "location": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "left": {
+                            "type": "integer"
+                          },
+                          "top": {
+                            "type": "integer"
+                          },
+                          "width": {
+                            "type": "integer"
+                          },
+                          "height": {
+                            "type": "integer"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "left",
+                          "top",
+                          "width",
+                          "height"
+                        ],
+                        "description": "Screen rectangle in pixels; the same shape everywhere."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "ref",
+                  "role"
+                ],
+                "description": "One accessibility node, with the reference that points at it."
               },
               {
                 "type": "null"
               }
             ]
           },
-          "navigator": {
+          "top_window": {
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "appModule": {
-            "anyOf": [
-              {
-                "type": "object",
-                "additionalProperties": {}
+                "properties": {
+                  "ref": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "handle": {
+                    "type": "integer"
+                  },
+                  "class_name": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false,
+                "description": "The top-level window that scopes an observation or action."
               },
               {
                 "type": "null"
@@ -4181,29 +4861,26 @@
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "focusLineage": {
-            "anyOf": [
-              {
-                "type": "object",
-                "additionalProperties": {}
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "focusTree": {
-            "anyOf": [
-              {
-                "type": "object",
-                "additionalProperties": {}
+                "properties": {
+                  "running_count": {
+                    "type": "integer"
+                  },
+                  "available_count": {
+                    "type": "integer"
+                  },
+                  "running": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "running_count",
+                  "available_count"
+                ],
+                "description": "Lean add-on counts; names are included because a stale add-on is the common bug."
               },
               {
                 "type": "null"
@@ -4214,7 +4891,45 @@
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "properties": {
+                  "log_file": {
+                    "type": "string"
+                  },
+                  "returned_lines": {
+                    "type": "integer"
+                  },
+                  "max_lines": {
+                    "type": "integer"
+                  },
+                  "lines": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "file_size": {
+                    "type": "integer"
+                  },
+                  "filter_level": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "log_file",
+                  "returned_lines",
+                  "max_lines",
+                  "lines",
+                  "file_size"
+                ],
+                "description": "Log entries."
               },
               {
                 "type": "null"
@@ -4225,11 +4940,10 @@
         "additionalProperties": false,
         "required": [
           "timestamp",
-          "options",
-          "errors",
           "ok",
-          "errorCount"
-        ]
+          "error_count"
+        ],
+        "description": "Health diagnostics snapshot."
       },
       "constraints": {
         "blocked_on_secure_screen": false,
@@ -4267,7 +4981,8 @@
             ]
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Inspect app module metadata."
       },
       "outputType": "AppModuleInfo",
       "outputSchema": {
@@ -4281,7 +4996,7 @@
             "type": "object",
             "additionalProperties": {}
           },
-          "appModule": {
+          "app_module": {
             "type": "object",
             "additionalProperties": {}
           }
@@ -4290,8 +5005,9 @@
         "required": [
           "source",
           "object",
-          "appModule"
-        ]
+          "app_module"
+        ],
+        "description": "App module information."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -4332,7 +5048,8 @@
             "type": "boolean"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Inspect object with rich metadata."
       },
       "outputType": "ObjectInspection",
       "outputSchema": {
@@ -4351,7 +5068,8 @@
         "required": [
           "target",
           "object"
-        ]
+        ],
+        "description": "Rich object inspection."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -4381,7 +5099,8 @@
         "type": "object",
         "properties": {
           "ref": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*$"
           },
           "action": {
             "anyOf": [
@@ -4397,7 +5116,28 @@
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
               },
               {
                 "type": "null"
@@ -4408,7 +5148,8 @@
         "additionalProperties": false,
         "required": [
           "ref"
-        ]
+        ],
+        "description": "Invoke an object's default action, or a named one."
       },
       "outputType": "InvokeResult",
       "outputSchema": {
@@ -4424,7 +5165,7 @@
           "index": {
             "type": "integer"
           },
-          "actionName": {
+          "action_name": {
             "type": "string"
           },
           "available": {
@@ -4439,8 +5180,9 @@
           "ref",
           "invoked",
           "index",
-          "actionName"
-        ]
+          "action_name"
+        ],
+        "description": "Result of invoking an object action."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -4478,7 +5220,8 @@
             ]
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "List loaded addons."
       },
       "outputType": "AddonMetadataList",
       "outputSchema": {
@@ -4491,10 +5234,10 @@
           "count": {
             "type": "integer"
           },
-          "runningCount": {
+          "running_count": {
             "type": "integer"
           },
-          "availableCount": {
+          "available_count": {
             "type": "integer"
           },
           "addons": {
@@ -4509,10 +5252,11 @@
         "required": [
           "scope",
           "count",
-          "runningCount",
-          "availableCount",
+          "running_count",
+          "available_count",
           "addons"
-        ]
+        ],
+        "description": "List of addon metadata."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -4545,12 +5289,15 @@
             "type": "string"
           },
           "limit": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
           },
           "within": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*$"
               },
               {
                 "type": "null"
@@ -4558,10 +5305,13 @@
             ]
           },
           "timeout_ms": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 5000
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Enumerate a document's positions of one kind, without moving the cursor."
       },
       "outputType": "ListReadingTargetsResult",
       "outputSchema": {
@@ -4613,7 +5363,8 @@
                   "type": "integer"
                 }
               },
-              "additionalProperties": false
+              "additionalProperties": false,
+              "description": "One position in a document, in reading order."
             }
           },
           "truncated": {
@@ -4632,7 +5383,8 @@
             "type": "number"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A document's positions of one kind, in the order a reader meets them."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -4687,7 +5439,8 @@
           "within": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*$"
               },
               {
                 "type": "null"
@@ -4695,16 +5448,31 @@
             ]
           },
           "limit": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
           },
           "max_nodes": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2000
           },
           "timeout_ms": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 3000
+          },
+          "detail": {
+            "type": "string",
+            "enum": [
+              "summary",
+              "full"
+            ],
+            "description": "summary leaves path, depth, automation id and states empty."
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Search for controls by role and name."
       },
       "outputType": "LocateResult",
       "outputSchema": {
@@ -4717,7 +5485,8 @@
               "type": "object",
               "properties": {
                 "ref": {
-                  "type": "string"
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*$"
                 },
                 "role": {
                   "type": "string"
@@ -4735,12 +5504,38 @@
                   }
                 },
                 "location": {
-                  "type": "array",
-                  "items": {
-                    "type": "integer"
-                  }
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "left": {
+                          "type": "integer"
+                        },
+                        "top": {
+                          "type": "integer"
+                        },
+                        "width": {
+                          "type": "integer"
+                        },
+                        "height": {
+                          "type": "integer"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "left",
+                        "top",
+                        "width",
+                        "height"
+                      ],
+                      "description": "Screen rectangle in pixels; the same shape everywhere."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 },
-                "automationId": {
+                "automation_id": {
                   "type": "string"
                 },
                 "depth": {
@@ -4760,7 +5555,8 @@
               "required": [
                 "ref",
                 "role"
-              ]
+              ],
+              "description": "One control found by ``locate``."
             }
           },
           "method": {
@@ -4779,7 +5575,8 @@
             "type": "string"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "The outcome of one search."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -4822,7 +5619,8 @@
           "ref": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*$"
               },
               {
                 "type": "null"
@@ -4833,7 +5631,28 @@
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
               },
               {
                 "type": "null"
@@ -4844,7 +5663,8 @@
         "additionalProperties": false,
         "required": [
           "direction"
-        ]
+        ],
+        "description": "Move through the accessibility tree."
       },
       "outputType": "NavigateResult",
       "outputSchema": {
@@ -4872,7 +5692,8 @@
         "required": [
           "direction",
           "focused"
-        ]
+        ],
+        "description": "Result of moving through the tree."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -4908,12 +5729,15 @@
             "type": "string"
           },
           "steps": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
           },
           "within": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*$"
               },
               {
                 "type": "null"
@@ -4921,13 +5745,36 @@
             ]
           },
           "timeout_ms": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 5000
           },
           "expect": {
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
               },
               {
                 "type": "null"
@@ -4935,7 +5782,8 @@
             ]
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Move the document's reading position."
       },
       "outputType": "NavigateReadingResult",
       "outputSchema": {
@@ -4994,7 +5842,8 @@
             "type": "number"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Where the reading position landed."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -5034,13 +5883,26 @@
                 "selection",
                 "dialog"
               ]
-            }
+            },
+            "description": "Optional sections beyond focus and the top-level window."
           },
           "max_text": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2000,
+            "description": "Maximum characters per value."
+          },
+          "detail": {
+            "type": "string",
+            "enum": [
+              "summary",
+              "full"
+            ],
+            "description": "summary leaves states empty; full includes them."
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "What to capture in one observation."
       },
       "outputType": "ObserveResult",
       "outputSchema": {
@@ -5053,11 +5915,89 @@
           "revision": {
             "type": "integer"
           },
+          "refs": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
           "focus": {
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "properties": {
+                  "ref": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]*$"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "states": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "location": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "left": {
+                            "type": "integer"
+                          },
+                          "top": {
+                            "type": "integer"
+                          },
+                          "width": {
+                            "type": "integer"
+                          },
+                          "height": {
+                            "type": "integer"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "left",
+                          "top",
+                          "width",
+                          "height"
+                        ],
+                        "description": "Screen rectangle in pixels; the same shape everywhere."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "ref",
+                  "role"
+                ],
+                "description": "One accessibility node, with the reference that points at it."
               },
               {
                 "type": "null"
@@ -5068,32 +6008,342 @@
             "type": "array",
             "items": {
               "type": "object",
-              "additionalProperties": {}
+              "properties": {
+                "ref": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*$"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "states": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "location": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "left": {
+                          "type": "integer"
+                        },
+                        "top": {
+                          "type": "integer"
+                        },
+                        "width": {
+                          "type": "integer"
+                        },
+                        "height": {
+                          "type": "integer"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "left",
+                        "top",
+                        "width",
+                        "height"
+                      ],
+                      "description": "Screen rectangle in pixels; the same shape everywhere."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "ref",
+                "role"
+              ],
+              "description": "One accessibility node, with the reference that points at it."
             }
           },
           "children": {
             "type": "array",
             "items": {
               "type": "object",
-              "additionalProperties": {}
+              "properties": {
+                "ref": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*$"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "states": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "location": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "left": {
+                          "type": "integer"
+                        },
+                        "top": {
+                          "type": "integer"
+                        },
+                        "width": {
+                          "type": "integer"
+                        },
+                        "height": {
+                          "type": "integer"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "left",
+                        "top",
+                        "width",
+                        "height"
+                      ],
+                      "description": "Screen rectangle in pixels; the same shape everywhere."
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "ref",
+                "role"
+              ],
+              "description": "One accessibility node, with the reference that points at it."
             }
           },
           "dialog": {
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "properties": {
+                  "ref": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9]*$"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "states": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "location": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "left": {
+                            "type": "integer"
+                          },
+                          "top": {
+                            "type": "integer"
+                          },
+                          "width": {
+                            "type": "integer"
+                          },
+                          "height": {
+                            "type": "integer"
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "left",
+                          "top",
+                          "width",
+                          "height"
+                        ],
+                        "description": "Screen rectangle in pixels; the same shape everywhere."
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "children": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "ref": {
+                          "type": "string",
+                          "pattern": "^[a-z][a-z0-9]*$"
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "value": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "states": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "location": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "left": {
+                                  "type": "integer"
+                                },
+                                "top": {
+                                  "type": "integer"
+                                },
+                                "width": {
+                                  "type": "integer"
+                                },
+                                "height": {
+                                  "type": "integer"
+                                }
+                              },
+                              "additionalProperties": false,
+                              "required": [
+                                "left",
+                                "top",
+                                "width",
+                                "height"
+                              ],
+                              "description": "Screen rectangle in pixels; the same shape everywhere."
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "ref",
+                        "role"
+                      ],
+                      "description": "One accessibility node, with the reference that points at it."
+                    }
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "ref",
+                  "role"
+                ],
+                "description": "A dialog node, with the actionable children captured for it."
               },
               {
                 "type": "null"
               }
             ]
           },
-          "window": {
+          "top_window": {
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "properties": {
+                  "ref": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "handle": {
+                    "type": "integer"
+                  },
+                  "class_name": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false,
+                "description": "The top-level window that scopes an observation or action."
               },
               {
                 "type": "null"
@@ -5115,7 +6365,8 @@
         "required": [
           "state_version",
           "revision"
-        ]
+        ],
+        "description": "One observation of the screen."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -5145,19 +6396,46 @@
         "type": "object",
         "properties": {
           "keys": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1,
+            "description": "Gesture name, e.g. control+a or down."
           },
           "repeat": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20
           },
           "delay_ms": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5000
           },
           "expect": {
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
               },
               {
                 "type": "null"
@@ -5168,14 +6446,18 @@
         "additionalProperties": false,
         "required": [
           "keys"
-        ]
+        ],
+        "description": "Send keyboard keys."
       },
       "outputType": "PressResult",
       "outputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
         "properties": {
-          "gesture": {
+          "requested": {
+            "type": "string"
+          },
+          "normalized_keys": {
             "type": "string"
           },
           "repeat": {
@@ -5202,18 +6484,20 @@
         },
         "additionalProperties": false,
         "required": [
-          "gesture",
+          "requested",
+          "normalized_keys",
           "repeat",
           "delay_ms",
           "sent",
           "sent_count",
           "dispatched"
-        ]
+        ],
+        "description": "Result of a keyboard dispatch."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
-        "blocked_on_modal": true,
-        "blocked_on_menu": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
         "dangerous": false,
         "requires_explicit_opt_in": false,
         "requires_developer_mode": false
@@ -5240,7 +6524,8 @@
           "ref": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*$"
               },
               {
                 "type": "null"
@@ -5257,10 +6542,13 @@
             ]
           },
           "max_chars": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Read text from a referenced object, or the focus."
       },
       "outputType": "ReadResult",
       "outputSchema": {
@@ -5295,7 +6583,8 @@
           "text",
           "scope",
           "source"
-        ]
+        ],
+        "description": "Text read from a scope."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -5324,7 +6613,8 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
         "properties": {},
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Marker type for tools with no input."
       },
       "outputType": "ReloadResult",
       "outputSchema": {
@@ -5341,7 +6631,8 @@
         "additionalProperties": false,
         "required": [
           "status"
-        ]
+        ],
+        "description": "Result of reloading global plugins and app modules."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -5377,7 +6668,8 @@
             "type": "boolean"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Restart NVDA with options."
       },
       "outputType": "NvdaRestartResult",
       "outputSchema": {
@@ -5391,7 +6683,8 @@
         "additionalProperties": false,
         "required": [
           "status"
-        ]
+        ],
+        "description": "NVDA restart result."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -5439,7 +6732,8 @@
           "ref": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*$"
               },
               {
                 "type": "null"
@@ -5450,7 +6744,28 @@
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
               },
               {
                 "type": "null"
@@ -5458,7 +6773,8 @@
             ]
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Scroll the focused container."
       },
       "outputType": "ScrollResult",
       "outputSchema": {
@@ -5484,7 +6800,8 @@
           "amount",
           "method",
           "key"
-        ]
+        ],
+        "description": "How a scroll was performed."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -5545,7 +6862,8 @@
                 }
               }
             },
-            "additionalProperties": false
+            "additionalProperties": false,
+            "description": "Glob filters over the native logger/source string."
           },
           "addon": {
             "anyOf": [
@@ -5584,7 +6902,8 @@
                 "type": "boolean"
               }
             },
-            "additionalProperties": false
+            "additionalProperties": false,
+            "description": "Substring or bounded-regex filtering of a record's message."
           },
           "time": {
             "type": "object",
@@ -5620,7 +6939,8 @@
                 ]
               }
             },
-            "additionalProperties": false
+            "additionalProperties": false,
+            "description": "Time-of-day relative or absolute range."
           },
           "threads": {
             "type": "array",
@@ -5639,7 +6959,9 @@
             ]
           },
           "limit": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
           },
           "cursor": {
             "anyOf": [
@@ -5662,10 +6984,13 @@
             "type": "boolean"
           },
           "max_scan_records": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5000000
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Search native NVDA log records with structured filters."
       },
       "outputType": "LogSearchResult",
       "outputSchema": {
@@ -5774,7 +7099,8 @@
                   "additionalProperties": false,
                   "required": [
                     "name"
-                  ]
+                  ],
+                  "description": "The thread named by one native log header."
                 },
                 "message": {
                   "type": "string"
@@ -5848,7 +7174,8 @@
                 "line_start",
                 "line_end",
                 "parse_status"
-              ]
+              ],
+              "description": "One native log record, parsed into structured evidence."
             }
           },
           "page": {
@@ -5883,7 +7210,8 @@
               "has_more",
               "limit",
               "order"
-            ]
+            ],
+            "description": "One stable page of search results."
           },
           "source": {
             "type": "object",
@@ -5902,7 +7230,8 @@
             "required": [
               "generation",
               "size_bytes"
-            ]
+            ],
+            "description": "Identity of the log generation a response was read from."
           },
           "diagnostics": {
             "type": "object",
@@ -5948,7 +7277,8 @@
               "invalid_utf8_replacements",
               "records_examined",
               "matched_records"
-            ]
+            ],
+            "description": "Completeness and precision facts about one search."
           }
         },
         "additionalProperties": false,
@@ -5958,7 +7288,8 @@
           "page",
           "source",
           "diagnostics"
-        ]
+        ],
+        "description": "Structured native log search response."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -5988,7 +7319,8 @@
         "type": "object",
         "properties": {
           "ref": {
-            "type": "string"
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*$"
           },
           "value": {
             "type": "string"
@@ -5997,7 +7329,28 @@
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
               },
               {
                 "type": "null"
@@ -6009,7 +7362,8 @@
         "required": [
           "ref",
           "value"
-        ]
+        ],
+        "description": "Set the value of a control."
       },
       "outputType": "SetValueResult",
       "outputSchema": {
@@ -6023,6 +7377,9 @@
             "type": "string"
           },
           "value": {
+            "type": "string"
+          },
+          "previous": {
             "type": "string"
           },
           "units": {
@@ -6043,7 +7400,8 @@
           "ref",
           "mode",
           "value"
-        ]
+        ],
+        "description": "How a value was set, and whether the control agrees."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -6079,7 +7437,8 @@
         "additionalProperties": false,
         "required": [
           "message"
-        ]
+        ],
+        "description": "Show a UI message to the user."
       },
       "outputType": "MessageResult",
       "outputSchema": {
@@ -6096,7 +7455,8 @@
         "additionalProperties": false,
         "required": [
           "message"
-        ]
+        ],
+        "description": "Message display result."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -6132,7 +7492,8 @@
         "additionalProperties": false,
         "required": [
           "text"
-        ]
+        ],
+        "description": "Speak text using NVDA's speech system."
       },
       "outputType": "SpeechResult",
       "outputSchema": {
@@ -6149,7 +7510,8 @@
         "additionalProperties": false,
         "required": [
           "spoken"
-        ]
+        ],
+        "description": "Speech action result."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -6181,7 +7543,8 @@
           "within": {
             "anyOf": [
               {
-                "type": "string"
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*$"
               },
               {
                 "type": "null"
@@ -6192,7 +7555,28 @@
             "anyOf": [
               {
                 "type": "object",
-                "additionalProperties": {}
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                }
               },
               {
                 "type": "null"
@@ -6200,7 +7584,8 @@
             ]
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Start browse mode for a document NVDA is reading in focus mode."
       },
       "outputType": "StartBrowseModeResult",
       "outputSchema": {
@@ -6226,7 +7611,8 @@
             "type": "number"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "The document that is now readable, and whether this call created it."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -6287,7 +7673,8 @@
                 }
               }
             },
-            "additionalProperties": false
+            "additionalProperties": false,
+            "description": "Glob filters over the native logger/source string."
           },
           "addon": {
             "anyOf": [
@@ -6333,7 +7720,8 @@
                 ]
               }
             },
-            "additionalProperties": false
+            "additionalProperties": false,
+            "description": "Time-of-day relative or absolute range."
           },
           "threads": {
             "type": "array",
@@ -6360,7 +7748,8 @@
             "type": "integer"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Compute bounded deterministic statistics over native log records."
       },
       "outputType": "LogSummaryResult",
       "outputSchema": {
@@ -6436,7 +7825,8 @@
               "generation",
               "size_bytes",
               "scan_ms"
-            ]
+            ],
+            "description": "What a summary examined and what it could not claim."
           }
         },
         "additionalProperties": false,
@@ -6444,7 +7834,8 @@
           "schema_version",
           "summary",
           "coverage"
-        ]
+        ],
+        "description": "Deterministic summary of native log evidence."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -6474,10 +7865,20 @@
         "type": "object",
         "properties": {
           "since": {
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "timeout_ms": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 30000
           },
           "kinds": {
             "anyOf": [
@@ -6491,9 +7892,15 @@
                 "type": "null"
               }
             ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Wait for the next coalesced transition."
       },
       "outputType": "WaitEventsResult",
       "outputSchema": {
@@ -6527,7 +7934,8 @@
         "required": [
           "from_version",
           "to_version"
-        ]
+        ],
+        "description": "Coalesced transitions observed while waiting."
       },
       "constraints": {
         "blocked_on_secure_screen": true,
@@ -6571,7 +7979,8 @@
             "type": "integer"
           }
         },
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Walk object tree with bounds."
       },
       "outputType": "ObjectTreeSnapshot",
       "outputSchema": {
@@ -6598,7 +8007,8 @@
           "max_depth",
           "max_children",
           "tree"
-        ]
+        ],
+        "description": "Object tree snapshot."
       },
       "constraints": {
         "blocked_on_secure_screen": true,

@@ -12,13 +12,6 @@ import logHandler
 
 from .validators import validate_bounded_int, validate_scope
 from .serializers import serialize_exception
-from .focus import get_current_focus, get_focus_lineage
-from .objects import (
-	get_navigator_object,
-	inspect_app_module,
-	walk_object_tree,
-)
-from .ui import get_window_title
 
 
 def _addon_to_dict(addon: Any, running_names: set[str]) -> Dict[str, Any]:
@@ -48,16 +41,16 @@ def _addon_to_dict(addon: Any, running_names: set[str]) -> Dict[str, Any]:
 		"author": str(manifest.get("author") or ""),
 		"url": str(manifest.get("url") or ""),
 		"path": str(getattr(addon, "path", None) or ""),
-		"isRunning": is_running,
-		"isEnabled": _call_bool("isEnabled"),
-		"isDisabled": _call_bool("isDisabled"),
-		"isBlocked": _call_bool("isBlocked"),
-		"isCompatible": _call_bool("isCompatible"),
-		"requiresRestart": _call_bool("requiresRestart"),
-		"minimumNVDAVersion": str(
+		"is_running": is_running,
+		"is_enabled": _call_bool("isEnabled"),
+		"is_disabled": _call_bool("isDisabled"),
+		"is_blocked": _call_bool("isBlocked"),
+		"is_compatible": _call_bool("isCompatible"),
+		"requires_restart": _call_bool("requiresRestart"),
+		"minimum_nvda_version": str(
 			getattr(addon, "minimumNVDAVersion", None) or manifest.get("minimumNVDAVersion") or ""
 		),
-		"lastTestedNVDAVersion": str(
+		"last_tested_nvda_version": str(
 			getattr(addon, "lastTestedNVDAVersion", None) or manifest.get("lastTestedNVDAVersion") or ""
 		),
 	}
@@ -107,8 +100,8 @@ def list_loaded_addons(scope: str = "running") -> Dict[str, Any]:
 	return {
 		"scope": normalized_scope,
 		"count": len(addons_out),
-		"runningCount": len(running_addons),
-		"availableCount": len(available_addons),
+		"running_count": len(running_addons),
+		"available_count": len(available_addons),
 		"addons": addons_out,
 	}
 
@@ -302,77 +295,89 @@ def get_logs(max_lines: int = 100, filter_level: str | None = None, use_tail: bo
 
 
 def health_snapshot(
-	include_logs: bool = True,
-	log_lines: int = 30,
-	include_tree: bool = False,
-	tree_depth: int = 1,
-	tree_max_children: int = 10,
-	addon_scope: str = "running",
+	include_focus: bool = True,
+	include_addons: bool = False,
+	include_logs: bool = False,
+	log_lines: int = 20,
 ) -> Dict[str, Any]:
-	"""Collect a one-call diagnostics snapshot for addon debugging.
+	"""Collect a small health summary. Detail is opt-in.
 
-	This function is resilient by design: each section is collected independently.
-	Failures are returned under `errors` while successful sections are still included.
-
-	Args:
-		include_logs: Whether to include recent log entries
-		log_lines: Number of log lines to include (1-500)
-		include_tree: Whether to include focus object tree
-		tree_depth: Maximum depth for object tree (0-4)
-		tree_max_children: Maximum children per node (1-50)
-		addon_scope: Addon listing scope ("running", "available", or "all")
-
-	Returns:
-		Dictionary with comprehensive system snapshot
-
-	Raises:
-		ValueError: If parameters are invalid
+	The old default pulled logs, every add-on and a tree walk into one response;
+	the useful default is status, focus/window and error counts. Logs and add-on
+	names are explicit requests.
 	"""
 	log_lines = validate_bounded_int(log_lines, "log_lines", 1, 500)
-	tree_depth = validate_bounded_int(tree_depth, "tree_depth", 0, 4)
-	tree_max_children = validate_bounded_int(tree_max_children, "tree_max_children", 1, 50)
-	addon_scope = validate_scope(addon_scope)
 
 	snapshot: dict[str, Any] = {
 		"timestamp": int(time.time()),
-		"options": {
-			"include_logs": bool(include_logs),
-			"log_lines": int(log_lines),
-			"include_tree": bool(include_tree),
-			"tree_depth": int(tree_depth),
-			"tree_max_children": int(tree_max_children),
-			"addon_scope": str(addon_scope),
-		},
 		"errors": {},
+		"nvda": {},
 	}
 
 	def _collect(section: str, producer) -> None:
 		try:
 			snapshot[section] = producer()
-		except Exception as e:
+		except Exception as e:  # noqa: BLE001 — one broken section must not hide the rest
 			snapshot["errors"][section] = serialize_exception(e)
 
-	_collect("window", get_window_title)
-	_collect("focus", get_current_focus)
-	_collect("navigator", get_navigator_object)
-	_collect("appModule", lambda: inspect_app_module(source="focus"))
-	_collect("addons", lambda: list_loaded_addons(scope=addon_scope))
-	_collect("focusLineage", lambda: get_focus_lineage(max_ancestors=10))
+	def _nvda_status() -> dict[str, Any]:
+		import globalVars
+		import versionInfo
 
-	if include_tree:
-		_collect(
-			"focusTree",
-			lambda: walk_object_tree(
-				target="focus",
-				max_depth=tree_depth,
-				max_children=tree_max_children,
-			),
-		)
+		status = {
+			"name": getattr(versionInfo, "name", "NVDA"),
+			"version": getattr(versionInfo, "version", ""),
+			"secure_screen": bool(getattr(getattr(globalVars, "appArgs", None), "secure", False)),
+		}
+		try:
+			from .ui import get_window_title
 
+			foreground = get_window_title()
+			status["foreground_title"] = foreground.get("title", "")
+		except Exception:  # noqa: BLE001
+			pass
+		return status
+
+	def _focus() -> dict[str, Any]:
+		import api
+
+		from ..server.state import describe
+
+		focus = api.getFocusObject()
+		if focus is None:
+			raise RuntimeError("No focus object available")
+		node = describe(focus, max_value=120, include_states=False)
+		node["ref"] = "f"
+		return node
+
+	def _top_window() -> dict[str, Any]:
+		from .ui import get_window_title
+
+		foreground = get_window_title()
+		return {
+			"ref": "",
+			"title": foreground.get("title", ""),
+			"handle": foreground.get("handle", 0),
+			"class_name": foreground.get("className", ""),
+		}
+
+	def _addons() -> dict[str, Any]:
+		payload = list_loaded_addons(scope="running")
+		return {
+			"running_count": int(payload.get("running_count", 0)),
+			"available_count": int(payload.get("available_count", 0)),
+			"running": [str(addon.get("name", "")) for addon in payload.get("addons", [])],
+		}
+
+	_collect("nvda", _nvda_status)
+	_collect("top_window", _top_window)
+	if include_focus:
+		_collect("focus", _focus)
+	if include_addons:
+		_collect("addons", _addons)
 	if include_logs:
 		_collect("logs", lambda: get_logs(max_lines=log_lines, use_tail=True))
 
 	snapshot["ok"] = len(snapshot["errors"]) == 0
-	snapshot["errorCount"] = len(snapshot["errors"])
-
+	snapshot["error_count"] = len(snapshot["errors"])
 	return snapshot

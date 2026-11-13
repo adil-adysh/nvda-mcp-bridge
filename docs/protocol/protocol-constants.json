@@ -5,12 +5,10 @@
   "protocol": {
     "name": "nvda-bridge-protocol",
     "version": "1.0.0",
-    "bridge_version": "1.0.0",
-    "api_level": 4,
+    "bridge_version": "0.10.0",
+    "api_level": 1,
     "supported_api_levels": [
-      2,
-      3,
-      4
+      1
     ],
     "default_bridge_token": "",
     "token_header": "X-NVDA-Bridge-Token",
@@ -314,6 +312,20 @@
         },
         {
           "name": "result",
+          "type": "Option<Value>",
+          "serde_default": true,
+          "python_type": "Optional[Dict[str, Any]]",
+          "python_default": "None"
+        },
+        {
+          "name": "trace_id",
+          "type": "Option<String>",
+          "serde_default": true,
+          "python_type": "Optional[str]",
+          "python_default": "None"
+        },
+        {
+          "name": "trace",
           "type": "Option<Value>",
           "serde_default": true,
           "python_type": "Optional[Dict[str, Any]]",

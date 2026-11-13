@@ -130,7 +130,7 @@ class HttpBridgeTests(unittest.TestCase):
 
         self.assertEqual(payload["protocol"], PROTOCOL)
         self.assertEqual(payload["protocol_version"], PROTOCOL_VERSION)
-        self.assertEqual(payload["bridge_version"], "1.0.0")
+        self.assertEqual(payload["bridge_version"], bridge_module.BRIDGE_VERSION)
         self.assertEqual(payload["api_level"], API_LEVEL)
         self.assertEqual(payload["types"], types)
         self.assertEqual(payload["tools"], tools)

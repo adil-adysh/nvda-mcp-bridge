@@ -24,7 +24,7 @@ A thread-safe NVDA add-on that exposes NVDA internals as an MCP-compatible inter
 
 1. Download the release package:
    ```
-   nvdaMcpBridge-1.0.0.nvda-addon
+   nvdaMcpBridge-0.10.0.nvda-addon
    ```
 2. Open the `.nvda-addon` file with NVDA to install it.
 3. Restart NVDA when prompted.
@@ -198,7 +198,7 @@ Prerequisites for the companion step are Rust and `cargo` on `PATH`. Without
 them `scons` stops with a message that names both options — install Rust, or
 build with `companion=0` — rather than producing an add-on whose bundled
 companion is stale. That failure mode is real: the add-on once shipped a
-companion speaking api_level 2 next to a bridge speaking 3, and the companion
+companion speaking the wrong api_level next to a bridge, and the companion
 refused the catalog and offered no tools at all. The companion now accepts a
 bridge that lists its level in `supported_api_levels`, and refuses one that does
 not — with a message naming both, instead of silence.
@@ -327,9 +327,16 @@ and a `schema_hash` that changes whenever the contract does.
 
 ### Observation (start here)
 
-* `observe` — focus, ancestors, children and dialog in one call, each with a `ref`
-* `read` — text by scope (`line`, `selection`, `document`, `subtree`)
-* `wait_for_events` — block until the next coalesced UI transition
+* `observe` — focus, dialog and the top-level window by default, each with a
+  `ref`; `refs` maps each reference to its kind and `top_window` names the scope.
+  Ancestors, children and selection are opt-in, and `detail="summary"` (the
+  default) omits states
+* `read` — text by scope (`line`, `selection`, `document`, `subtree`); a
+  WebView document that returns only object-replacement characters falls back to
+  the accessibility tree and reports `source: "tree"`
+* `wait_for_events` — block until the next coalesced UI transition; `since`
+  defaults to the current `state_version`, so history is never replayed by
+  accident
 
 ### Reading a document (browsers, Word, PDFs)
 
@@ -351,17 +358,21 @@ answer is never presented as a complete one.
 * `invoke` — press an object's default or named action
 * `set_value` — platform value pattern when available, keyboard otherwise
 * `focus`, `navigate`, `scroll`
-* `press` — keyboard keys, with an optional `expect` postcondition
+* `press` — keyboard keys; aliases such as `ctrl`, `down` and `return` are
+  normalized, and the result reports both `requested` and `normalized_keys`
 * `click_at` — absolute pointer click, last resort
 * `dismiss` — leave a dialog (needs the `dialog_control` capability)
 
-Every action returns `result.changed`, `result.delta` and `result.settled_ms`, so
-"the call ran" is distinguishable from "the UI did what was meant".
+Every action result carries `state_version` and `scope` (the top-level window)
+alongside `changed`, `delta` and `settled_ms`, so "the call ran" is
+distinguishable from "the UI did what was meant".
 
 ### Inspection and diagnostics
 
 * `inspect_object`, `inspect_app_module`, `get_focus_lineage`
 * `walk_object_tree`, `list_loaded_addons`, `health_snapshot`, `get_logs`
+* `health_snapshot` — status, focus/window and error counts by default; add-on
+  names and logs are opt-in (`include_addons`, `include_logs`)
 * `search_logs` — structured, paginated search over logical native-log records
   (multiline tracebacks stay one record; unknown levels are preserved)
 * `get_log_context` — expand a result's `entry_id` into the surrounding
@@ -374,8 +385,7 @@ Every action returns `result.changed`, `result.delta` and `result.settled_ms`, s
 
 The three log tools use NVDA's canonical active log, the existing bridge token
 and the `diagnostics` permission. They are read-only, stream the file, never
-accept a path, and never change NVDA's logging level. `get_logs` is retained
-unchanged for compatibility.
+accept a path, and never change NVDA's logging level.
 
 Start an investigation with `summarize_logs` when the source is unknown, then
 `search_logs`, then `get_log_context`. For a known action, start with
@@ -404,28 +414,24 @@ identifier semantics and the retention limits.
 
 * `execute_python`
 
-### Removed at api_level 4
+### Contract invariants
 
-`list_reading_targets` and `navigate_reading` no longer take `create`. A read is
-not allowed to start browse mode — a `read_only` client could otherwise change
-the user's session — so it became its own action:
+This is the first public contract (`api_level` 1, add-on `0.10.0`); there are no
+legacy aliases to carry.
 
-* `create: true` on either reading tool → `start_browse_mode`
+* Inputs are strict: unknown fields, wrong types and prose where a `ref` belongs
+  are validation errors, not coercions.
+* References match `^[a-z][a-z0-9]*$`. A stale reference is `4206` and carries a
+  `recovery` hint; it is never auto-retried.
+* JSON is snake_case at every layer. `location` is always
+  `{left, top, width, height}`.
+* Payloads are bounded by default: health, logs, locate and observations return
+  summaries unless detail is requested.
+* Every tool has a published `inputSchema` and `outputSchema`; the companion
+  returns matching `structuredContent`.
 
-### Removed at api_level 3
-
-The v1 aliases were retired rather than deprecated again. Each has had a
-replacement since api level 2:
-
-* `get_current_focus`, `get_navigator_object` → `observe`
-* `read_current_line` → `read`
-* `move_focus` → `navigate`
-* `send_keyboard` → `press`
-* `get_desktop_object` → `inspect_object(target="desktop")`
-* `get_window_title` → `observe().window`
-
-A call to a removed name is `4102`, with the action named. `GET /tools` is the
-authoritative list for the level this bridge serves.
+See [docs/TOOL_CONTRACT.md](docs/TOOL_CONTRACT.md) for the generated matrix and
+[docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md) for canonical workflows.
 
 ---
 

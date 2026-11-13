@@ -13,9 +13,10 @@ pub const PROTOCOL_NAME: &str = "nvda-bridge-protocol";
 #[allow(dead_code)]
 pub const PROTOCOL_VERSION: &str = "1.0.0";
 #[allow(dead_code)]
-pub const BRIDGE_VERSION: &str = "1.0.0";
-pub const API_LEVEL: u32 = 4;
-pub const SUPPORTED_API_LEVELS: &[u32] = &[2, 3, 4];
+pub const BRIDGE_VERSION: &str = "0.10.0";
+pub const API_LEVEL: u32 = 1;
+#[allow(dead_code)]
+pub const SUPPORTED_API_LEVELS: &[u32] = &[1];
 pub const TOKEN_HEADER: &str = "X-NVDA-Bridge-Token";
 #[allow(dead_code)]
 pub const MAX_REQUEST_ID_LENGTH: usize = 128;
@@ -103,14 +104,8 @@ pub struct BridgeActionEnvelope {
     pub error: Option<BridgeError>,
     #[serde(default)]
     pub result: Option<Value>,
-    /// Logical action identifier: one per action, not per HTTP request.
-    ///
-    /// Distinct from `request_id` (this HTTP request) and from the MCP request
-    /// id (the protocol call). It is the key for `get_action_trace`, so it must
-    /// survive every envelope the bridge produces, failures included.
     #[serde(default)]
     pub trace_id: Option<String>,
-    /// Compact diagnostic summary; the full timeline is fetched by `trace_id`.
     #[serde(default)]
     pub trace: Option<Value>,
 }

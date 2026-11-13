@@ -627,7 +627,7 @@ if _GUI_AVAILABLE:
 			# a dialog it entered without being allowed to operate one.
 			self.dialogControlCheckbox = wx.CheckBox(
 				permGroup,
-				label="Allow MCP Dialog Control (dismiss dialogs: Escape, then the default button)",
+				label="Allow MCP Dialog Control (Escape, then a Cancel/No/Close button)",
 			)
 			if policy:
 				self.dialogControlCheckbox.SetValue(policy.is_granted(PERMISSION_DIALOG_CONTROL))

@@ -55,7 +55,15 @@ class StaleReference(Exception):
 		self.reason = reason
 
 	def to_details(self) -> dict[str, Any]:
-		return {"ref": self.ref, "reason": self.reason}
+		return {
+			"ref": self.ref,
+			"reason": self.reason,
+			"recovery": {
+				"action": "observe",
+				"argument": "ref",
+				"hint": "Call observe and pass a ref from its refs map; refs are valid for one state_version.",
+			},
+		}
 
 
 @dataclass
@@ -169,12 +177,16 @@ class ReferenceTable:
 def _kind_of(ref: str) -> str:
 	if ref == "f":
 		return "focus"
+	if ref == "w":
+		return "window"
 	if ref.startswith("a"):
 		return "ancestor"
 	if ref.startswith("c"):
 		return "child"
 	if ref.startswith("d"):
 		return "dialog"
+	if ref.startswith("n"):
+		return "located"
 	return "node"
 
 

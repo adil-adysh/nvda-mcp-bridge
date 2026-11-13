@@ -53,22 +53,18 @@ def list_loaded_addons(scope: Literal["running", "available", "all"] = "running"
 
 
 def health_snapshot(
-	include_logs: bool = True,
-	log_lines: int = 30,
-	include_tree: bool = False,
-	tree_depth: int = 1,
-	tree_max_children: int = 10,
-	addon_scope: Literal["running", "available", "all"] = "running",
+	include_focus: bool = True,
+	include_addons: bool = False,
+	include_logs: bool = False,
+	log_lines: int = 20,
 ) -> dict[str, Any]:
 	from .. import nvda_bridge
 
 	return nvda_bridge.health_snapshot(
+		include_focus=include_focus,
+		include_addons=include_addons,
 		include_logs=include_logs,
 		log_lines=log_lines,
-		include_tree=include_tree,
-		tree_depth=tree_depth,
-		tree_max_children=tree_max_children,
-		addon_scope=addon_scope,
 	)
 
 
@@ -105,11 +101,15 @@ def _log_time_kwargs(time_filter: Any) -> dict[str, Any]:
 def _log_filter_from_input(input_obj: Any) -> Any:
 	from ..server import log_diagnostics
 
+	levels = getattr(input_obj, "levels", None)
+	min_level = getattr(input_obj, "min_level", None)
+	if levels and min_level:
+		raise ValueError("Use either 'levels' (exact set) or 'min_level' (threshold), not both")
 	sources = getattr(input_obj, "sources", None)
 	message = getattr(input_obj, "message", None)
 	return log_diagnostics.compile_filter(
-		levels=getattr(input_obj, "levels", None),
-		min_level=getattr(input_obj, "min_level", None),
+		levels=levels,
+		min_level=min_level,
 		source_include=getattr(sources, "include", None) if sources is not None else None,
 		source_exclude=getattr(sources, "exclude", None) if sources is not None else None,
 		addon=getattr(input_obj, "addon", None),
@@ -272,9 +272,42 @@ def _dispatch(context: Any, operation: Any) -> Any:
 	return context.dispatch(operation)
 
 
-def observe(include: list[str], max_text: int, context: Any) -> dict[str, Any]:
+def observe(include: list[str], max_text: int, context: Any, detail: str = "summary") -> dict[str, Any]:
 	"""Capture the screen, with references to what was seen."""
-	return _dispatch(context, lambda: context.observe(include, max_text))
+	result = dict(_dispatch(context, lambda: context.observe(include, max_text)))
+	if detail == "summary":
+		for node in _observation_nodes(result):
+			node.pop("states", None)
+	return result
+
+
+def _observation_nodes(result: dict[str, Any]) -> list[dict[str, Any]]:
+	nodes: list[dict[str, Any]] = []
+	for key in ("focus", "dialog"):
+		node = result.get(key)
+		if isinstance(node, dict):
+			nodes.append(node)
+	for key in ("ancestors", "children"):
+		nodes.extend(node for node in result.get(key, []) if isinstance(node, dict))
+	dialog = result.get("dialog")
+	if isinstance(dialog, dict):
+		nodes.extend(node for node in dialog.get("children", []) if isinstance(node, dict))
+	return nodes
+
+
+def _validate_ref_argument(value: str | None, name: str = "ref") -> str | None:
+	"""Reject a window title or other prose where a reference is required."""
+	if value is None:
+		return None
+	if not isinstance(value, str) or not value.strip():
+		raise ValueError(f"'{name}' must be a non-empty reference returned by observe or locate")
+	cleaned = value.strip()
+	if not cleaned[0].islower() or not cleaned.isalnum():
+		raise ValueError(
+			f"'{name}' must be a reference returned by observe or locate (for example 'f' or 'n3'), "
+			f"not {value!r}; call observe and pass a ref from its refs map"
+		)
+	return cleaned
 
 
 def locate(
@@ -286,6 +319,7 @@ def locate(
 	max_nodes: int,
 	timeout_ms: int,
 	context: Any,
+	detail: str = "summary",
 ) -> dict[str, Any]:
 	"""Find controls by role and name; hand back references to each match.
 
@@ -305,11 +339,12 @@ def locate(
 		raise ValueError("'max_nodes' must be an integer between 1 and 2000")
 	if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool) or not 50 <= timeout_ms <= 3000:
 		raise ValueError("'timeout_ms' must be an integer between 50 and 3000")
+	within_ref = _validate_ref_argument(within, "within")
 
 	def perform() -> dict[str, Any]:
 		from ..nvda_bridge import locate as search
 
-		root = context.resolve(within) if within else None
+		root = context.resolve(within_ref) if within_ref else None
 		payload, objects = search.find(
 			role=role,
 			name=name,
@@ -321,6 +356,9 @@ def locate(
 		)
 		for record, obj in zip(payload["matches"], objects):
 			record["ref"] = context.register(obj)
+			if detail == "summary":
+				for key in ("path", "depth", "automation_id", "states"):
+					record.pop(key, None)
 		return payload
 
 	return _dispatch(context, perform)
@@ -341,7 +379,7 @@ def start_browse_mode(within: str | None, expect: dict[str, Any] | None, context
 
 	def perform() -> dict[str, Any]:
 		def act() -> dict[str, Any]:
-			root = context.resolve(within) if within else None
+			root = context.resolve(_validate_ref_argument(within, "within")) if within else None
 			captured.update(reading.create_document(root))
 			return captured
 
@@ -380,7 +418,7 @@ def list_reading_targets(
 	def perform() -> dict[str, Any]:
 		from ..nvda_bridge import reading
 
-		root = context.resolve(within) if within else None
+		root = context.resolve(_validate_ref_argument(within, "within")) if within else None
 		payload, objects = reading.targets(item=item_type, limit=limit, root=root, timeout_ms=timeout)
 		for record, obj in zip(payload["targets"], objects):
 			record["ref"] = context.register(obj) if obj is not None else ""
@@ -420,7 +458,7 @@ def navigate_reading(
 		def act() -> dict[str, Any]:
 			from ..nvda_bridge import reading
 
-			root = context.resolve(within) if within else None
+			root = context.resolve(_validate_ref_argument(within, "within")) if within else None
 			payload, obj = reading.navigate(
 				item=item_type,
 				direction=move,
@@ -456,7 +494,7 @@ def invoke(ref: str, action: str | None, expect: dict[str, Any] | None, context:
 		"ref": ref,
 		"invoked": True,
 		"index": int(captured.get("index", -1)),
-		"actionName": str(captured.get("actionName", "")),
+		"action_name": str(captured.get("actionName", "")),
 		"available": list(captured.get("available", [])),
 	}
 
@@ -522,6 +560,7 @@ def set_value(ref: str, value: str, expect: dict[str, Any] | None, context: Any)
 		"ref": ref,
 		"mode": str(captured.get("mode", "keyboard")),
 		"value": value,
+		"previous": before,
 		"units": int(captured.get("units", 0)),
 		"verified": verified,
 		"observed": "" if verified else observed,
@@ -671,7 +710,8 @@ def press(
 
 	context.settle(perform, expect=expect)
 	return {
-		"gesture": captured.get("gesture", keys),
+		"requested": keys,
+		"normalized_keys": str(captured.get("normalized_keys", keys)),
 		"repeat": int(captured.get("repeat", repeat)),
 		"delay_ms": int(captured.get("delay_ms", delay_ms)),
 		"sent": bool(captured.get("sent", False)),
@@ -767,7 +807,7 @@ def scroll(
 
 
 def dismiss(expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
-	"""Leave a dialog: Escape first, then its default button.
+	"""Leave a dialog: Escape first, then a clearly non-affirmative button.
 
 	This exists because the previous rule let an agent enter a modal and then
 	forbade every tool from leaving it — a safety rule that only traps. It needs
@@ -787,23 +827,26 @@ def dismiss(expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
 	dialog = (outcome.projection or {}).get("dialog")
 
 	if dialog:
-		def activate_default() -> dict[str, Any]:
+		def activate_cancel() -> dict[str, Any]:
 			def act() -> dict[str, Any]:
 				active = actions.dialog_object()
 				if active is None:
 					return {}
-				button = actions.default_dialog_button(active)
+				button = actions.cancel_dialog_button(active)
 				if button is None:
-					steps.append("dialog has no default button")
+					steps.append("no safe cancel button found; left dialog open")
 					return {}
 				return actions.do_action(button)
 
 			result = context.dispatch(act)
 			if result:
-				steps.append(f"activated button {result.get('actionName')!r}")
+				steps.append(f"activated cancel button {result.get('actionName')!r}")
 			return result
 
-		outcome = context.settle(activate_default, budget_ms=800)
+		# The fallback is deliberately limited to explicit negative/close labels;
+		# if no such control exists, it reports the still-open dialog without
+		# activating the affirmative default.
+		outcome = context.settle(activate_cancel, budget_ms=800)
 		dialog = (outcome.projection or {}).get("dialog")
 	else:
 		steps.append("no dialog was open")
@@ -821,7 +864,7 @@ def dismiss(expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
 	return {
 		"dismissed": dialog is None,
 		"steps": steps,
-		"dialogName": str((dialog or {}).get("name") or ""),
+		"dialog_name": str((dialog or {}).get("name") or ""),
 	}
 
 
@@ -841,19 +884,31 @@ def click_at(x: int, y: int, button: str, expect: dict[str, Any] | None, context
 		"button": button,
 		"hit": captured.get("hit"),
 		"cursor": list(captured.get("cursor") or []),
-		"onTarget": bool(captured.get("onTarget", True)),
+		"on_target": bool(captured.get("onTarget", True)),
 	}
 
 
 def wait_for_events(
-	since: int,
+	since: int | None,
 	timeout_ms: int,
 	kinds: list[str] | None,
 	context: Any,
+	limit: int = 50,
 ) -> dict[str, Any]:
 	if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool) or timeout_ms < 0 or timeout_ms > 30000:
 		raise ValueError("'timeout_ms' must be an integer between 0 and 30000")
-	result = context.wait_events(since=since, timeout_ms=timeout_ms, kinds=kinds)
+	if since is None:
+		event_version = getattr(context, "event_version", None)
+		state_version = getattr(context, "state_version", None)
+		if callable(event_version):
+			since = int(event_version())
+		elif callable(state_version):
+			since = int(state_version())
+		else:
+			since = 0
+	if not isinstance(since, int) or isinstance(since, bool) or since < 0:
+		raise ValueError("'since' must be a non-negative integer, or omitted")
+	result = context.wait_events(since=since, timeout_ms=timeout_ms, kinds=kinds, limit=limit)
 	return {
 		"from_version": int(result.get("from_version", since)),
 		"to_version": int(result.get("to_version", since)),

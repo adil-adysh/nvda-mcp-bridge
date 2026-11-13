@@ -73,7 +73,7 @@ class TestProjection(unittest.TestCase):
         self.assertEqual(described["name"], "Save")
         self.assertEqual(described["value"], "v")
         self.assertEqual(described["states"], ["FOCUSABLE", "FOCUSED"])
-        self.assertEqual(described["location"], [0, 0, 10, 10])
+        self.assertEqual(described["location"], {"left": 0, "top": 0, "width": 10, "height": 10})
 
     def test_ancestors_are_nearest_first_and_bounded(self):
         desktop = FakeObject("WINDOW", "Desktop")

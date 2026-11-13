@@ -176,12 +176,10 @@ ALL_NVDA_TOOLS = [
         models.HealthSnapshotInput,
         models.HealthSnapshot,
         lambda input_obj: tool_handlers.health_snapshot(
+            include_focus=input_obj.include_focus,
+            include_addons=input_obj.include_addons,
             include_logs=input_obj.include_logs,
             log_lines=input_obj.log_lines,
-            include_tree=input_obj.include_tree,
-            tree_depth=input_obj.tree_depth,
-            tree_max_children=input_obj.tree_max_children,
-            addon_scope=input_obj.addon_scope,
         ),
     ),
     TypedToolImpl.from_handler(
@@ -375,6 +373,7 @@ ALL_NVDA_TOOLS = [
         lambda input_obj, context: tool_handlers.observe(
             include=input_obj.include,
             max_text=input_obj.max_text,
+            detail=input_obj.detail,
             context=context,
         ),
     ),
@@ -409,6 +408,7 @@ ALL_NVDA_TOOLS = [
             limit=input_obj.limit,
             max_nodes=input_obj.max_nodes,
             timeout_ms=input_obj.timeout_ms,
+            detail=input_obj.detail,
             context=context,
         ),
     ),
@@ -819,6 +819,7 @@ ALL_NVDA_TOOLS = [
             since=input_obj.since,
             timeout_ms=input_obj.timeout_ms,
             kinds=input_obj.kinds,
+            limit=input_obj.limit,
             context=context,
         ),
     ),

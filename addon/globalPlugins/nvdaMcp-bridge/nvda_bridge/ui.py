@@ -151,6 +151,10 @@ _KEY_ALIASES = {
 	"pgdn": "pagedown",
 	"return": "enter",
 	"del": "delete",
+	"up": "upArrow",
+	"down": "downArrow",
+	"left": "leftArrow",
+	"right": "rightArrow",
 }
 
 
@@ -387,7 +391,8 @@ def send_keyboard(
 		_input_lock.release()
 
 	return {
-		"gesture": normalized_gesture,
+		"requested": gesture,
+		"normalized_keys": normalized_gesture,
 		"repeat": repeat,
 		"delay_ms": delay_ms,
 		"sent": sent_count > 0,

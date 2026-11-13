@@ -19,8 +19,6 @@ from typing import Any, Dict, Iterable, Optional, Tuple
 
 import logHandler
 
-from ..core.base import ToolMetadata
-
 # Permission capability identifiers
 PERMISSION_READ_ONLY = "read_only"
 PERMISSION_INPUT_CONTROL = "input_control"

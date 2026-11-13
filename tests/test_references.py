@@ -150,7 +150,8 @@ class ReferenceTableTests(unittest.TestCase):
 		self.assertEqual(refs._kind_of("a3"), "ancestor")
 		self.assertEqual(refs._kind_of("c2"), "child")
 		self.assertEqual(refs._kind_of("d1"), "dialog")
-		self.assertEqual(refs._kind_of("n9"), "node")
+		self.assertEqual(refs._kind_of("w"), "window")
+		self.assertEqual(refs._kind_of("n9"), "located")
 
 	def test_the_target_kind_is_recorded_when_the_reference_is_captured(self):
 		element = FakeObject()

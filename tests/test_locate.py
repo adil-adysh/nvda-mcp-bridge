@@ -280,8 +280,8 @@ class LocateHandlerTests(unittest.TestCase):
 			"name": "Two",
 			"value": "",
 			"states": ["ENABLED"],
-			"location": [10, 20, 30, 40],
-			"automationId": "link-2",
+			"location": {"left": 10, "top": 20, "width": 30, "height": 40},
+			"automation_id": "link-2",
 			"depth": -1,
 			"path": [],
 			"target": "uia",
@@ -296,7 +296,7 @@ class LocateHandlerTests(unittest.TestCase):
 		}
 		model = validator.validate_and_map(payload, models.LocateResult, strict=True)
 		self.assertEqual(model.matches[0].ref, "n1")
-		self.assertEqual(model.matches[0].automationId, "link-2")
+		self.assertEqual(model.matches[0].automation_id, "link-2")
 
 
 if __name__ == "__main__":
