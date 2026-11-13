@@ -41,6 +41,7 @@ sys.modules["logHandler"] = types.SimpleNamespace(log=_fake_logger)
 
 _queue_handler = types.ModuleType("queueHandler")
 _queue_handler.eventQueue = "dummy-queue"
+_queue_handler.queueFunction = lambda _queue, fn, *args, **kwargs: fn(*args, **kwargs)
 sys.modules["queueHandler"] = _queue_handler
 
 for mod_name in (
@@ -356,7 +357,7 @@ class TestKeyboardDispatchSemantics(unittest.TestCase):
         # Execute from worker thread through queueHandler
         def worker():
             _queue_handler.queueFunction = lambda q, fn, *args, **kwargs: self.sim_queue.queue_fn(fn)
-            import nvdaMcpBridge.nvda_bridge.ui as ui_m
+            ui_m = ui_module
             # Monkeypatch resolve_gesture to return our gesture
             orig_resolve = ui_m.resolve_gesture
             ui_m.resolve_gesture = lambda g: gesture
@@ -413,3 +414,52 @@ class TestKeyboardDispatchSemantics(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
+
+
+class ScriptedGestureDispatchTests(unittest.TestCase):
+	"""An NVDA-bound gesture must run as a command, not leak to the application."""
+
+	def test_scripted_gesture_is_queued_for_command_execution(self):
+		executed = []
+		injected = []
+
+		class ScriptedGesture:
+			script = object()
+
+			def send(self):
+				injected.append(True)
+
+		class Manager:
+			def executeGesture(self, gesture):
+				executed.append(gesture)
+
+		input_core = types.ModuleType("inputCore")
+		input_core.NoInputGestureAction = type("NoInputGestureAction", (Exception,), {})
+		input_core.manager = Manager()
+		previous_input_core = sys.modules.get("inputCore")
+		sys.modules["inputCore"] = input_core
+		previous_queue = _queue_handler.queueFunction
+		_queue_handler.queueFunction = lambda _queue, fn, *args, **kwargs: fn()
+		try:
+			send_single_gesture(ScriptedGesture())
+		finally:
+			_queue_handler.queueFunction = previous_queue
+			if previous_input_core is None:
+				sys.modules.pop("inputCore", None)
+			else:
+				sys.modules["inputCore"] = previous_input_core
+
+		self.assertEqual(len(executed), 1)
+		self.assertEqual(injected, [])
+
+	def test_plain_key_gesture_is_still_injected_to_the_application(self):
+		injected = []
+
+		class PlainGesture:
+			script = None
+
+			def send(self):
+				injected.append(True)
+
+		send_single_gesture(PlainGesture())
+		self.assertEqual(injected, [True])

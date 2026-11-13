@@ -47,6 +47,8 @@ ACTION_CALLS = []
 
 
 class _FakeActions:
+	CANCEL_DIALOG_BUTTON = None
+
 	@staticmethod
 	def do_action(obj, action=None):
 		ACTION_CALLS.append(("do_action", action))
@@ -90,6 +92,10 @@ class _FakeActions:
 	@staticmethod
 	def default_dialog_button(dialog):
 		return "button"
+
+	@staticmethod
+	def cancel_dialog_button(dialog):
+		return _FakeActions.CANCEL_DIALOG_BUTTON
 
 
 #: What the fake control contains when `set_value` is read back afterwards.
@@ -299,6 +305,11 @@ class SurfaceTests(unittest.TestCase):
 		self.assertIn("modal", states)
 		self.assertIn("menu", states)
 
+	def test_press_can_navigate_menus_and_answer_message_boxes(self):
+		states = self.registry.get("press").get_metadata().allowed_nvda_states
+		self.assertIn("menu", states)
+		self.assertIn("modal", states)
+
 	def test_retired_aliases_are_gone(self):
 		# api_level 3 retired the v1 aliases outright: they are not deprecated
 		# placeholders, they are not in the registry at all, so an agent never
@@ -349,6 +360,7 @@ class SurfaceTests(unittest.TestCase):
 class HandlerTests(unittest.TestCase):
 	def setUp(self):
 		ACTION_CALLS.clear()
+		_FakeActions.CANCEL_DIALOG_BUTTON = None
 		VALUE_AFTER_WRITE["value"] = None
 		global PLATFORM_WRITE_STICKS, KEYBOARD_WRITE_STICKS
 		PLATFORM_WRITE_STICKS = False
@@ -529,13 +541,20 @@ class HandlerTests(unittest.TestCase):
 		self.assertFalse(result["focus_in_window"])
 		self.assertEqual(result["focus_window"], "DeepSeek Harness — Microsoft Edge")
 
-	def test_dismiss_tries_escape_then_the_default_button(self):
-		# First settle leaves a dialog, second one removes it.
-		context = FakeContext(projections=[{"dialog": {"name": "Replace"}}, {"dialog": None}])
+	def test_dismiss_never_activates_a_positive_default_button(self):
+		# Escape did not close the prompt and no safe cancel control was identified.
+		context = FakeContext(projections=[{"dialog": {"name": "Add-on Installation"}}, {"dialog": {"name": "Add-on Installation"}}])
+		result = handlers.dismiss(expect=None, context=context)
+		self.assertFalse(result["dismissed"])
+		self.assertIn(("gesture", "escape"), ACTION_CALLS)
+		self.assertFalse(any(call[0] == "do_action" for call in ACTION_CALLS))
+
+	def test_dismiss_uses_an_explicit_cancel_control_when_escape_does_not_close(self):
+		_FakeActions.CANCEL_DIALOG_BUTTON = "no-button"
+		context = FakeContext(projections=[{"dialog": {"name": "Add-on Installation"}}, {"dialog": None}])
 		result = handlers.dismiss(expect=None, context=context)
 		self.assertTrue(result["dismissed"])
-		self.assertIn(("gesture", "escape"), ACTION_CALLS)
-		self.assertTrue(any(step.startswith("activated button") for step in result["steps"]))
+		self.assertTrue(any(call[0] == "do_action" for call in ACTION_CALLS))
 
 	def test_dismiss_reports_a_dialog_that_survived(self):
 		context = FakeContext(projections=[{"dialog": {"name": "Save"}}, {"dialog": {"name": "Save"}}])

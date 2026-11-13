@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
 import time
 import uuid
@@ -85,6 +86,36 @@ _MAX_DRAIN_BYTES = 8 * 1024 * 1024
 #: Longest a /events long-poll may hold a worker thread. The bridge serves a
 #: bounded thread pool, so waiters must be short-lived and few.
 _MAX_EVENT_WAIT_MS = 30000
+
+
+#: Win32 GUI-thread flags that indicate an active menu loop.
+_GUI_MENU_FLAGS = 0x04 | 0x08 | 0x10  # INMENUMODE | SYSTEMMENUMODE | POPUPMENUMODE
+
+
+def _is_nvda_menu_open(
+	menu_identity: Any,
+	foreground_class: str,
+	foreground_process_id: int,
+	nvda_process_id: int,
+	gui_flags: int = 0,
+) -> bool:
+	"""Distinguish an active NVDA popup from its cached accessibility identity.
+
+	NVDA sets ``nvdaMenuIaIdentity`` to ``True`` just before showing its menu and
+	keeps the identified popup identity cached after the menu closes. Neither
+	value alone proves the menu is open: a menu that failed to appear (or was
+	dismissed while another app owned the foreground) can leave ``True`` cached,
+	which previously blocked every input action until NVDA restarted. Prefer the
+	GUI thread's own menu-mode flags; then the native popup window; fall back to
+	the conservative identity check only when no foreground window is available.
+	"""
+	if gui_flags & _GUI_MENU_FLAGS:
+		return True
+	if menu_identity is None:
+		return False
+	if not foreground_class:
+		return menu_identity is True
+	return foreground_class == "#32768" and foreground_process_id == nvda_process_id
 
 
 class BoundedThreadingHTTPServer(ThreadingHTTPServer):
@@ -1168,12 +1199,35 @@ class NVDAHTTPBridge:
 		except Exception:
 			pass
 
+		menu_identity = None
 		try:
 			import appModules.nvda
 
-			menu_open = appModules.nvda.nvdaMenuIaIdentity is not None
+			menu_identity = appModules.nvda.nvdaMenuIaIdentity
+			if menu_identity is not None:
+				# Win32 window metadata is safe to query from this request thread and
+				# distinguishes the live popup from NVDA's cached menu identity.
+				import winUser
+
+				foreground = winUser.getForegroundWindow()
+				if not foreground:
+					menu_open = _is_nvda_menu_open(menu_identity, "", 0, os.getpid())
+				else:
+					foreground_process_id, foreground_thread_id = winUser.getWindowThreadProcessID(foreground)
+					gui_flags = 0
+					if foreground_process_id == os.getpid():
+						gui_flags = int(winUser.getGUIThreadInfo(foreground_thread_id).flags)
+					menu_open = _is_nvda_menu_open(
+						menu_identity,
+						winUser.getClassName(foreground),
+						foreground_process_id,
+						os.getpid(),
+						gui_flags,
+					)
 		except Exception:
-			pass
+			# A known menu identity with unavailable foreground evidence remains
+			# blocked. A missing identity means NVDA has not opened this menu.
+			menu_open = menu_identity is not None
 
 		try:
 			import speech

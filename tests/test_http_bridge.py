@@ -37,9 +37,48 @@ NVDAHTTPBridge = bridge_module.NVDAHTTPBridge
 PROTOCOL = bridge_module.PROTOCOL
 PROTOCOL_VERSION = bridge_module.PROTOCOL_VERSION
 API_LEVEL = bridge_module.API_LEVEL
+_is_nvda_menu_open = bridge_module._is_nvda_menu_open
 
 
 class HttpBridgeTests(unittest.TestCase):
+    def test_cached_nvda_menu_identity_does_not_block_after_menu_closes(self):
+        # NVDA caches the identified menu popup after it closes. A normal app
+        # window in the foreground proves the menu is no longer active.
+        self.assertFalse(
+            _is_nvda_menu_open(("nvda-menu", 3), "Chrome_WidgetWin_1", 1234, 999)
+        )
+
+    def test_focused_nvda_menu_popup_keeps_menu_guard_active(self):
+        self.assertTrue(_is_nvda_menu_open(("nvda-menu", 3), "#32768", 999, 999))
+
+    def test_foreign_popup_does_not_count_as_the_nvda_menu(self):
+        self.assertFalse(_is_nvda_menu_open(("nvda-menu", 3), "#32768", 1234, 999))
+
+    def test_unidentified_menu_opening_remains_blocked_without_foreground(self):
+        self.assertTrue(_is_nvda_menu_open(True, "", 0, 999))
+
+    def test_stale_unidentified_identity_does_not_block_a_known_foreground(self):
+        # A menu that failed to appear can leave ``True`` cached indefinitely.
+        # Foreground evidence must win so input is not blocked until restart.
+        self.assertFalse(
+            _is_nvda_menu_open(True, "Chrome_WidgetWin_1", 1234, 999)
+        )
+
+    def test_missing_identity_is_never_menu_open(self):
+        self.assertFalse(_is_nvda_menu_open(None, "#32768", 999, 999))
+
+    def test_gui_thread_menu_mode_flags_identify_the_open_menu(self):
+        # wx keeps the main frame as the foreground window while a popup menu is
+        # open, so the native-popup class check alone is not sufficient.
+        self.assertTrue(
+            _is_nvda_menu_open(("nvda-menu", 3), "wxWindowNR", 999, 999, 0x14)
+        )
+
+    def test_closed_menu_with_cached_identity_and_main_frame_is_not_open(self):
+        self.assertFalse(
+            _is_nvda_menu_open(("nvda-menu", 3), "wxWindowNR", 999, 999, 0)
+        )
+
     def test_validate_tools_discovery_payload_accepts_valid_payload(self):
         payload = {
             "protocol": PROTOCOL,

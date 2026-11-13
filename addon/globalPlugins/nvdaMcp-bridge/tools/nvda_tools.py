@@ -639,7 +639,7 @@ ALL_NVDA_TOOLS = [
             idempotent=False,
             side_effects=True,
             required_permission="input_control",
-            allowed_nvda_states=("normal",),
+            allowed_nvda_states=("normal", "modal", "menu"),
             expected_duration_ms=300,
             cancellation_supported=True,
             retry_safe=False,
@@ -742,7 +742,8 @@ ALL_NVDA_TOOLS = [
             name="dismiss",
             version="1.0.0",
             description=(
-                "Leave a dialog: Escape first, then its default button. Allowed in modal and "
+				"Leave a dialog: Escape first, then an explicit Cancel, No, Close, Abort, or Stop button. "
+				"Never activates a dialog's default button. Allowed in modal and "
                 "menu states so an agent can get out of a dialog it entered."
             ),
             category="action",

@@ -182,7 +182,29 @@ def send_single_gesture(gesture_or_resolved: Any) -> None:
 		resolved = resolve_gesture(gesture_or_resolved)
 	else:
 		resolved = gesture_or_resolved
-	resolved.send()
+	try:
+		script = resolved.script
+	except Exception:
+		script = None
+	if script is None:
+		resolved.send()
+		return
+	import inputCore
+	import queueHandler
+
+	def _run_script() -> None:
+		try:
+			inputCore.manager.executeGesture(resolved)
+		except inputCore.NoInputGestureAction:
+			resolved.send()
+		except Exception:
+			logHandler.log.error("NVDA Bridge: executing gesture failed", exc_info=True)
+
+	try:
+		queueHandler.queueFunction(queueHandler.eventQueue, _run_script)
+	except Exception:
+		logHandler.log.warning("NVDA Bridge: queuing gesture failed; injecting keys")
+		resolved.send()
 
 
 def send_keyboard(
