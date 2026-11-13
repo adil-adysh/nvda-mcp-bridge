@@ -430,6 +430,65 @@ class LocateInput:
 	)
 
 
+@dataclass(frozen=True)
+class FindToolsInput:
+	"""Search the bridge's own catalog without loading every tool schema.
+
+	All query words must appear in the tool name, title, category, tags or
+	description. Results are compact summaries; call ``get_tool_schema`` for
+	the input schema of one tool.
+	"""
+
+	query: str = field(
+		default="",
+		metadata={
+			"description": (
+				"Words to match, case-insensitively. Example: 'log search', "
+				"'focus', or 'keyboard'. An empty query lists the catalog."
+			)
+		},
+	)
+	category: Optional[str] = field(
+		default=None,
+		metadata={
+			"description": (
+				"Exact bridge category, such as diagnostics, observation, action, "
+				"input, speech, ui, system or developer."
+			)
+		},
+	)
+	read_only: Optional[bool] = field(
+		default=None,
+		metadata={"description": "True keeps only read-only tools; false keeps mutating tools."},
+	)
+	limit: int = field(
+		default=10,
+		metadata={"minimum": 1, "maximum": 50, "description": "Maximum summaries to return."},
+	)
+	include_deprecated: bool = field(
+		default=False,
+		metadata={"description": "Include tools that are retained only for compatibility."},
+	)
+
+
+@dataclass(frozen=True)
+class GetToolSchemaInput:
+	"""Return one tool's full schema on demand."""
+
+	name: str = field(
+		metadata={"minLength": 1, "description": "Canonical tool name from find_tools, e.g. health_snapshot."},
+	)
+	include_output_schema: bool = field(
+		default=False,
+		metadata={
+			"description": (
+				"Include the output schema too. Off by default because it is "
+				"usually larger than the input schema."
+			)
+		},
+	)
+
+
 # ============================================================================
 # OUTPUT MODELS
 # ============================================================================
@@ -1233,3 +1292,56 @@ class ActionTraceResult:
 	retention: Optional[dict[str, Any]] = None
 	missing_reason: str = ""
 	"""Why the record is unavailable: ``expired_or_unknown`` or ``not_stored``."""
+
+
+# ============================================================================
+# TOOL DISCOVERY OUTPUT MODELS
+# ============================================================================
+
+
+@dataclass(frozen=True)
+class ToolSummary:
+	"""Compact catalog entry returned by ``find_tools``.
+
+	The input schema is deliberately absent: it is the largest part of a tool
+	definition, and a caller that has not selected this tool does not need it.
+	"""
+
+	name: str
+	title: str
+	category: str
+	summary: str
+	read_only: bool
+	destructive: bool
+	required_permission: str
+	required_parameters: list[str] = field(default_factory=list)
+	tags: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class FindToolsResult:
+	"""A ranked page of compact tool summaries."""
+
+	tools: list[ToolSummary]
+	total_matches: int
+	returned: int
+	available_categories: list[str] = field(default_factory=list)
+	query: str = ""
+	category: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class GetToolSchemaResult:
+	"""One tool's full discovery contract."""
+
+	name: str
+	title: str
+	category: str
+	description: str
+	read_only: bool
+	destructive: bool
+	required_permission: str
+	required_parameters: list[str]
+	input_schema: dict[str, Any]
+	output_schema: Optional[dict[str, Any]] = None
+	tags: list[str] = field(default_factory=list)

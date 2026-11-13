@@ -101,6 +101,17 @@ class ExecutionContext:
 	an action path: nothing here may mutate NVDA state.
 	"""
 
+	tool_registry: Any = None
+	"""The live registry, so ``find_tools``/``get_tool_schema`` search the same
+	catalog this bridge is serving rather than a module-level snapshot."""
+
+	developer_mode: bool = False
+	"""Whether developer-only tools are currently discoverable.
+
+	Mirrors the bridge's developer-mode gate; discovery must never advertise a
+	tool that the bridge would refuse to execute.
+	"""
+
 
 @dataclass(frozen=True)
 class ToolMetadata:

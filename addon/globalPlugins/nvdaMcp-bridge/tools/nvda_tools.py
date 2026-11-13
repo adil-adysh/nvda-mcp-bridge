@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from ..core import ExecutionMode, ToolMetadata, TypedToolImpl
+from . import discovery as tool_discovery
 from . import handlers as tool_handlers
 from . import models
 
@@ -59,7 +60,11 @@ ALL_NVDA_TOOLS = [
         ToolMetadata(
             name="inspect_object",
             version="1.0.0",
-            description="Inspect focus/navigator/desktop object with rich metadata.",
+            description=(
+                "Rich metadata for one focus/navigator/desktop object, including relations. "
+                "Use observe for screen context and refs, get_focus_lineage for just the ancestor "
+                "chain, and walk_object_tree for descendants."
+            ),
             category="diagnostics",
             read_only=True,
             destructive=False,
@@ -105,7 +110,11 @@ ALL_NVDA_TOOLS = [
         ToolMetadata(
             name="get_focus_lineage",
             version="1.0.0",
-            description="Get focused object with ancestor chain for hierarchy debugging.",
+            description=(
+                "Focused object plus its ancestor chain only. Use observe for the full screen "
+                "projection and fresh refs, inspect_object for one object's properties, and "
+                "walk_object_tree for children."
+            ),
             category="diagnostics",
             read_only=True,
             destructive=False,
@@ -164,7 +173,12 @@ ALL_NVDA_TOOLS = [
         ToolMetadata(
             name="health_snapshot",
             version="1.0.0",
-            description="Collect one-call diagnostics snapshot for NVDA addon debugging.",
+            description=(
+                "One-call, non-interactive health summary: NVDA version/status, optional focus, "
+                "add-on counts and log tail. Start here for a safe probe. Use observe when you "
+                "need refs to act on, get_focus_lineage for hierarchy, or inspect_object for one "
+                "object's properties."
+            ),
             category="diagnostics",
             read_only=True,
             destructive=False,
@@ -355,9 +369,12 @@ ALL_NVDA_TOOLS = [
             name="observe",
             version="1.0.0",
             description=(
-                "Capture the screen once: focus, ancestors, children, dialog and window, "
-                "each with a ref. References are locators for invoke/focus/read, valid until "
-                "the observation is superseded; state_version identifies this observation."
+                "Capture the interactive UI once: focus, ancestors, children, dialog and window, "
+                "each with a ref. Start here before actions. Use health_snapshot for a "
+                "non-interactive health check, list_reading_targets for document structure, or "
+                "inspect_object for one object's metadata. References are locators for "
+                "invoke/focus/read and stay valid until superseded; state_version identifies "
+                "this observation."
             ),
             category="observation",
             read_only=True,
@@ -855,5 +872,58 @@ ALL_NVDA_TOOLS = [
             trace_id=input_obj.trace_id,
             context=context,
         ),
+    ),
+    # ------------------------------------------------------------------
+    # Catalog navigation. These exist because 30+ flat tools are cheap to
+    # execute but expensive to choose between when every schema is injected.
+    # ------------------------------------------------------------------
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="find_tools",
+            version="1.0.0",
+            description=(
+                "Search this bridge's own tool catalog by words, category, or read-only state. "
+                "Returns compact summaries (name, group, description, required parameters), not "
+                "schemas. Use it to choose a tool, then call get_tool_schema for that one tool's "
+                "input schema. An empty query lists the catalog by group."
+            ),
+            category="discovery",
+            read_only=True,
+            destructive=False,
+            idempotent=True,
+            side_effects=False,
+            required_permission="read_only",
+            allowed_nvda_states=("normal", "modal", "menu"),
+            expected_duration_ms=5,
+            retry_safe=True,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.FindToolsInput,
+        models.FindToolsResult,
+        lambda input_obj, context: tool_discovery.find_tools(input_obj, context),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
+            name="get_tool_schema",
+            version="1.0.0",
+            description=(
+                "Return one tool's full input schema on demand, and optionally its output schema. "
+                "Use after find_tools; this avoids loading every schema up front. Unknown or "
+                "hidden tool names are rejected with a pointer back to find_tools."
+            ),
+            category="discovery",
+            read_only=True,
+            destructive=False,
+            idempotent=True,
+            side_effects=False,
+            required_permission="read_only",
+            allowed_nvda_states=("normal", "modal", "menu"),
+            expected_duration_ms=5,
+            retry_safe=True,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.GetToolSchemaInput,
+        models.GetToolSchemaResult,
+        lambda input_obj, context: tool_discovery.get_tool_schema(input_obj, context),
     ),
 ]

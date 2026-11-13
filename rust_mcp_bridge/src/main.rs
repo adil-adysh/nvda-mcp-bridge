@@ -425,7 +425,14 @@ impl BridgeClient {
                     def.input_schema.clone(),
                 )
                 .annotate(annotation_for_tool(&def));
-                tool.title = Some(human_title(&def.name));
+                // Group the display title without renaming the tool. Approval
+                // lists and pickers then show "Diagnostics · Health Snapshot"
+                // instead of a flat list of 30+ undifferentiated names.
+                tool.title = Some(if def.category.is_empty() {
+                    human_title(&def.name)
+                } else {
+                    format!("{} · {}", human_title(&def.category), human_title(&def.name))
+                });
                 // Advertise the exact schema the companion validates and sends.
                 tool.output_schema = extended_schema
                     .as_ref()
@@ -1964,6 +1971,16 @@ mod tests {
 
         assert!(catalog.tools_for_mcp.len() > 0, "No tools found in schema.json");
         assert_eq!(catalog.tools_for_mcp.len(), catalog.runtime_by_name.len(), "Mismatch between tools_for_mcp and runtime_by_name sizes");
+        let find_tools = catalog
+            .tools_for_mcp
+            .iter()
+            .find(|tool| tool.name == "find_tools")
+            .expect("find_tools missing from catalog");
+        assert_eq!(
+            find_tools.title.as_deref(),
+            Some("Discovery · Find Tools"),
+            "tool titles should group by category without renaming the tool"
+        );
     }
 
     #[tokio::test]

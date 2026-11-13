@@ -1580,6 +1580,8 @@ class NVDAHTTPBridge:
 				event_version=lambda: self.event_journal.version,
 				result=result_meta,
 				trace_store=self.trace_store,
+				tool_registry=self.registry,
+				developer_mode=self.developer_mode_manager.is_enabled,
 			)
 
 			def _execute_tool() -> Dict[str, Any]:

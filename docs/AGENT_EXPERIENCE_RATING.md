@@ -6,6 +6,11 @@
 `scons` and installed into NVDA. 31 tools exposed (`execute_python` correctly hidden without
 developer mode).
 
+> **Follow-up (same day):** the discovery gaps below were implemented. The current
+> build exposes **33** tools by default (`find_tools` and `get_tool_schema` are new;
+> `execute_python` is still developer-only). The historical scores in this document
+> describe the build above; see **Discovery follow-up** for the current state.
+
 ## Verdict
 
 **6.8 / 10 after a clean redeploy — 3.5 / 10 on the machine as I found it.**
@@ -292,6 +297,31 @@ The original text said `set_value` wrote into Edge's address bar because the ref
 was mis-modelled. That is accurate, but it is not a stale-reference defect: the
 ref was valid and `set_value` correctly reported the write it made. It remains a
 useful caution that a valid ref is not proof of the intended target.
+
+## Discovery follow-up
+
+The original 6/10 discoverability score had a concrete cause: 31 flat tools, a
+~76 KB `tools/list`, no way to search the catalog, and no schema-on-demand path.
+The follow-up keeps the API level at 1 and adds:
+
+| Change | Effect |
+|---|---|
+| `find_tools(query, category, read_only, limit)` | Word-start search over name, title, category, tags and description. Returns compact summaries and required parameters, not schemas. |
+| `get_tool_schema(name, include_output_schema=false)` | One input schema on demand; output schema only when requested. Unknown/hidden names point back to `find_tools`. |
+| Grouped titles | Approval lists and pickers show `Diagnostics · Health Snapshot`; tool names are unchanged. |
+| Disambiguated descriptions | `health_snapshot`, `observe`, `get_focus_lineage` and `inspect_object` now say which sibling to use. |
+| AI Assistant search/filter | Search by name or description; filter by approved, denied or server-declared read-only. |
+| Details preview | The full description and input schema appear for the selected tool, not a 160-character truncation. |
+| Bulk read-only approval | One warning-led action for non-destructive tools the server *claims* are read-only, still individually revocable. |
+
+**Revised discovery score: 8.0/10.** The selection problem is materially
+smaller: an agent can ask for "log search", get a short ranked list, then fetch
+one schema. The remaining caveat is protocol-level: `find_tools` is an index
+*inside* the catalog, so a client that eagerly fetches `tools/list` still pays
+for all 33 definitions. `NVDA_BRIDGE_CATEGORIES` remains the only way to shrink
+that initial surface; a meta-tool that hides tools behind one generic executor
+would trade per-tool approval for token savings, which is not an acceptable
+default for a screen reader.
 
 ## Bottom line
 

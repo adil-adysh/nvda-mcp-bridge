@@ -1,6 +1,6 @@
 {
   "api_level": 1,
-  "count": 32,
+  "count": 34,
   "tools": [
     {
       "category": "action",
@@ -496,6 +496,182 @@
       "version": "1.0.0"
     },
     {
+      "category": "discovery",
+      "defaults": {
+        "category": null,
+        "include_deprecated": false,
+        "limit": 10,
+        "query": "",
+        "read_only": null
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Search the bridge's own catalog without loading every tool schema.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Exact bridge category, such as diagnostics, observation, action, input, speech, ui, system or developer."
+          },
+          "include_deprecated": {
+            "default": false,
+            "description": "Include tools that are retained only for compatibility.",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 10,
+            "description": "Maximum summaries to return.",
+            "maximum": 50,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "default": "",
+            "description": "Words to match, case-insensitively. Example: 'log search', 'focus', or 'keyboard'. An empty query lists the catalog.",
+            "type": "string"
+          },
+          "read_only": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True keeps only read-only tools; false keeps mutating tools."
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "find_tools",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "A ranked page of compact tool summaries.",
+        "properties": {
+          "available_categories": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "query": {
+            "default": "",
+            "type": "string"
+          },
+          "returned": {
+            "type": "integer"
+          },
+          "tools": {
+            "items": {
+              "additionalProperties": false,
+              "description": "Compact catalog entry returned by ``find_tools``.",
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "destructive": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "description": "Name to match; case-insensitive substring unless exact is true.",
+                  "type": "string"
+                },
+                "read_only": {
+                  "type": "boolean"
+                },
+                "required_parameters": {
+                  "default": [],
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "required_permission": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "tags": {
+                  "default": [],
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "title": {
+                  "description": "Window title to match.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "title",
+                "category",
+                "summary",
+                "read_only",
+                "destructive",
+                "required_permission"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "total_matches": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "tools",
+          "total_matches",
+          "returned"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": true,
+        "truncation_reported": false
+      },
+      "purpose": "Search this bridge's own tool catalog by words, category, or read-only state. Returns compact summaries (name, group, description, required parameters), not schemas. Use it to choose a tool, then call get_tool_schema for that one tool's input schema. An empty query lists the catalog by group.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
       "category": "action",
       "defaults": {
         "expect": null
@@ -746,7 +922,7 @@
         "input_bounded": false,
         "truncation_reported": false
       },
-      "purpose": "Get focused object with ancestor chain for hierarchy debugging.",
+      "purpose": "Focused object plus its ancestor chain only. Use observe for the full screen projection and fresh refs, inspect_object for one object's properties, and walk_object_tree for children.",
       "read_only": true,
       "reference_inputs": [],
       "required": [],
@@ -1436,6 +1612,126 @@
       "version": "1.0.0"
     },
     {
+      "category": "discovery",
+      "defaults": {
+        "include_output_schema": false
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Return one tool's full schema on demand.",
+        "properties": {
+          "include_output_schema": {
+            "default": false,
+            "description": "Include the output schema too. Off by default because it is usually larger than the input schema.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Canonical tool name from find_tools, e.g. health_snapshot.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "get_tool_schema",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "One tool's full discovery contract.",
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "destructive": {
+            "type": "boolean"
+          },
+          "input_schema": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "name": {
+            "description": "Name to match; case-insensitive substring unless exact is true.",
+            "type": "string"
+          },
+          "output_schema": {
+            "anyOf": [
+              {
+                "additionalProperties": {},
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "read_only": {
+            "type": "boolean"
+          },
+          "required_parameters": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "required_permission": {
+            "type": "string"
+          },
+          "tags": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "description": "Window title to match.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "title",
+          "category",
+          "description",
+          "read_only",
+          "destructive",
+          "required_permission",
+          "required_parameters",
+          "input_schema"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": false,
+        "truncation_reported": false
+      },
+      "purpose": "Return one tool's full input schema on demand, and optionally its output schema. Use after find_tools; this avoids loading every schema up front. Unknown or hidden tool names are rejected with a pointer back to find_tools.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [
+        "name"
+      ],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
       "category": "diagnostics",
       "defaults": {
         "include_addons": false,
@@ -1733,7 +2029,7 @@
         "input_bounded": true,
         "truncation_reported": false
       },
-      "purpose": "Collect one-call diagnostics snapshot for NVDA addon debugging.",
+      "purpose": "One-call, non-interactive health summary: NVDA version/status, optional focus, add-on counts and log tail. Start here for a safe probe. Use observe when you need refs to act on, get_focus_lineage for hierarchy, or inspect_object for one object's properties.",
       "read_only": true,
       "reference_inputs": [],
       "required": [],
@@ -1871,7 +2167,7 @@
         "input_bounded": false,
         "truncation_reported": false
       },
-      "purpose": "Inspect focus/navigator/desktop object with rich metadata.",
+      "purpose": "Rich metadata for one focus/navigator/desktop object, including relations. Use observe for screen context and refs, get_focus_lineage for just the ancestor chain, and walk_object_tree for descendants.",
       "read_only": true,
       "reference_inputs": [],
       "required": [],
@@ -3460,7 +3756,7 @@
         "input_bounded": true,
         "truncation_reported": true
       },
-      "purpose": "Capture the screen once: focus, ancestors, children, dialog and window, each with a ref. References are locators for invoke/focus/read, valid until the observation is superseded; state_version identifies this observation.",
+      "purpose": "Capture the interactive UI once: focus, ancestors, children, dialog and window, each with a ref. Start here before actions. Use health_snapshot for a non-interactive health check, list_reading_targets for document structure, or inspect_object for one object's metadata. References are locators for invoke/focus/read and stay valid until superseded; state_version identifies this observation.",
       "read_only": true,
       "reference_inputs": [],
       "required": [],

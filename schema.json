@@ -298,6 +298,132 @@
       ],
       "additionalProperties": false
     },
+    "FindToolsResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "tools": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Name to match; case-insensitive substring unless exact is true."
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Window title to match."
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "read_only": {
+                    "type": "boolean"
+                  },
+                  "destructive": {
+                    "type": "boolean"
+                  },
+                  "required_permission": {
+                    "type": "string"
+                  },
+                  "required_parameters": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "default": []
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "default": []
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "title",
+                  "category",
+                  "summary",
+                  "read_only",
+                  "destructive",
+                  "required_permission"
+                ],
+                "description": "Compact catalog entry returned by ``find_tools``."
+              }
+            },
+            "total_matches": {
+              "type": "integer"
+            },
+            "returned": {
+              "type": "integer"
+            },
+            "available_categories": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "query": {
+              "type": "string",
+              "default": ""
+            },
+            "category": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "tools",
+            "total_matches",
+            "returned"
+          ],
+          "description": "A ranked page of compact tool summaries."
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
     "FocusResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
@@ -1042,6 +1168,106 @@
             "file_size"
           ],
           "description": "Log entries."
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
+    "GetToolSchemaResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Name to match; case-insensitive substring unless exact is true."
+            },
+            "title": {
+              "type": "string",
+              "description": "Window title to match."
+            },
+            "category": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "read_only": {
+              "type": "boolean"
+            },
+            "destructive": {
+              "type": "boolean"
+            },
+            "required_permission": {
+              "type": "string"
+            },
+            "required_parameters": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "input_schema": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "output_schema": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "title",
+            "category",
+            "description",
+            "read_only",
+            "destructive",
+            "required_permission",
+            "required_parameters",
+            "input_schema"
+          ],
+          "description": "One tool's full discovery contract."
         },
         "error": {
           "type": "object",
@@ -4226,6 +4452,176 @@
       "supersededBy": null
     },
     {
+      "name": "find_tools",
+      "version": "1.0.0",
+      "description": "Search this bridge's own tool catalog by words, category, or read-only state. Returns compact summaries (name, group, description, required parameters), not schemas. Use it to choose a tool, then call get_tool_schema for that one tool's input schema. An empty query lists the catalog by group.",
+      "category": "discovery",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Words to match, case-insensitively. Example: 'log search', 'focus', or 'keyboard'. An empty query lists the catalog.",
+            "default": ""
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Exact bridge category, such as diagnostics, observation, action, input, speech, ui, system or developer.",
+            "default": null
+          },
+          "read_only": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "True keeps only read-only tools; false keeps mutating tools.",
+            "default": null
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "description": "Maximum summaries to return.",
+            "default": 10
+          },
+          "include_deprecated": {
+            "type": "boolean",
+            "description": "Include tools that are retained only for compatibility.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "description": "Search the bridge's own catalog without loading every tool schema."
+      },
+      "outputType": "FindToolsResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Name to match; case-insensitive substring unless exact is true."
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Window title to match."
+                },
+                "category": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "read_only": {
+                  "type": "boolean"
+                },
+                "destructive": {
+                  "type": "boolean"
+                },
+                "required_permission": {
+                  "type": "string"
+                },
+                "required_parameters": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "default": []
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "default": []
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "title",
+                "category",
+                "summary",
+                "read_only",
+                "destructive",
+                "required_permission"
+              ],
+              "description": "Compact catalog entry returned by ``find_tools``."
+            }
+          },
+          "total_matches": {
+            "type": "integer"
+          },
+          "returned": {
+            "type": "integer"
+          },
+          "available_categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "query": {
+            "type": "string",
+            "default": ""
+          },
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "tools",
+          "total_matches",
+          "returned"
+        ],
+        "description": "A ranked page of compact tool summaries."
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "read_only",
+      "cancellationSupported": false,
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
       "name": "focus",
       "version": "1.0.0",
       "description": "Move keyboard focus to an object by ref, then wait for the UI to settle.",
@@ -4409,7 +4805,7 @@
     {
       "name": "get_focus_lineage",
       "version": "1.0.0",
-      "description": "Get focused object with ancestor chain for hierarchy debugging.",
+      "description": "Focused object plus its ancestor chain only. Use observe for the full screen projection and fresh refs, inspect_object for one object's properties, and walk_object_tree for children.",
       "category": "diagnostics",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -5139,9 +5535,125 @@
       "supersededBy": null
     },
     {
+      "name": "get_tool_schema",
+      "version": "1.0.0",
+      "description": "Return one tool's full input schema on demand, and optionally its output schema. Use after find_tools; this avoids loading every schema up front. Unknown or hidden tool names are rejected with a pointer back to find_tools.",
+      "category": "discovery",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Canonical tool name from find_tools, e.g. health_snapshot."
+          },
+          "include_output_schema": {
+            "type": "boolean",
+            "description": "Include the output schema too. Off by default because it is usually larger than the input schema.",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "name"
+        ],
+        "description": "Return one tool's full schema on demand."
+      },
+      "outputType": "GetToolSchemaResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name to match; case-insensitive substring unless exact is true."
+          },
+          "title": {
+            "type": "string",
+            "description": "Window title to match."
+          },
+          "category": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "read_only": {
+            "type": "boolean"
+          },
+          "destructive": {
+            "type": "boolean"
+          },
+          "required_permission": {
+            "type": "string"
+          },
+          "required_parameters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "input_schema": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "output_schema": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "title",
+          "category",
+          "description",
+          "read_only",
+          "destructive",
+          "required_permission",
+          "required_parameters",
+          "input_schema"
+        ],
+        "description": "One tool's full discovery contract."
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": false,
+        "blocked_on_menu": false,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": true,
+      "sideEffects": false,
+      "requiredPermission": "read_only",
+      "cancellationSupported": false,
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
       "name": "health_snapshot",
       "version": "1.0.0",
-      "description": "Collect one-call diagnostics snapshot for NVDA addon debugging.",
+      "description": "One-call, non-interactive health summary: NVDA version/status, optional focus, add-on counts and log tail. Start here for a safe probe. Use observe when you need refs to act on, get_focus_lineage for hierarchy, or inspect_object for one object's properties.",
       "category": "diagnostics",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -5512,7 +6024,7 @@
     {
       "name": "inspect_object",
       "version": "1.0.0",
-      "description": "Inspect focus/navigator/desktop object with rich metadata.",
+      "description": "Rich metadata for one focus/navigator/desktop object, including relations. Use observe for screen context and refs, get_focus_lineage for just the ancestor chain, and walk_object_tree for descendants.",
       "category": "diagnostics",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -6478,7 +6990,7 @@
     {
       "name": "observe",
       "version": "1.0.0",
-      "description": "Capture the screen once: focus, ancestors, children, dialog and window, each with a ref. References are locators for invoke/focus/read, valid until the observation is superseded; state_version identifies this observation.",
+      "description": "Capture the interactive UI once: focus, ancestors, children, dialog and window, each with a ref. Start here before actions. Use health_snapshot for a non-interactive health check, list_reading_targets for document structure, or inspect_object for one object's metadata. References are locators for invoke/focus/read and stay valid until superseded; state_version identifies this observation.",
       "category": "observation",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -8940,5 +9452,5 @@
       "supersededBy": null
     }
   ],
-  "count": 32
+  "count": 34
 }

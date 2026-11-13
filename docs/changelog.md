@@ -31,7 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/REFERENCE_AND_VERIFICATION.md`, `docs/tool_inventory.json`,
   `docs/AGENT_EXPERIENCE_RATING.md`, and deterministic suites for cursors,
   references, verification, envelopes, defaults and bounds.
-- Tool `title` on every MCP tool, humanised from the tool name.
+- Tool `title` on every MCP tool, humanised from the tool name and prefixed
+  with its group (`Diagnostics · Health Snapshot`).
+- `find_tools` and `get_tool_schema` for compact catalog search and
+  schema-on-demand, including category/read-only filters and hidden-tool
+  enforcement.
 - MCP `structuredContent` carries the uniform `result` block (verification,
   evidence, scope, state_version) and `trace_id`; `outputSchema` advertises
   those optional fields.

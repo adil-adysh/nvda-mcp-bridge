@@ -15,14 +15,14 @@ and what remains an assumption that needs live NVDA evidence.
 | API level | `1`, `supported_api_levels = [1]` |
 | Protocol | `nvda-bridge-protocol 1.0.0` |
 | Bridge / add-on / companion | `0.10.0` |
-| Tool count | **32** in the registry; **31** in default discovery (developer-only `execute_python` requires developer mode) |
-| Baseline tests | `519 passed, 4 subtests passed` (`python -m pytest -q`) |
-| Baseline Rust tests | `34 passed` (`cargo test`) |
-| Assistant MCP tests | `35 passed, 1 skipped` |
+| Tool count | **34** in the registry; **33** in default discovery (developer-only `execute_python` requires developer mode) |
+| Baseline tests | `601 passed, 19 subtests passed` (`python -m pytest -q`) |
+| Baseline Rust tests | `40 passed` (`cargo test`) |
+| Assistant MCP tests | `1,335 passed, 3 skipped, 40 deselected` (`python -m pytest -q`) |
 
-The registry count is authoritative; there is no hardcoded expectation of 32.
-`GET /tools` returns 31 with developer mode off because `execute_python` is a
-developer-permission tool, and 32 with developer mode on. Both are validated
+The registry count is authoritative; there is no hardcoded expectation of 34.
+`GET /tools` returns 33 with developer mode off because `execute_python` is a
+developer-permission tool, and 34 with developer mode on. Both are validated
 against `docs/protocol/tool-discovery.schema.json`.
 `docs/tool_inventory.json` is generated from the registry by
 `python scripts/tool_contract_report.py --json -o docs/tool_inventory.json`.
@@ -33,6 +33,7 @@ Do not edit either by hand.
 
 | Category | Tools |
 |---|---|
+| Discovery | `find_tools`, `get_tool_schema` |
 | Action | `invoke`, `set_value`, `focus`, `press`, `navigate`, `scroll`, `dismiss`, `click_at`, `activate_window` |
 | Observation | `observe`, `locate`, `read`, `wait_for_events`, `get_action_trace` |
 | Reading | `start_browse_mode`, `list_reading_targets`, `navigate_reading` |
@@ -89,7 +90,7 @@ document does not duplicate machine-generated data.
 
 | Gate | Evidence |
 |---|---|
-| G0 | Baseline test run; registry-derived `docs/tool_inventory.json` (32 tools); this document |
+| G0 | Baseline test run; registry-derived `docs/tool_inventory.json` (34 tools); this document |
 | G1 | `tests/test_event_cursors.py` (15 tests), `tests/test_event_coalescing.py` |
 | G2 | `tests/test_reference_lifecycle.py` (12 tests), `tests/test_references.py`, `tests/test_locate.py` |
 | G3 | `tests/test_action_verification.py` (14 tests), `tests/test_action_tools.py`, `tests/test_settle.py` |
@@ -103,15 +104,15 @@ document does not duplicate machine-generated data.
 
 | Check | Result |
 |---|---|
-| `python -m pytest -q` | **591 passed, 19 subtests passed** |
+| `python -m pytest -q` | **601 passed, 19 subtests passed** |
 | `cargo test` | **40 passed, 0 failed** |
 | `cargo clippy --all-targets` | Finished with pre-existing warnings; no new warning in changed regions |
 | `ruff check` (changed files) | All checks passed |
 | `python scripts/generate_bridge_schema.py -o schema.json` | Re-run; `test_generated_schema` passes |
-| `scons` | Rebuilt `nvdaMcpBridge-0.10.0.nvda-addon` from this source, including the Rust companion (9,782,784 bytes). The archive was force-rebuilt by removing it because an incremental `scons` considered the previously generated archive up to date after a source edit. |
-| `python scripts/validate_addon_package.py` | Newly built `0.10.0` archive validates; bundled companion SHA-256 `34c9109…` |
-| Protocol JSON Schema validation | Health, discovery (31 default / 32 with developer mode), success and error envelopes pass |
-| Assistant MCP tests | 35 passed, 1 skipped; no Assistant change required |
+| `scons` | Rebuilt `nvdaMcpBridge-0.10.0.nvda-addon` from this source, including the Rust companion (9,784,320 bytes); final archive is 4,616,151 bytes, SHA-256 `3832EF7E…`. The archive was force-rebuilt by removing it because an incremental `scons` considered the previously generated archive up to date after a source edit. |
+| `python scripts/validate_addon_package.py` | Newly built `0.10.0` archive validates; bundled companion SHA-256 `2d2dc4ff…` |
+| Protocol JSON Schema validation | Health, discovery (33 default / 34 with developer mode), success and error envelopes pass |
+| Assistant MCP tests | `1,335 passed, 3 skipped, 40 deselected` after the settings UI and discovery changes |
 
 The installed companion was still not inspected or replaced; the validated
 binary is the one built in this working tree.

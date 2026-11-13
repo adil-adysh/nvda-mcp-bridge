@@ -1,6 +1,6 @@
 # Agent playbook
 
-Five canonical loops for the NVDA MCP bridge. The principle in all of them is
+Six canonical loops for the NVDA MCP bridge. The principle in all of them is
 the same: observe once, keep the refs (not the `state_version`) as the locator,
 act by `ref`, then read `result.verification` before deciding whether to observe
 again.
@@ -8,6 +8,23 @@ again.
 `state_version` is an advisory projection revision. It advancing does **not**
 invalidate a reference; a reference ends when it expires, the object/window
 changes identity, the Bridge instance is replaced, or the target is gone.
+
+## 0. Choose a tool without reading every schema
+
+```text
+find_tools(query="log search", category="diagnostics", read_only=true)
+get_tool_schema(name="search_logs")
+search_logs(levels=["ERROR"], limit=20)
+```
+
+`find_tools` returns compact summaries (name, group, description, required
+parameters), not schemas. `get_tool_schema` returns one tool's input schema,
+and its output schema only when you ask for it. This is an index, not a smaller
+`tools/list`: an MCP client still fetches the catalog it wants. To shrink that
+catalog itself, use `NVDA_BRIDGE_CATEGORIES` on the companion.
+
+The group prefix in the title (`Diagnostics · Search Logs`) is display-only;
+tool names are stable.
 
 ## 1. Menu → submenu → item
 

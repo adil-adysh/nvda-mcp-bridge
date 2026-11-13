@@ -39,7 +39,7 @@ reads it when `NVDA_BRIDGE_TOKEN` is unset.
       "readOnly": true
     }
   ],
-  "count": 32
+  "count": 34
 }
 ```
 
@@ -213,12 +213,22 @@ different process; re-observe before acting.
 
 | Group | Tools |
 |---|---|
+| Discovery | `find_tools`, `get_tool_schema` |
 | Observation | `observe`, `locate`, `read`, `wait_for_events`, `get_action_trace` |
 | Reading | `start_browse_mode`, `list_reading_targets`, `navigate_reading` |
 | Action | `invoke`, `set_value`, `focus`, `press`, `navigate`, `scroll`, `dismiss`, `click_at`, `activate_window` |
 | Inspection | `inspect_object`, `inspect_app_module`, `walk_object_tree`, `get_focus_lineage`, `list_loaded_addons`, `health_snapshot` |
 | Logs | `get_logs`, `search_logs`, `get_log_context`, `summarize_logs` |
 | System | `restart_nvda`, `reload_plugins`, `execute_python`, `speak_text`, `show_message` |
+
+### Discovery helpers
+
+`find_tools(query, category, read_only, limit)` searches name, title, category,
+tags and description at word starts. It returns compact summaries with required
+parameters, not schemas. `get_tool_schema(name, include_output_schema)` returns
+one tool's schema on demand. Neither changes what `GET /tools` publishes:
+catalog size is controlled by `NVDA_BRIDGE_CATEGORIES` and the client's own
+`tools/list` request.
 
 ### Defaults that matter
 
