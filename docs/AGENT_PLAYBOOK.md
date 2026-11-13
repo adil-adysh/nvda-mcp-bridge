@@ -84,6 +84,13 @@ Any action that takes `expect` returns `result.verification`:
 `set_value` has its own read-back and reports `verified` / `observed` plus
 `verification`. A `verified: false` is an answer, not a transport failure.
 
+Through MCP, `verification`, `evidence`, `state_version` and `scope` live in
+`result` **inside `structuredContent`**, next to the tool's `data` fields. The
+text block is the same object as compact JSON, so either path carries them.
+Errors are `isError: true` with a compact JSON body (`success: false`,
+`error.code`, `error.recovery`, optional `trace_id`); there is no
+`structuredContent` on an error.
+
 ## Event catch-up
 
 * No cursor: `wait_for_events()` waits from the current journal head and never

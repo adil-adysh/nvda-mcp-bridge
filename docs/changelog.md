@@ -24,9 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and bounded, redacted evidence on results that take `expect`.
 - A typed `recovery` object on every error, with stable recovery actions.
 - `observe(max_bytes=...)` with explicit `truncated`, `truncated_sections`,
-  `more_available` and a continuation hint.
-- `docs/REFERENCE_AND_VERIFICATION.md`, `docs/tool_inventory.json`, and
-  deterministic suites for cursors, references, verification and envelopes.
+  `more_available`, `observed_bytes`, `budget_exceeded` and a continuation hint.
+  The bound is enforced for the optional payload; a budget smaller than the
+  minimum identity payload reports `budget_exceeded` instead of overrunning
+  silently.
+- `docs/REFERENCE_AND_VERIFICATION.md`, `docs/tool_inventory.json`,
+  `docs/AGENT_EXPERIENCE_RATING.md`, and deterministic suites for cursors,
+  references, verification, envelopes, defaults and bounds.
+- Tool `title` on every MCP tool, humanised from the tool name.
+- MCP `structuredContent` carries the uniform `result` block (verification,
+  evidence, scope, state_version) and `trace_id`; `outputSchema` advertises
+  those optional fields.
 
 ### Changed
 
@@ -41,6 +49,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   It now sends `journal_id` with event polls, resynchronises on
   `resync_required`, detects Bridge instance replacement, and forwards
   `error.recovery`.
+- Action failures use the same error builder as transport failures, so
+  `recovery` is always top level; `details.recovery` is no longer duplicated.
+- `get_logs(max_lines=...)` is validated against 1–10000 and published with
+  those bounds; an out-of-range value is `4103`, not `5303`.
+- Unknown `wait_for_events.kinds` values are rejected instead of silently
+  matching nothing.
+- Schema generation hoists descriptions/defaults onto optional properties and
+  publishes every default; common fields gained fallback descriptions.
+- `health_snapshot.top_window.ref` is `null` (it registers no reference).
+- `invoke`, `set_value`, `press` and `click_at` are marked destructive.
+- MCP success text is compact JSON of `structuredContent` (no duplicate
+  pretty-printed envelope, no per-call `trace` block). Errors are compact JSON
+  without `structuredContent`. The companion starts with an empty catalog and
+  retries when the bridge is unreachable, instead of exiting.
 - The Rust companion no longer treats an unknown Bridge instance as continuity.
 - Removed legacy architecture/migration documents and API-4 history.
 

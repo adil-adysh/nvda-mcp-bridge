@@ -154,11 +154,59 @@ impl Settings {
     }
 }
 
+/// Schema keywords added to every success payload by the companion.
+///
+/// The bridge's model describes `data`; the companion also returns the uniform
+/// `result` block (verification/evidence/state) and the correlation ids. They
+/// are advertised here so `structuredContent` stays valid against
+/// `outputSchema` instead of silently carrying undeclared fields.
+fn extend_output_schema(schema: &Value) -> Value {
+    let mut extended = schema.clone();
+    if let Some(object) = extended.as_object_mut() {
+        if let Some(properties) = object
+            .get_mut("properties")
+            .and_then(|value| value.as_object_mut())
+        {
+            properties
+                .entry("result".to_string())
+                .or_insert_with(|| json!({"type": "object", "additionalProperties": true}));
+            properties
+                .entry("trace_id".to_string())
+                .or_insert_with(|| json!({"type": "string"}));
+        }
+    }
+    extended
+}
+
+/// A human-facing tool title. MCP clients show it in approval UIs, where
+/// `get_focus_lineage` is much less readable than `Get Focus Lineage`.
+fn human_title(name: &str) -> String {
+    const ACRONYMS: &[&str] = &["nvda", "uia", "ui", "mcp", "id"];
+    name.split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            if ACRONYMS.contains(&part) {
+                part.to_ascii_uppercase()
+            } else {
+                let mut chars = part.chars();
+                match chars.next() {
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                    None => String::new(),
+                }
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[derive(Debug, Clone)]
 struct ToolRuntime {
     definition: BridgeToolDef,
     input_schema_value: Value,
     output_schema_value: Option<Value>,
+    /// The bridge's `data` schema, kept separately so tests and validation can
+    /// distinguish it from the extended schema advertised to the client.
+    data_schema_value: Option<Value>,
 }
 
 #[derive(Debug)]
@@ -171,6 +219,25 @@ struct ToolCatalog {
     schema_hash: Option<String>,
     tools_for_mcp: Vec<Tool>,
     runtime_by_name: HashMap<String, ToolRuntime>,
+}
+
+impl ToolCatalog {
+    /// A catalog that serves no tools yet.
+    ///
+    /// Used when the bridge is unreachable at startup: the MCP server still
+    /// handshakes and stays alive, so a client keeps its `nvda` server and the
+    /// catalog refresh loop can install the real surface when NVDA comes back.
+    /// The alternative (exit after five retries) makes the whole toolset vanish
+    /// just because NVDA was restarting.
+    fn empty(reason: &str) -> Self {
+        Self {
+            bridge_version: format!("unavailable: {reason}"),
+            instance_id: None,
+            schema_hash: None,
+            tools_for_mcp: Vec::new(),
+            runtime_by_name: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -341,19 +408,27 @@ impl BridgeClient {
                 def.output_schema.clone().map(Value::Object)
             };
 
+            // The bridge publishes an envelope schema (`{success, data, error}`)
+            // in its types map. The companion's structuredContent is the data
+            // object, enriched with the result block and correlation ids, so
+            // that is the schema to advertise.
+            let data_schema_value = output_schema_value
+                .as_ref()
+                .and_then(data_schema)
+                .cloned();
+            let extended_schema = data_schema_value.as_ref().map(extend_output_schema);
+
             let mcp_tool = {
                 let mut tool = Tool::new(
                     def.name.clone(),
-                    format!("{} [category={}, version={}]", def.description, def.category, def.version),
+                    def.description.clone(),
                     def.input_schema.clone(),
                 )
                 .annotate(annotation_for_tool(&def));
-                // Advertise the same output contract the companion validates.
-                // The bridge publishes the data model directly here; the
-                // `types` map wraps it in the success/error envelope.
-                tool.output_schema = output_schema_value
+                tool.title = Some(human_title(&def.name));
+                // Advertise the exact schema the companion validates and sends.
+                tool.output_schema = extended_schema
                     .as_ref()
-                    .and_then(data_schema)
                     .and_then(|schema| schema.as_object().cloned())
                     .map(Arc::new);
                 tool
@@ -373,7 +448,8 @@ impl BridgeClient {
                 ToolRuntime {
                     definition: def,
                     input_schema_value,
-                    output_schema_value,
+                    output_schema_value: extended_schema,
+                    data_schema_value,
                 },
             );
         }
@@ -568,6 +644,9 @@ impl BridgeClient {
         let retry_policy = obj.get("retry_policy").and_then(Value::as_str).map(String::from);
         let retry_after_ms = obj.get("retry_after_ms").and_then(Value::as_u64);
         let details = obj.get("details").cloned();
+        // Recovery is the one field an agent can act on without interpreting
+        // prose; dropping it here is why the wire had it but MCP did not.
+        let recovery = obj.get("recovery").cloned();
         Some(BridgeError {
             code,
             message,
@@ -576,7 +655,7 @@ impl BridgeClient {
             retry_policy,
             retry_after_ms,
             details,
-            recovery: None,
+            recovery,
         })
     }
 
@@ -681,15 +760,37 @@ impl NvdaServer {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    fn validate_input(runtime: &ToolRuntime, params: &Map<String, Value>) -> Result<()> {
+    fn validate_input(
+        runtime: &ToolRuntime,
+        params: &Map<String, Value>,
+    ) -> std::result::Result<(), Map<String, Value>> {
         let args_value = Value::Object(params.clone());
-        if !jsonschema::is_valid(&runtime.input_schema_value, &args_value) {
-            bail!(
-                "Input validation failed for '{}': request arguments do not match inputSchema",
-                runtime.definition.name
+        let Ok(validator) = jsonschema::validator_for(&runtime.input_schema_value) else {
+            // A schema the validator cannot compile is a companion bug, not a
+            // caller error; report it as such rather than as bad arguments.
+            let mut errors = Map::new();
+            errors.insert(
+                "<schema>".to_string(),
+                json!("the tool inputSchema could not be compiled"),
             );
+            return Err(errors);
+        };
+
+        let mut field_errors = Map::new();
+        for error in validator.iter_errors(&args_value) {
+            let path = error.instance_path().to_string();
+            let key = if path.is_empty() {
+                "<root>".to_string()
+            } else {
+                path
+            };
+            field_errors.insert(key, json!(error.to_string()));
         }
-        Ok(())
+        if field_errors.is_empty() {
+            Ok(())
+        } else {
+            Err(field_errors)
+        }
     }
 
     /// Validate the `data` portion of a bridge response against the inner output schema.
@@ -709,9 +810,13 @@ impl NvdaServer {
             .clone()
             .unwrap_or_else(|| Value::Object(Map::new()));
 
-        // Extract the inner `data` schema from the output type envelope
-        // schema: `{success, data: {...}, error}` → `{...}` (the data schema).
-        let inner_schema = data_schema(output_schema_value).unwrap_or(output_schema_value);
+        // The advertised schema is the bridge's data model plus the companion's
+        // optional metadata. Validate the bridge-owned part against the bridge's
+        // own schema, which is stricter than quietly accepting anything.
+        let inner_schema = runtime
+            .data_schema_value
+            .as_ref()
+            .unwrap_or(output_schema_value);
 
         if jsonschema::is_valid(inner_schema, &data_value) {
             return Ok(());
@@ -735,73 +840,45 @@ impl NvdaServer {
 
     /// Build the MCP result for a successful bridge response.
     ///
-    /// The same envelope is returned as `structuredContent` and as pretty text,
-    /// so a structured-content client and a text-only client see one contract.
+    /// `structuredContent` is the bridge's `data` object with the uniform
+    /// `result` block and correlation ids flattened alongside it. That keeps
+    /// existing data fields at the top level while making verification,
+    /// evidence and the trace id visible to structured-content clients, which
+    /// previously had to parse the text block to find them.
+    ///
+    /// The text block is the same compact JSON, not a second pretty-printed
+    /// envelope: one representation, duplicated only for clients that cannot
+    /// read structured content. The verbose per-call `trace` object is gone;
+    /// callers use `get_action_trace` with `trace_id` when they need it.
     fn success_result(payload: &BridgeActionEnvelope) -> CallToolResult {
-        let mut envelope = json!({
-            "success": true,
-        });
+        let mut structured = match payload.data.clone() {
+            Some(Value::Object(map)) => Value::Object(map),
+            Some(other) => json!({ "value": other }),
+            None => Value::Object(Map::new()),
+        };
 
-        if let Some(ref data) = payload.data {
-            envelope["data"] = data.clone();
-        } else {
-            envelope["data"] = Value::Object(Map::new());
-        }
-
-        // The uniform result block (§4.1) is additive: keep it alongside `data`.
-        if let Some(ref result) = payload.result {
-            envelope["result"] = result.clone();
-        }
-
-        // Diagnostic correlation: an agent needs the trace id to ask what
-        // happened, and the summary to decide whether it needs to.
-        if let Some(ref trace_id) = payload.trace_id {
-            envelope["trace_id"] = json!(trace_id);
-        }
-        if let Some(ref trace) = payload.trace {
-            envelope["trace"] = trace.clone();
-        }
-
-        // Attach protocol metadata for AI agents
-        if let Some(ref rid) = payload.request_id {
-            envelope["request_id"] = json!(rid);
-        }
-        if let Some(ref act) = payload.action {
-            envelope["action"] = json!(act);
-        }
-        if let Some(dur) = payload.duration_ms {
-            envelope["duration_ms"] = json!(dur);
-        }
-        if let Some(ref b) = payload.bridge {
-            if let Ok(v) = serde_json::to_value(b) {
-                envelope["bridge"] = v;
+        if let Some(object) = structured.as_object_mut() {
+            if let Some(ref result) = payload.result {
+                object.insert("result".to_string(), result.clone());
             }
-        }
-        if let Some(ref s) = payload.nvda_status_snapshot {
-            if let Ok(v) = serde_json::to_value(s) {
-                envelope["nvda_status_snapshot"] = v;
+            if let Some(ref trace_id) = payload.trace_id {
+                object.insert("trace_id".to_string(), json!(trace_id));
             }
         }
 
-        let mut result = CallToolResult::success(vec![ContentBlock::text(
-            serde_json::to_string_pretty(&envelope).unwrap_or_default(),
-        )]);
-        // `outputSchema` describes the tool's own `data`; structuredContent is
-        // exactly that object, while the text keeps the envelope metadata.
-        result.structured_content = Some(
-            envelope
-                .get("data")
-                .cloned()
-                .unwrap_or_else(|| Value::Object(Map::new())),
-        );
+        let text = serde_json::to_string(&structured).unwrap_or_default();
+        let mut result = CallToolResult::success(vec![ContentBlock::text(text)]);
+        result.structured_content = Some(structured);
         result
     }
 
     /// Build the MCP result for a failed bridge response.
     ///
-    /// The failure envelope is structured content too: an agent can branch on
-    /// `error.code` without parsing prose, while the first text block remains a
-    /// one-line summary.
+    /// The error is a compact JSON object in the text block: valid JSON (so a
+    /// text-only client can parse it) with `code`, `name`, `category`,
+    /// `retry_policy`, `recovery` and field details. No `structuredContent` is
+    /// attached, because the tool's `outputSchema` describes a successful
+    /// payload; attaching an error envelope there would violate it.
     fn error_result(payload: &BridgeActionEnvelope) -> CallToolResult {
         let err = payload.error.clone().unwrap_or(BridgeError {
             code: ErrorCode("BRIDGE_ERROR".into()),
@@ -815,12 +892,6 @@ impl NvdaServer {
         });
 
         let code_display = err.code.as_str();
-        let summary = if let Some(ref name) = err.name {
-            format!("Bridge tool error [{}] {}: {}", code_display, name, err.message)
-        } else {
-            format!("Bridge tool error {}: {}", code_display, err.message)
-        };
-
         let mut detail = json!({
             "success": false,
             "error": {
@@ -849,9 +920,6 @@ impl NvdaServer {
         if let Some(ref recovery) = err.recovery {
             detail["error"]["recovery"] = recovery.clone();
         }
-        if let Some(ref d) = payload.data {
-            detail["data"] = d.clone();
-        }
         if let Some(ref result) = payload.result {
             detail["result"] = result.clone();
         }
@@ -860,35 +928,48 @@ impl NvdaServer {
         if let Some(ref trace_id) = payload.trace_id {
             detail["trace_id"] = json!(trace_id);
         }
-        if let Some(ref trace) = payload.trace {
-            detail["trace"] = trace.clone();
-        }
         if let Some(ref rid) = payload.request_id {
             detail["request_id"] = json!(rid);
         }
-        if let Some(ref act) = payload.action {
-            detail["action"] = json!(act);
-        }
-        if let Some(dur) = payload.duration_ms {
-            detail["duration_ms"] = json!(dur);
-        }
-        if let Some(ref b) = payload.bridge {
-            if let Ok(v) = serde_json::to_value(b) {
-                detail["bridge"] = v;
-            }
-        }
-        if let Some(ref s) = payload.nvda_status_snapshot {
-            if let Ok(v) = serde_json::to_value(s) {
-                detail["nvda_status_snapshot"] = v;
-            }
-        }
 
-        let mut result = CallToolResult::error(vec![
-            ContentBlock::text(summary),
-            ContentBlock::text(serde_json::to_string_pretty(&detail).unwrap_or_default()),
-        ]);
-        result.structured_content = Some(detail);
-        result
+        CallToolResult::error(vec![ContentBlock::text(
+            serde_json::to_string(&detail).unwrap_or_default(),
+        )])
+    }
+
+    /// Build the MCP result for an argument that failed local validation.
+    ///
+    /// Uses the bridge's 4103 vocabulary so a client sees the same code whether
+    /// the companion or the bridge rejected the input, and names the offending
+    /// fields instead of a generic "does not match inputSchema".
+    fn input_error_result(tool_name: &str, field_errors: Map<String, Value>) -> CallToolResult {
+        let detail = json!({
+            "success": false,
+            "error": {
+                "code": "4103",
+                "protocol_code": 4103,
+                "name": "INVALID_PARAMS_SCHEMA",
+                "category": "validation",
+                "retry_policy": "fix_arguments",
+                "message": format!(
+                    "Input validation failed for '{}': {} field(s) do not match inputSchema",
+                    tool_name,
+                    field_errors.len()
+                ),
+                "details": {
+                    "error_code": "invalid_input_schema",
+                    "tool_name": tool_name,
+                    "field_errors": field_errors,
+                },
+                "recovery": {
+                    "action": "fix_arguments",
+                    "hint": "Correct the named parameters; no UI action was performed."
+                }
+            }
+        });
+        CallToolResult::error(vec![ContentBlock::text(
+            serde_json::to_string(&detail).unwrap_or_default(),
+        )])
     }
 }
 
@@ -1082,10 +1163,11 @@ impl ServerHandler for NvdaServer {
 
             let params = request.arguments.unwrap_or_default();
 
-            if let Err(err) = Self::validate_input(&runtime, &params) {
-                return Ok(CallToolResponse::Complete(CallToolResult::error(vec![
-                    ContentBlock::text(err.to_string()),
-                ])));
+            if let Err(field_errors) = Self::validate_input(&runtime, &params) {
+                return Ok(CallToolResponse::Complete(Self::input_error_result(
+                    &tool_name,
+                    field_errors,
+                )));
             }
 
             let bridge_result = match self.bridge_client.execute_action(&tool_name, params).await {
@@ -1536,19 +1618,28 @@ async fn main() -> Result<()> {
                     warn!(error = %err, remaining = retries, "Bridge not yet ready, retrying in 1s...");
                     tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
                 } else {
-                    bail!("Failed to discover tools from bridge /tools after retries: {err}");
+                    warn!(
+                        error = %err,
+                        "Bridge still unreachable; serving an empty tool catalog and retrying in the background"
+                    );
                 }
             }
         }
     }
-    let tool_catalog = catalog_opt.unwrap();
+    let tool_catalog = catalog_opt.unwrap_or_else(|| ToolCatalog::empty("bridge unreachable"));
 
-    info!(
-        tool_count = tool_catalog.tools_for_mcp.len(),
-        bridge_version = %tool_catalog.bridge_version,
-        schema_hash = ?tool_catalog.schema_hash,
-        "Discovered tools from bridge"
-    );
+    if tool_catalog.tools_for_mcp.is_empty() {
+        info!(
+            "No tools available yet. The catalog refresh loop will install them as soon as the bridge answers."
+        );
+    } else {
+        info!(
+            tool_count = tool_catalog.tools_for_mcp.len(),
+            bridge_version = %tool_catalog.bridge_version,
+            schema_hash = ?tool_catalog.schema_hash,
+            "Discovered tools from bridge"
+        );
+    }
 
     let server = NvdaServer::new(bridge_client.clone(), tool_catalog);
 
@@ -1667,6 +1758,23 @@ mod tests {
     }
 
     #[test]
+    fn parse_action_payload_keeps_the_recovery_object() {
+        let payload = json!({
+            "success": false,
+            "error": {
+                "code": 4206,
+                "name": "STALE_REFERENCE",
+                "message": "stale",
+                "recovery": {"action": "observe", "hint": "Call observe again."}
+            }
+        });
+
+        let parsed = BridgeClient::parse_action_payload(payload).unwrap();
+        let error = parsed.error.unwrap();
+        assert_eq!(error.recovery.unwrap()["action"], "observe");
+    }
+
+    #[test]
     fn annotation_marks_dangerous_tool() {
         let tool = BridgeToolDef {
             name: "execute_python".to_string(),
@@ -1779,6 +1887,7 @@ mod tests {
                 ..Default::default()
             },
             input_schema_value: json!({"type":"object"}),
+            data_schema_value: None,
             output_schema_value: Some(json!({
                 "type": "object",
                 "properties": {
@@ -2133,10 +2242,27 @@ mod tests {
         let result = NvdaServer::success_result(&payload);
         let structured = result.structured_content.expect("structured content");
         assert_eq!(structured["sent"], true);
+        // The result block is flattened next to data so a structured-content
+        // client can see verification without parsing text.
+        assert_eq!(structured["result"]["state_version"], 7);
         let text = first_text(&result.content);
-        let envelope: Value = serde_json::from_str(&text).unwrap();
-        assert_eq!(envelope["result"]["state_version"], 7);
-        assert_eq!(envelope["data"]["sent"], true);
+        let same: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(same, structured);
+    }
+
+    #[test]
+    fn output_schema_advertises_the_metadata_fields() {
+        let schema = json!({
+            "type": "object",
+            "properties": {"title": {"type": "string"}},
+            "required": ["title"],
+            "additionalProperties": false
+        });
+        let extended = extend_output_schema(&schema);
+        assert_eq!(extended["properties"]["title"]["type"], "string");
+        assert!(extended["properties"]["result"].is_object());
+        assert_eq!(extended["properties"]["trace_id"]["type"], "string");
+        assert_eq!(extended["additionalProperties"], false);
     }
 
     fn first_text(blocks: &[ContentBlock]) -> String {
@@ -2180,7 +2306,7 @@ mod tests {
     }
 
     #[test]
-    fn success_content_carries_the_trace_block() {
+    fn success_content_keeps_trace_id_without_the_verbose_trace() {
         let payload = BridgeActionEnvelope {
             success: true,
             data: Some(json!({"sent": true})),
@@ -2194,12 +2320,14 @@ mod tests {
         let envelope: Value = serde_json::from_str(&text).unwrap();
 
         assert_eq!(envelope["trace_id"], "at-abc");
-        assert_eq!(envelope["trace"]["outcome"], "succeeded");
+        // The full trace is opt-in via get_action_trace; it must not ride along
+        // on every call.
+        assert!(envelope["trace"].is_null());
         assert_eq!(result.structured_content.unwrap()["sent"], true);
     }
 
     #[test]
-    fn error_content_carries_the_trace_block() {
+    fn error_content_is_parseable_json_without_structured_content() {
         let payload = BridgeActionEnvelope {
             success: false,
             error: Some(BridgeError {
@@ -2213,12 +2341,12 @@ mod tests {
         };
 
         let result = NvdaServer::error_result(&payload);
-        // [summary, detail]
-        let detail: Value = serde_json::from_str(&first_text(&result.content[1..])).unwrap();
-
+        assert!(result.is_error.unwrap_or(false));
+        assert!(result.structured_content.is_none());
+        let detail: Value = serde_json::from_str(&first_text(&result.content)).unwrap();
         assert_eq!(detail["trace_id"], "at-def");
-        assert_eq!(detail["trace"]["outcome"], "failed");
-        assert_eq!(result.structured_content.unwrap()["trace_id"], "at-def");
+        assert_eq!(detail["error"]["code"], "4103");
+        assert!(detail["trace"].is_null());
     }
 
     #[test]
@@ -2239,9 +2367,43 @@ mod tests {
         };
 
         let result = NvdaServer::error_result(&payload);
-        let structured = result.structured_content.expect("structured error content");
-        assert_eq!(structured["error"]["name"], "STALE_REFERENCE");
-        assert_eq!(structured["error"]["details"]["reason_code"], "window");
-        assert_eq!(structured["error"]["recovery"]["action"], "observe");
+        let text: Value = serde_json::from_str(&first_text(&result.content)).unwrap();
+        assert_eq!(text["error"]["name"], "STALE_REFERENCE");
+        assert_eq!(text["error"]["details"]["reason_code"], "window");
+        assert_eq!(text["error"]["recovery"]["action"], "observe");
+    }
+
+    #[test]
+    fn input_validation_names_the_offending_field() {
+        let runtime = ToolRuntime {
+            definition: BridgeToolDef {
+                name: "observe".to_string(),
+                ..Default::default()
+            },
+            input_schema_value: json!({
+                "type": "object",
+                "properties": {"max_text": {"type": "integer", "maximum": 2000}},
+                "additionalProperties": false
+            }),
+            output_schema_value: None,
+            data_schema_value: None,
+        };
+        let params: Map<String, Value> = serde_json::from_value(json!({"max_text": 9999})).unwrap();
+        let errors = NvdaServer::validate_input(&runtime, &params).expect_err("too large");
+        assert!(errors.contains_key("/max_text"), "{errors:?}");
+
+        let result = NvdaServer::input_error_result("observe", errors);
+        let detail: Value = serde_json::from_str(&first_text(&result.content)).unwrap();
+        assert_eq!(detail["error"]["code"], "4103");
+        assert_eq!(detail["error"]["recovery"]["action"], "fix_arguments");
+        assert!(detail["error"]["details"]["field_errors"]["/max_text"].is_string());
+    }
+
+    #[test]
+    fn an_empty_catalog_is_served_instead_of_exiting() {
+        let catalog = ToolCatalog::empty("bridge unreachable");
+        assert!(catalog.tools_for_mcp.is_empty());
+        assert!(catalog.bridge_version.starts_with("unavailable"));
+        assert!(schema_hash_changed(catalog.schema_hash.as_deref(), Some("abc")));
     }
 }

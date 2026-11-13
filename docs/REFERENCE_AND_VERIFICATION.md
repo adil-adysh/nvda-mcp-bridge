@@ -103,13 +103,13 @@ document does not duplicate machine-generated data.
 
 | Check | Result |
 |---|---|
-| `python -m pytest -q` | **580 passed, 19 subtests passed** |
-| `cargo test` | **36 passed, 0 failed** |
+| `python -m pytest -q` | **590 passed, 19 subtests passed** |
+| `cargo test` | **40 passed, 0 failed** |
 | `cargo clippy --all-targets` | Finished with pre-existing warnings; no new warning in changed regions |
 | `ruff check` (changed files) | All checks passed |
 | `python scripts/generate_bridge_schema.py -o schema.json` | Re-run; `test_generated_schema` passes |
-| `scons` | Rebuilt `nvdaMcpBridge-0.10.0.nvda-addon` from this source, including the Rust companion (9,737,728 bytes). The archive was force-rebuilt by removing it because an incremental `scons` considered the previously generated archive up to date after a source edit. |
-| `python scripts/validate_addon_package.py` | Newly built `0.10.0` archive validates; bundled companion SHA-256 `6df4732…` |
+| `scons` | Rebuilt `nvdaMcpBridge-0.10.0.nvda-addon` from this source, including the Rust companion (9,782,784 bytes). The archive was force-rebuilt by removing it because an incremental `scons` considered the previously generated archive up to date after a source edit. |
+| `python scripts/validate_addon_package.py` | Newly built `0.10.0` archive validates; bundled companion SHA-256 `bf020ff…` |
 | Protocol JSON Schema validation | Health, discovery (31 default / 32 with developer mode), success and error envelopes pass |
 | Assistant MCP tests | 35 passed, 1 skipped; no Assistant change required |
 

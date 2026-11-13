@@ -20,6 +20,8 @@
         "description": "Bring a top-level window to the foreground.",
         "properties": {
           "exact": {
+            "default": false,
+            "description": "Require an exact match instead of a case-insensitive substring.",
             "type": "boolean"
           },
           "expect": {
@@ -52,12 +54,18 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}."
           },
           "handle": {
+            "default": 0,
+            "description": "Native top-level window handle.",
             "type": "integer"
           },
           "title": {
+            "default": "",
+            "description": "Window title to match.",
             "type": "string"
           }
         },
@@ -81,33 +89,44 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "focus_window": {
+            "default": "",
             "type": "string"
           },
           "handle": {
+            "description": "Native top-level window handle.",
             "type": "integer"
           },
           "matches": {
+            "default": 1,
             "type": "integer"
           },
           "method": {
+            "default": "foreground",
             "type": "string"
           },
           "previous_title": {
+            "default": "",
             "type": "string"
           },
           "ref": {
+            "default": "",
+            "description": "Opaque reference returned by observe, locate or navigate.",
             "type": "string"
           },
           "restored": {
+            "default": false,
             "type": "boolean"
           },
           "title": {
+            "description": "Window title to match.",
             "type": "string"
           },
           "waited_ms": {
+            "default": 0.0,
             "type": "number"
           }
         },
@@ -151,6 +170,8 @@
         "description": "Click absolute screen coordinates.",
         "properties": {
           "button": {
+            "default": "left",
+            "description": "Mouse button to click.",
             "enum": [
               "left",
               "right",
@@ -188,12 +209,16 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}."
           },
           "x": {
+            "description": "Absolute screen x coordinate in pixels.",
             "type": "integer"
           },
           "y": {
+            "description": "Absolute screen y coordinate in pixels.",
             "type": "integer"
           }
         },
@@ -211,9 +236,12 @@
         "description": "Result of a raw pointer click.",
         "properties": {
           "button": {
+            "description": "Mouse button to click.",
             "type": "string"
           },
           "cursor": {
+            "default": [],
+            "description": "Opaque continuation cursor from a previous response.",
             "items": {
               "type": "integer"
             },
@@ -228,15 +256,19 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "on_target": {
+            "default": true,
             "type": "boolean"
           },
           "x": {
+            "description": "Absolute screen x coordinate in pixels.",
             "type": "integer"
           },
           "y": {
+            "description": "Absolute screen y coordinate in pixels.",
             "type": "integer"
           }
         },
@@ -311,7 +343,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}."
           }
         },
         "type": "object"
@@ -324,12 +358,15 @@
         "description": "What dismiss tried, and whether a dialog remained.",
         "properties": {
           "dialog_name": {
+            "default": "",
             "type": "string"
           },
           "dismissed": {
             "type": "boolean"
           },
           "steps": {
+            "default": [],
+            "description": "How many positions to move.",
             "items": {
               "type": "string"
             },
@@ -384,12 +421,14 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "code": {
             "type": "string"
           },
           "snapshot_vars": {
+            "default": false,
             "type": "boolean"
           }
         },
@@ -414,7 +453,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "result": {
             "anyOf": [
@@ -424,12 +464,15 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "stderr": {
+            "default": "",
             "type": "string"
           },
           "stdout": {
+            "default": "",
             "type": "string"
           }
         },
@@ -498,9 +541,12 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}."
           },
           "ref": {
+            "description": "Opaque reference returned by observe, locate or navigate.",
             "pattern": "^[a-z][a-z0-9]*$",
             "type": "string"
           }
@@ -518,6 +564,7 @@
         "description": "Result of a focus request.",
         "properties": {
           "ref": {
+            "description": "Opaque reference returned by observe, locate or navigate.",
             "type": "string"
           },
           "requested": {
@@ -583,6 +630,7 @@
             "type": "boolean"
           },
           "missing_reason": {
+            "default": "",
             "type": "string"
           },
           "retention": {
@@ -594,9 +642,11 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "schema_version": {
+            "default": 1,
             "type": "integer"
           },
           "trace": {
@@ -608,7 +658,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "trace_id": {
             "type": "string"
@@ -652,6 +703,7 @@
         "description": "Get focus lineage with ancestors.",
         "properties": {
           "max_ancestors": {
+            "default": 10,
             "type": "integer"
           }
         },
@@ -725,6 +777,8 @@
         "description": "Return surrounding evidence for one previously found log entry.",
         "properties": {
           "after": {
+            "default": 30,
+            "description": "Number of log records to include after the anchor.",
             "type": "integer"
           },
           "after_ms": {
@@ -735,9 +789,12 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "before": {
+            "default": 20,
+            "description": "Number of log records to include before the anchor.",
             "type": "integer"
           },
           "before_ms": {
@@ -748,15 +805,20 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "entry_id": {
+            "description": "Stable log entry reference returned by search_logs.",
             "type": "string"
           },
           "include_raw": {
+            "default": false,
+            "description": "Include the raw log record alongside the parsed fields.",
             "type": "boolean"
           },
           "include_related_threads": {
+            "default": true,
             "type": "boolean"
           }
         },
@@ -773,6 +835,7 @@
         "description": "A chronological window around one log entry.",
         "properties": {
           "after": {
+            "description": "Number of log records to include after the anchor.",
             "type": "integer"
           },
           "anchor": {
@@ -790,6 +853,7 @@
                 ]
               },
               "derived_fields": {
+                "default": [],
                 "items": {
                   "type": "string"
                 },
@@ -804,9 +868,11 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "entry_id": {
+                "description": "Stable log entry reference returned by search_logs.",
                 "type": "string"
               },
               "exception": {
@@ -818,7 +884,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "function": {
                 "type": "string"
@@ -842,6 +909,7 @@
                 "type": "string"
               },
               "parse_notes": {
+                "default": [],
                 "items": {
                   "type": "string"
                 },
@@ -858,7 +926,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "subsystem": {
                 "type": "string"
@@ -875,9 +944,11 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   },
                   "name": {
+                    "description": "Name to match; case-insensitive substring unless exact is true.",
                     "type": "string"
                   }
                 },
@@ -951,6 +1022,7 @@
             "type": "object"
           },
           "before": {
+            "description": "Number of log records to include before the anchor.",
             "type": "integer"
           },
           "complete_after": {
@@ -967,6 +1039,7 @@
                 "type": "integer"
               },
               "limitations": {
+                "default": [],
                 "items": {
                   "type": "string"
                 },
@@ -1010,6 +1083,7 @@
                   ]
                 },
                 "derived_fields": {
+                  "default": [],
                   "items": {
                     "type": "string"
                   },
@@ -1024,9 +1098,11 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "entry_id": {
+                  "description": "Stable log entry reference returned by search_logs.",
                   "type": "string"
                 },
                 "exception": {
@@ -1038,7 +1114,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "function": {
                   "type": "string"
@@ -1062,6 +1139,7 @@
                   "type": "string"
                 },
                 "parse_notes": {
+                  "default": [],
                   "items": {
                     "type": "string"
                   },
@@ -1078,7 +1156,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "subsystem": {
                   "type": "string"
@@ -1095,9 +1174,11 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "default": null
                     },
                     "name": {
+                      "description": "Name to match; case-insensitive substring unless exact is true.",
                       "type": "string"
                     }
                   },
@@ -1173,6 +1254,7 @@
             "type": "array"
           },
           "entry_id": {
+            "description": "Stable log entry reference returned by search_logs.",
             "type": "string"
           },
           "include_related_threads": {
@@ -1186,7 +1268,7 @@
           },
           "source": {
             "additionalProperties": false,
-            "description": "Identity of the log generation a response was read from.",
+            "description": "Which object or subsystem the request starts from.",
             "properties": {
               "generation": {
                 "type": "string"
@@ -1195,6 +1277,8 @@
                 "type": "integer"
               },
               "source": {
+                "default": "nvda_native_log",
+                "description": "Which object or subsystem the request starts from.",
                 "type": "string"
               }
             },
@@ -1269,12 +1353,20 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Only return records at this severity or above."
           },
           "max_lines": {
+            "default": 100,
+            "description": "Maximum log lines to return (1-10000).",
+            "maximum": 10000,
+            "minimum": 1,
             "type": "integer"
           },
           "use_tail": {
+            "default": true,
+            "description": "Read from the end of the log instead of the start.",
             "type": "boolean"
           }
         },
@@ -1298,7 +1390,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Only return records at this severity or above."
           },
           "lines": {
             "items": {
@@ -1310,6 +1404,7 @@
             "type": "string"
           },
           "max_lines": {
+            "description": "Maximum log lines to return (1-10000).",
             "type": "integer"
           },
           "returned_lines": {
@@ -1326,7 +1421,7 @@
         "type": "object"
       },
       "output_size_limits": {
-        "input_bounded": false,
+        "input_bounded": true,
         "truncation_reported": false
       },
       "purpose": "Retrieve recent log entries from NVDA log file with optional filtering.",
@@ -1358,18 +1453,22 @@
         "description": "Collect a small health summary. Detail is opt-in.",
         "properties": {
           "include_addons": {
+            "default": false,
             "description": "Include add-on counts and the running add-on names.",
             "type": "boolean"
           },
           "include_focus": {
+            "default": true,
             "description": "Include the focused control and its top-level window.",
             "type": "boolean"
           },
           "include_logs": {
+            "default": false,
             "description": "Include the tail of NVDA's native log.",
             "type": "boolean"
           },
           "log_lines": {
+            "default": 20,
             "description": "Log lines when include_logs is true.",
             "maximum": 500,
             "minimum": 1,
@@ -1395,6 +1494,7 @@
                     "type": "integer"
                   },
                   "running": {
+                    "default": [],
                     "items": {
                       "type": "string"
                     },
@@ -1413,13 +1513,15 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "error_count": {
             "type": "integer"
           },
           "errors": {
             "additionalProperties": {},
+            "default": {},
             "type": "object"
           },
           "focus": {
@@ -1458,7 +1560,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   },
                   "name": {
                     "anyOf": [
@@ -1468,16 +1571,21 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null,
+                    "description": "Name to match; case-insensitive substring unless exact is true."
                   },
                   "ref": {
+                    "description": "Opaque reference returned by observe, locate or navigate.",
                     "pattern": "^[a-z][a-z0-9]*$",
                     "type": "string"
                   },
                   "role": {
+                    "description": "Accessibility role name, e.g. 'button' or 'edit'.",
                     "type": "string"
                   },
                   "states": {
+                    "default": [],
                     "items": {
                       "type": "string"
                     },
@@ -1491,7 +1599,9 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null,
+                    "description": "Value to set; an empty string clears it."
                   }
                 },
                 "required": [
@@ -1503,7 +1613,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "logs": {
             "anyOf": [
@@ -1522,7 +1633,9 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null,
+                    "description": "Only return records at this severity or above."
                   },
                   "lines": {
                     "items": {
@@ -1534,6 +1647,7 @@
                     "type": "string"
                   },
                   "max_lines": {
+                    "description": "Maximum log lines to return (1-10000).",
                     "type": "integer"
                   },
                   "returned_lines": {
@@ -1552,10 +1666,12 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "nvda": {
             "additionalProperties": {},
+            "default": {},
             "type": "object"
           },
           "ok": {
@@ -1571,15 +1687,29 @@
                 "description": "The top-level window that scopes an observation or action.",
                 "properties": {
                   "class_name": {
+                    "default": "",
                     "type": "string"
                   },
                   "handle": {
+                    "default": 0,
+                    "description": "Native top-level window handle.",
                     "type": "integer"
                   },
                   "ref": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Opaque reference returned by observe, locate or navigate."
                   },
                   "title": {
+                    "default": "",
+                    "description": "Window title to match.",
                     "type": "string"
                   }
                 },
@@ -1588,7 +1718,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           }
         },
         "required": [
@@ -1628,6 +1759,8 @@
         "description": "Inspect app module metadata.",
         "properties": {
           "source": {
+            "default": "focus",
+            "description": "Which object or subsystem the request starts from.",
             "enum": [
               "focus",
               "navigator",
@@ -1654,6 +1787,7 @@
             "type": "object"
           },
           "source": {
+            "description": "Which object or subsystem the request starts from.",
             "type": "string"
           }
         },
@@ -1695,9 +1829,12 @@
         "description": "Inspect object with rich metadata.",
         "properties": {
           "include_relations": {
+            "default": false,
             "type": "boolean"
           },
           "target": {
+            "default": "focus",
+            "description": "Which object to inspect.",
             "enum": [
               "focus",
               "navigator",
@@ -1720,6 +1857,7 @@
             "type": "object"
           },
           "target": {
+            "description": "Which object to inspect.",
             "type": "string"
           }
         },
@@ -1769,7 +1907,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Named action to invoke; omit for the object's default action."
           },
           "expect": {
             "anyOf": [
@@ -1801,9 +1941,12 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}."
           },
           "ref": {
+            "description": "Opaque reference returned by observe, locate or navigate.",
             "pattern": "^[a-z][a-z0-9]*$",
             "type": "string"
           }
@@ -1824,6 +1967,7 @@
             "type": "string"
           },
           "available": {
+            "default": [],
             "items": {
               "type": "string"
             },
@@ -1836,6 +1980,7 @@
             "type": "boolean"
           },
           "ref": {
+            "description": "Opaque reference returned by observe, locate or navigate.",
             "type": "string"
           }
         },
@@ -1883,6 +2028,8 @@
         "description": "List loaded addons.",
         "properties": {
           "scope": {
+            "default": "running",
+            "description": "Which scope to read, list or operate on.",
             "enum": [
               "running",
               "available",
@@ -1917,6 +2064,7 @@
             "type": "integer"
           },
           "scope": {
+            "description": "Which scope to read, list or operate on.",
             "type": "string"
           }
         },
@@ -1964,14 +2112,20 @@
         "description": "Enumerate a document's positions of one kind, without moving the cursor.",
         "properties": {
           "item": {
+            "default": "heading",
+            "description": "Kind of reading target to enumerate.",
             "type": "string"
           },
           "limit": {
+            "default": 20,
+            "description": "Maximum number of items to return.",
             "maximum": 200,
             "minimum": 1,
             "type": "integer"
           },
           "timeout_ms": {
+            "default": 1000,
+            "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
             "maximum": 5000,
             "minimum": 50,
             "type": "integer"
@@ -1979,13 +2133,15 @@
           "within": {
             "anyOf": [
               {
-                "pattern": "^[a-z][a-z0-9]*$",
                 "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Only search inside this reference (for example a window ref).",
+            "pattern": "^[a-z][a-z0-9]*$"
           }
         },
         "type": "object"
@@ -1998,56 +2154,76 @@
         "description": "A document's positions of one kind, in the order a reader meets them.",
         "properties": {
           "available": {
+            "default": [],
             "items": {
               "type": "string"
             },
             "type": "array"
           },
           "browse_mode": {
+            "default": true,
             "type": "boolean"
           },
           "document": {
+            "default": "",
             "type": "string"
           },
           "elapsed_ms": {
+            "default": 0.0,
             "type": "number"
           },
           "interface": {
+            "default": "",
             "type": "string"
           },
           "item": {
+            "default": "heading",
+            "description": "Kind of reading target to enumerate.",
             "type": "string"
           },
           "pass_through": {
+            "default": false,
             "type": "boolean"
           },
           "scanned": {
+            "default": 0,
             "type": "integer"
           },
           "source": {
+            "default": "",
+            "description": "Which object or subsystem the request starts from.",
             "type": "string"
           },
           "stopped": {
+            "default": "",
             "type": "string"
           },
           "targets": {
+            "default": [],
             "items": {
               "additionalProperties": false,
               "description": "One position in a document, in reading order.",
               "properties": {
                 "label": {
+                  "default": "",
                   "type": "string"
                 },
                 "level": {
+                  "default": 0,
                   "type": "integer"
                 },
                 "ref": {
+                  "default": "",
+                  "description": "Opaque reference returned by observe, locate or navigate.",
                   "type": "string"
                 },
                 "role": {
+                  "default": "",
+                  "description": "Accessibility role name, e.g. 'button' or 'edit'.",
                   "type": "string"
                 },
                 "text": {
+                  "default": "",
                   "type": "string"
                 }
               },
@@ -2056,9 +2232,12 @@
             "type": "array"
           },
           "timeout_ms": {
+            "default": 0,
+            "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
             "type": "integer"
           },
           "truncated": {
+            "default": false,
             "type": "boolean"
           }
         },
@@ -2105,6 +2284,7 @@
         "description": "Search for controls by role and name.",
         "properties": {
           "detail": {
+            "default": "summary",
             "description": "summary leaves path, depth, automation id and states empty.",
             "enum": [
               "summary",
@@ -2113,14 +2293,19 @@
             "type": "string"
           },
           "exact": {
+            "default": false,
+            "description": "Require an exact match instead of a case-insensitive substring.",
             "type": "boolean"
           },
           "limit": {
+            "default": 10,
+            "description": "Maximum number of items to return.",
             "maximum": 50,
             "minimum": 1,
             "type": "integer"
           },
           "max_nodes": {
+            "default": 400,
             "maximum": 2000,
             "minimum": 1,
             "type": "integer"
@@ -2133,7 +2318,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Name to match; case-insensitive substring unless exact is true."
           },
           "role": {
             "anyOf": [
@@ -2143,9 +2330,13 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Accessibility role name, e.g. 'button' or 'edit'."
           },
           "timeout_ms": {
+            "default": 500,
+            "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
             "maximum": 3000,
             "minimum": 50,
             "type": "integer"
@@ -2153,13 +2344,15 @@
           "within": {
             "anyOf": [
               {
-                "pattern": "^[a-z][a-z0-9]*$",
                 "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Only search inside this reference (for example a window ref).",
+            "pattern": "^[a-z][a-z0-9]*$"
           }
         },
         "type": "object"
@@ -2172,17 +2365,21 @@
         "description": "The outcome of one search.",
         "properties": {
           "elapsed_ms": {
+            "default": 0.0,
             "type": "number"
           },
           "matches": {
+            "default": [],
             "items": {
               "additionalProperties": false,
               "description": "One control found by ``locate``.",
               "properties": {
                 "automation_id": {
+                  "default": "",
                   "type": "string"
                 },
                 "depth": {
+                  "default": -1,
                   "type": "integer"
                 },
                 "location": {
@@ -2215,34 +2412,45 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "name": {
+                  "default": "",
+                  "description": "Name to match; case-insensitive substring unless exact is true.",
                   "type": "string"
                 },
                 "path": {
+                  "default": [],
                   "items": {
                     "type": "string"
                   },
                   "type": "array"
                 },
                 "ref": {
+                  "description": "Opaque reference returned by observe, locate or navigate.",
                   "pattern": "^[a-z][a-z0-9]*$",
                   "type": "string"
                 },
                 "role": {
+                  "description": "Accessibility role name, e.g. 'button' or 'edit'.",
                   "type": "string"
                 },
                 "states": {
+                  "default": [],
                   "items": {
                     "type": "string"
                   },
                   "type": "array"
                 },
                 "target": {
+                  "default": "uia",
+                  "description": "Which object to inspect.",
                   "type": "string"
                 },
                 "value": {
+                  "default": "",
+                  "description": "Value to set; an empty string clears it.",
                   "type": "string"
                 }
               },
@@ -2255,15 +2463,20 @@
             "type": "array"
           },
           "method": {
+            "default": "uia",
             "type": "string"
           },
           "scope": {
+            "default": "",
+            "description": "Which scope to read, list or operate on.",
             "type": "string"
           },
           "searched": {
+            "default": 0,
             "type": "integer"
           },
           "truncated": {
+            "default": false,
             "type": "boolean"
           }
         },
@@ -2304,6 +2517,7 @@
         "description": "Move through the accessibility tree.",
         "properties": {
           "direction": {
+            "description": "Direction to move in.",
             "enum": [
               "next",
               "previous",
@@ -2344,18 +2558,22 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}."
           },
           "ref": {
             "anyOf": [
               {
-                "pattern": "^[a-z][a-z0-9]*$",
                 "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Opaque reference returned by observe, locate or navigate.",
+            "pattern": "^[a-z][a-z0-9]*$"
           }
         },
         "required": [
@@ -2371,6 +2589,7 @@
         "description": "Result of moving through the tree.",
         "properties": {
           "direction": {
+            "description": "Direction to move in.",
             "type": "string"
           },
           "focused": {
@@ -2384,7 +2603,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Opaque reference returned by observe, locate or navigate."
           }
         },
         "required": [
@@ -2436,6 +2656,8 @@
         "description": "Move the document's reading position.",
         "properties": {
           "direction": {
+            "default": "next",
+            "description": "Direction to move in.",
             "type": "string"
           },
           "expect": {
@@ -2468,17 +2690,25 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}."
           },
           "item": {
+            "default": "heading",
+            "description": "Kind of reading target to enumerate.",
             "type": "string"
           },
           "steps": {
+            "default": 1,
+            "description": "How many positions to move.",
             "maximum": 50,
             "minimum": 1,
             "type": "integer"
           },
           "timeout_ms": {
+            "default": 1000,
+            "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
             "maximum": 5000,
             "minimum": 50,
             "type": "integer"
@@ -2486,13 +2716,15 @@
           "within": {
             "anyOf": [
               {
-                "pattern": "^[a-z][a-z0-9]*$",
                 "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Only search inside this reference (for example a window ref).",
+            "pattern": "^[a-z][a-z0-9]*$"
           }
         },
         "type": "object"
@@ -2505,54 +2737,77 @@
         "description": "Where the reading position landed.",
         "properties": {
           "browse_mode": {
+            "default": true,
             "type": "boolean"
           },
           "direction": {
+            "default": "next",
+            "description": "Direction to move in.",
             "type": "string"
           },
           "document": {
+            "default": "",
             "type": "string"
           },
           "elapsed_ms": {
+            "default": 0.0,
             "type": "number"
           },
           "interface": {
+            "default": "",
             "type": "string"
           },
           "item": {
+            "default": "heading",
+            "description": "Kind of reading target to enumerate.",
             "type": "string"
           },
           "label": {
+            "default": "",
             "type": "string"
           },
           "landed": {
+            "default": false,
             "type": "boolean"
           },
           "level": {
+            "default": 0,
             "type": "integer"
           },
           "pass_through": {
+            "default": false,
             "type": "boolean"
           },
           "reached": {
+            "default": 0,
             "type": "integer"
           },
           "ref": {
+            "default": "",
+            "description": "Opaque reference returned by observe, locate or navigate.",
             "type": "string"
           },
           "role": {
+            "default": "",
+            "description": "Accessibility role name, e.g. 'button' or 'edit'.",
             "type": "string"
           },
           "steps": {
+            "default": 1,
+            "description": "How many positions to move.",
             "type": "integer"
           },
           "stopped": {
+            "default": "",
             "type": "string"
           },
           "text": {
+            "default": "",
             "type": "string"
           },
           "timeout_ms": {
+            "default": 0,
+            "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
             "type": "integer"
           }
         },
@@ -2594,6 +2849,7 @@
         "description": "What to capture in one observation.",
         "properties": {
           "detail": {
+            "default": "summary",
             "description": "summary leaves states empty; full includes them.",
             "enum": [
               "summary",
@@ -2602,6 +2858,10 @@
             "type": "string"
           },
           "include": {
+            "default": [
+              "focus",
+              "dialog"
+            ],
             "description": "Optional sections beyond focus and the top-level window.",
             "items": {
               "enum": [
@@ -2616,12 +2876,14 @@
             "type": "array"
           },
           "max_bytes": {
+            "default": 0,
             "description": "Bound the serialized observation; 0 disables the bound. Truncation is reported.",
             "maximum": 200000,
             "minimum": 0,
             "type": "integer"
           },
           "max_text": {
+            "default": 120,
             "description": "Maximum characters per value.",
             "maximum": 2000,
             "minimum": 0,
@@ -2638,6 +2900,7 @@
         "description": "One observation of the screen.",
         "properties": {
           "ancestors": {
+            "default": [],
             "items": {
               "additionalProperties": false,
               "description": "One accessibility node, with the reference that points at it.",
@@ -2672,7 +2935,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "name": {
                   "anyOf": [
@@ -2682,16 +2946,21 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null,
+                  "description": "Name to match; case-insensitive substring unless exact is true."
                 },
                 "ref": {
+                  "description": "Opaque reference returned by observe, locate or navigate.",
                   "pattern": "^[a-z][a-z0-9]*$",
                   "type": "string"
                 },
                 "role": {
+                  "description": "Accessibility role name, e.g. 'button' or 'edit'.",
                   "type": "string"
                 },
                 "states": {
+                  "default": [],
                   "items": {
                     "type": "string"
                   },
@@ -2705,7 +2974,9 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null,
+                  "description": "Value to set; an empty string clears it."
                 }
               },
               "required": [
@@ -2716,7 +2987,12 @@
             },
             "type": "array"
           },
+          "budget_exceeded": {
+            "default": false,
+            "type": "boolean"
+          },
           "children": {
+            "default": [],
             "items": {
               "additionalProperties": false,
               "description": "One accessibility node, with the reference that points at it.",
@@ -2751,7 +3027,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "name": {
                   "anyOf": [
@@ -2761,16 +3038,21 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null,
+                  "description": "Name to match; case-insensitive substring unless exact is true."
                 },
                 "ref": {
+                  "description": "Opaque reference returned by observe, locate or navigate.",
                   "pattern": "^[a-z][a-z0-9]*$",
                   "type": "string"
                 },
                 "role": {
+                  "description": "Accessibility role name, e.g. 'button' or 'edit'.",
                   "type": "string"
                 },
                 "states": {
+                  "default": [],
                   "items": {
                     "type": "string"
                   },
@@ -2784,7 +3066,9 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null,
+                  "description": "Value to set; an empty string clears it."
                 }
               },
               "required": [
@@ -2802,6 +3086,7 @@
                 "description": "A dialog node, with the actionable children captured for it.",
                 "properties": {
                   "children": {
+                    "default": [],
                     "items": {
                       "additionalProperties": false,
                       "description": "One accessibility node, with the reference that points at it.",
@@ -2836,7 +3121,8 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "name": {
                           "anyOf": [
@@ -2846,16 +3132,21 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null,
+                          "description": "Name to match; case-insensitive substring unless exact is true."
                         },
                         "ref": {
+                          "description": "Opaque reference returned by observe, locate or navigate.",
                           "pattern": "^[a-z][a-z0-9]*$",
                           "type": "string"
                         },
                         "role": {
+                          "description": "Accessibility role name, e.g. 'button' or 'edit'.",
                           "type": "string"
                         },
                         "states": {
+                          "default": [],
                           "items": {
                             "type": "string"
                           },
@@ -2869,7 +3160,9 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null,
+                          "description": "Value to set; an empty string clears it."
                         }
                       },
                       "required": [
@@ -2910,7 +3203,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   },
                   "name": {
                     "anyOf": [
@@ -2920,16 +3214,21 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null,
+                    "description": "Name to match; case-insensitive substring unless exact is true."
                   },
                   "ref": {
+                    "description": "Opaque reference returned by observe, locate or navigate.",
                     "pattern": "^[a-z][a-z0-9]*$",
                     "type": "string"
                   },
                   "role": {
+                    "description": "Accessibility role name, e.g. 'button' or 'edit'.",
                     "type": "string"
                   },
                   "states": {
+                    "default": [],
                     "items": {
                       "type": "string"
                     },
@@ -2943,7 +3242,9 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null,
+                    "description": "Value to set; an empty string clears it."
                   }
                 },
                 "required": [
@@ -2955,7 +3256,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "focus": {
             "anyOf": [
@@ -2993,7 +3295,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   },
                   "name": {
                     "anyOf": [
@@ -3003,16 +3306,21 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null,
+                    "description": "Name to match; case-insensitive substring unless exact is true."
                   },
                   "ref": {
+                    "description": "Opaque reference returned by observe, locate or navigate.",
                     "pattern": "^[a-z][a-z0-9]*$",
                     "type": "string"
                   },
                   "role": {
+                    "description": "Accessibility role name, e.g. 'button' or 'edit'.",
                     "type": "string"
                   },
                   "states": {
+                    "default": [],
                     "items": {
                       "type": "string"
                     },
@@ -3026,7 +3334,9 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null,
+                    "description": "Value to set; an empty string clears it."
                   }
                 },
                 "required": [
@@ -3038,15 +3348,22 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "more_available": {
+            "default": false,
             "type": "boolean"
+          },
+          "observed_bytes": {
+            "default": 0,
+            "type": "integer"
           },
           "refs": {
             "additionalProperties": {
               "type": "string"
             },
+            "default": {},
             "type": "object"
           },
           "revision": {
@@ -3060,7 +3377,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "state_version": {
             "type": "integer"
@@ -3072,15 +3390,29 @@
                 "description": "The top-level window that scopes an observation or action.",
                 "properties": {
                   "class_name": {
+                    "default": "",
                     "type": "string"
                   },
                   "handle": {
+                    "default": 0,
+                    "description": "Native top-level window handle.",
                     "type": "integer"
                   },
                   "ref": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Opaque reference returned by observe, locate or navigate."
                   },
                   "title": {
+                    "default": "",
+                    "description": "Window title to match.",
                     "type": "string"
                   }
                 },
@@ -3089,18 +3421,22 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "truncated": {
+            "default": false,
             "type": "boolean"
           },
           "truncated_sections": {
+            "default": [],
             "items": {
               "type": "string"
             },
             "type": "array"
           },
           "truncation_hint": {
+            "default": "",
             "type": "string"
           }
         },
@@ -3142,6 +3478,8 @@
         "description": "Send keyboard keys.",
         "properties": {
           "delay_ms": {
+            "default": 0,
+            "description": "Milliseconds to wait between repeated key presses.",
             "maximum": 5000,
             "minimum": 0,
             "type": "integer"
@@ -3176,7 +3514,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}."
           },
           "keys": {
             "description": "Gesture name, e.g. control+a or down.",
@@ -3184,6 +3524,8 @@
             "type": "string"
           },
           "repeat": {
+            "default": 1,
+            "description": "How many times to send the gesture.",
             "maximum": 20,
             "minimum": 1,
             "type": "integer"
@@ -3202,9 +3544,11 @@
         "description": "Result of a keyboard dispatch.",
         "properties": {
           "cancelled": {
+            "default": false,
             "type": "boolean"
           },
           "delay_ms": {
+            "description": "Milliseconds to wait between repeated key presses.",
             "type": "integer"
           },
           "dispatched": {
@@ -3214,6 +3558,7 @@
             "type": "string"
           },
           "repeat": {
+            "description": "How many times to send the gesture.",
             "type": "integer"
           },
           "requested": {
@@ -3226,6 +3571,7 @@
             "type": "integer"
           },
           "uncertain": {
+            "default": false,
             "type": "boolean"
           }
         },
@@ -3278,6 +3624,8 @@
         "description": "Read text from a referenced object, or the focus.",
         "properties": {
           "max_chars": {
+            "default": 4000,
+            "description": "Maximum characters to return.",
             "maximum": 100000,
             "minimum": 0,
             "type": "integer"
@@ -3285,15 +3633,19 @@
           "ref": {
             "anyOf": [
               {
-                "pattern": "^[a-z][a-z0-9]*$",
                 "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Opaque reference returned by observe, locate or navigate.",
+            "pattern": "^[a-z][a-z0-9]*$"
           },
           "scope": {
+            "default": "line",
+            "description": "Which scope to read, list or operate on.",
             "enum": [
               "line",
               "selection",
@@ -3320,18 +3672,23 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Opaque reference returned by observe, locate or navigate."
           },
           "scope": {
+            "description": "Which scope to read, list or operate on.",
             "type": "string"
           },
           "source": {
+            "description": "Which object or subsystem the request starts from.",
             "type": "string"
           },
           "text": {
             "type": "string"
           },
           "truncated": {
+            "default": false,
             "type": "boolean"
           }
         },
@@ -3381,6 +3738,7 @@
         "description": "Result of reloading global plugins and app modules.",
         "properties": {
           "message": {
+            "default": "",
             "type": "string"
           },
           "status": {
@@ -3423,9 +3781,11 @@
         "description": "Restart NVDA with options.",
         "properties": {
           "debug_logging": {
+            "default": false,
             "type": "boolean"
           },
           "disable_addons": {
+            "default": false,
             "type": "boolean"
           }
         },
@@ -3482,6 +3842,7 @@
         "description": "Scroll the focused container.",
         "properties": {
           "amount": {
+            "default": "page",
             "enum": [
               "page",
               "line"
@@ -3489,6 +3850,8 @@
             "type": "string"
           },
           "direction": {
+            "default": "down",
+            "description": "Direction to move in.",
             "enum": [
               "up",
               "down",
@@ -3527,18 +3890,22 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}."
           },
           "ref": {
             "anyOf": [
               {
-                "pattern": "^[a-z][a-z0-9]*$",
                 "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Opaque reference returned by observe, locate or navigate.",
+            "pattern": "^[a-z][a-z0-9]*$"
           }
         },
         "type": "object"
@@ -3554,6 +3921,7 @@
             "type": "string"
           },
           "direction": {
+            "description": "Direction to move in.",
             "type": "string"
           },
           "key": {
@@ -3619,7 +3987,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "cursor": {
             "anyOf": [
@@ -3629,23 +3998,31 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Opaque continuation cursor from a previous response."
           },
           "include_raw": {
+            "default": false,
+            "description": "Include the raw log record alongside the parsed fields.",
             "type": "boolean"
           },
           "levels": {
+            "default": [],
             "items": {
               "type": "string"
             },
             "type": "array"
           },
           "limit": {
+            "default": 20,
+            "description": "Maximum number of items to return.",
             "maximum": 200,
             "minimum": 1,
             "type": "integer"
           },
           "max_scan_records": {
+            "default": 500000,
             "maximum": 5000000,
             "minimum": 1,
             "type": "integer"
@@ -3655,6 +4032,7 @@
             "description": "Substring or bounded-regex filtering of a record's message.",
             "properties": {
               "case_sensitive": {
+                "default": false,
                 "type": "boolean"
               },
               "contains": {
@@ -3665,7 +4043,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "regex": {
                 "anyOf": [
@@ -3675,7 +4054,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               }
             },
             "type": "object"
@@ -3688,9 +4068,12 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "order": {
+            "default": "newest_first",
+            "description": "Result ordering.",
             "enum": [
               "newest_first",
               "oldest_first"
@@ -3702,12 +4085,15 @@
             "description": "Glob filters over the native logger/source string.",
             "properties": {
               "exclude": {
+                "default": [],
                 "items": {
                   "type": "string"
                 },
                 "type": "array"
               },
               "include": {
+                "default": [],
+                "description": "Optional sections or facets to include.",
                 "items": {
                   "type": "string"
                 },
@@ -3717,6 +4103,7 @@
             "type": "object"
           },
           "threads": {
+            "default": [],
             "items": {
               "type": "string"
             },
@@ -3734,7 +4121,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "last_seconds": {
                 "anyOf": [
@@ -3744,7 +4132,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "start": {
                 "anyOf": [
@@ -3754,7 +4143,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               }
             },
             "type": "object"
@@ -3767,7 +4157,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           }
         },
         "type": "object"
@@ -3787,6 +4178,7 @@
                 "type": "integer"
               },
               "limitations": {
+                "default": [],
                 "items": {
                   "type": "string"
                 },
@@ -3842,6 +4234,7 @@
                   ]
                 },
                 "derived_fields": {
+                  "default": [],
                   "items": {
                     "type": "string"
                   },
@@ -3856,9 +4249,11 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "entry_id": {
+                  "description": "Stable log entry reference returned by search_logs.",
                   "type": "string"
                 },
                 "exception": {
@@ -3870,7 +4265,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "function": {
                   "type": "string"
@@ -3894,6 +4290,7 @@
                   "type": "string"
                 },
                 "parse_notes": {
+                  "default": [],
                   "items": {
                     "type": "string"
                   },
@@ -3910,7 +4307,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "subsystem": {
                   "type": "string"
@@ -3927,9 +4325,11 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "default": null
                     },
                     "name": {
+                      "description": "Name to match; case-insensitive substring unless exact is true.",
                       "type": "string"
                     }
                   },
@@ -4012,6 +4412,7 @@
                 "type": "boolean"
               },
               "limit": {
+                "description": "Maximum number of items to return.",
                 "type": "integer"
               },
               "next_cursor": {
@@ -4025,6 +4426,7 @@
                 ]
               },
               "order": {
+                "description": "Result ordering.",
                 "type": "string"
               },
               "returned": {
@@ -4044,7 +4446,7 @@
           },
           "source": {
             "additionalProperties": false,
-            "description": "Identity of the log generation a response was read from.",
+            "description": "Which object or subsystem the request starts from.",
             "properties": {
               "generation": {
                 "type": "string"
@@ -4053,6 +4455,8 @@
                 "type": "integer"
               },
               "source": {
+                "default": "nvda_native_log",
+                "description": "Which object or subsystem the request starts from.",
                 "type": "string"
               }
             },
@@ -4133,13 +4537,17 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}."
           },
           "ref": {
+            "description": "Opaque reference returned by observe, locate or navigate.",
             "pattern": "^[a-z][a-z0-9]*$",
             "type": "string"
           },
           "value": {
+            "description": "Value to set; an empty string clears it.",
             "type": "string"
           }
         },
@@ -4160,24 +4568,31 @@
             "type": "string"
           },
           "observed": {
+            "default": "",
             "type": "string"
           },
           "previous": {
+            "default": "",
             "type": "string"
           },
           "ref": {
+            "description": "Opaque reference returned by observe, locate or navigate.",
             "type": "string"
           },
           "units": {
+            "default": 0,
             "type": "integer"
           },
           "value": {
+            "description": "Value to set; an empty string clears it.",
             "type": "string"
           },
           "value_source": {
+            "default": "",
             "type": "string"
           },
           "verified": {
+            "default": true,
             "type": "boolean"
           }
         },
@@ -4242,6 +4657,7 @@
             "type": "string"
           },
           "status": {
+            "default": "ok",
             "type": "string"
           }
         },
@@ -4299,6 +4715,7 @@
             "type": "string"
           },
           "status": {
+            "default": "ok",
             "type": "string"
           }
         },
@@ -4371,18 +4788,22 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}."
           },
           "within": {
             "anyOf": [
               {
-                "pattern": "^[a-z][a-z0-9]*$",
                 "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Only search inside this reference (for example a window ref).",
+            "pattern": "^[a-z][a-z0-9]*$"
           }
         },
         "type": "object"
@@ -4395,21 +4816,27 @@
         "description": "The document that is now readable, and whether this call created it.",
         "properties": {
           "browse_mode": {
+            "default": false,
             "type": "boolean"
           },
           "created": {
+            "default": false,
             "type": "boolean"
           },
           "document": {
+            "default": "",
             "type": "string"
           },
           "elapsed_ms": {
+            "default": 0.0,
             "type": "number"
           },
           "interface": {
+            "default": "",
             "type": "string"
           },
           "pass_through": {
+            "default": false,
             "type": "boolean"
           }
         },
@@ -4459,30 +4886,50 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "group_by": {
+            "default": [
+              "source",
+              "level",
+              "message_pattern"
+            ],
             "items": {
               "type": "string"
             },
             "type": "array"
           },
           "include": {
+            "default": [
+              "counts",
+              "repeated_patterns",
+              "exceptions",
+              "warnings",
+              "top_sources",
+              "time_buckets",
+              "noise"
+            ],
+            "description": "Optional sections or facets to include.",
             "items": {
               "type": "string"
             },
             "type": "array"
           },
           "levels": {
+            "default": [],
             "items": {
               "type": "string"
             },
             "type": "array"
           },
           "limit": {
+            "default": 20,
+            "description": "Maximum number of items to return.",
             "type": "integer"
           },
           "max_scan_records": {
+            "default": 500000,
             "type": "integer"
           },
           "min_level": {
@@ -4493,19 +4940,23 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "sources": {
             "additionalProperties": false,
             "description": "Glob filters over the native logger/source string.",
             "properties": {
               "exclude": {
+                "default": [],
                 "items": {
                   "type": "string"
                 },
                 "type": "array"
               },
               "include": {
+                "default": [],
+                "description": "Optional sections or facets to include.",
                 "items": {
                   "type": "string"
                 },
@@ -4515,6 +4966,7 @@
             "type": "object"
           },
           "threads": {
+            "default": [],
             "items": {
               "type": "string"
             },
@@ -4532,7 +4984,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "last_seconds": {
                 "anyOf": [
@@ -4542,7 +4995,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "start": {
                 "anyOf": [
@@ -4552,7 +5006,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               }
             },
             "type": "object"
@@ -4578,6 +5033,7 @@
                 "type": "string"
               },
               "group_by": {
+                "default": [],
                 "items": {
                   "type": "string"
                 },
@@ -4587,6 +5043,7 @@
                 "type": "integer"
               },
               "limitations": {
+                "default": [],
                 "items": {
                   "type": "string"
                 },
@@ -4608,6 +5065,7 @@
                 "type": "integer"
               },
               "source": {
+                "description": "Which object or subsystem the request starts from.",
                 "type": "string"
               },
               "time_budget_exhausted": {
@@ -4686,13 +5144,14 @@
           "journal_id": {
             "anyOf": [
               {
-                "description": "Journal generation that issued `since`. Omit only for a current-journal convenience.",
                 "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Journal generation that issued `since`. Omit only for a current-journal convenience."
           },
           "kinds": {
             "anyOf": [
@@ -4705,9 +5164,13 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Only return these event kinds; an empty list returns all kinds."
           },
           "limit": {
+            "default": 50,
+            "description": "Maximum number of items to return.",
             "maximum": 500,
             "minimum": 1,
             "type": "integer"
@@ -4715,15 +5178,19 @@
           "since": {
             "anyOf": [
               {
-                "minimum": 0,
                 "type": "integer"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null,
+            "description": "Event version to resume after; pair it with journal_id for a foreign journal.",
+            "minimum": 0
           },
           "timeout_ms": {
+            "default": 1000,
+            "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
             "maximum": 30000,
             "minimum": 0,
             "type": "integer"
@@ -4739,15 +5206,19 @@
         "description": "Coalesced transitions observed while waiting.",
         "properties": {
           "cancelled": {
+            "default": false,
             "type": "boolean"
           },
           "cursor_status": {
+            "default": "ok",
             "type": "string"
           },
           "earliest_available_version": {
+            "default": 0,
             "type": "integer"
           },
           "events": {
+            "default": [],
             "items": {
               "additionalProperties": {},
               "type": "object"
@@ -4755,18 +5226,22 @@
             "type": "array"
           },
           "expired": {
+            "default": false,
             "type": "boolean"
           },
           "from_version": {
             "type": "integer"
           },
           "has_more": {
+            "default": false,
             "type": "boolean"
           },
           "history_complete": {
+            "default": true,
             "type": "boolean"
           },
           "journal_id": {
+            "description": "Journal generation that issued `since`; omit to use the current journal.",
             "type": "string"
           },
           "resync_from": {
@@ -4778,7 +5253,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "resync_reason": {
             "anyOf": [
@@ -4788,18 +5264,22 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "resync_required": {
+            "default": false,
             "type": "boolean"
           },
           "timed_out": {
+            "default": false,
             "type": "boolean"
           },
           "to_version": {
             "type": "integer"
           },
           "truncated": {
+            "default": false,
             "type": "boolean"
           }
         },
@@ -4842,12 +5322,16 @@
         "description": "Walk object tree with bounds.",
         "properties": {
           "max_children": {
+            "default": 20,
             "type": "integer"
           },
           "max_depth": {
+            "default": 3,
             "type": "integer"
           },
           "target": {
+            "default": "focus",
+            "description": "Which object to inspect.",
             "enum": [
               "focus",
               "navigator",
@@ -4872,6 +5356,7 @@
             "type": "integer"
           },
           "target": {
+            "description": "Which object to inspect.",
             "type": "string"
           },
           "tree": {

@@ -19,28 +19,37 @@
               "type": "boolean"
             },
             "handle": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Native top-level window handle."
             },
             "title": {
-              "type": "string"
+              "type": "string",
+              "description": "Window title to match."
             },
             "ref": {
-              "type": "string"
+              "type": "string",
+              "description": "Opaque reference returned by observe, locate or navigate.",
+              "default": ""
             },
             "previous_title": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             },
             "method": {
-              "type": "string"
+              "type": "string",
+              "default": "foreground"
             },
             "restored": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "waited_ms": {
-              "type": "number"
+              "type": "number",
+              "default": 0.0
             },
             "matches": {
-              "type": "integer"
+              "type": "integer",
+              "default": 1
             },
             "focus_in_window": {
               "anyOf": [
@@ -50,10 +59,12 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "focus_window": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             }
           },
           "additionalProperties": false,
@@ -98,13 +109,16 @@
           "type": "object",
           "properties": {
             "x": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Absolute screen x coordinate in pixels."
             },
             "y": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Absolute screen y coordinate in pixels."
             },
             "button": {
-              "type": "string"
+              "type": "string",
+              "description": "Mouse button to click."
             },
             "hit": {
               "anyOf": [
@@ -115,16 +129,20 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "cursor": {
               "type": "array",
               "items": {
                 "type": "integer"
-              }
+              },
+              "description": "Opaque continuation cursor from a previous response.",
+              "default": []
             },
             "on_target": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": true
             }
           },
           "additionalProperties": false,
@@ -175,10 +193,13 @@
               "type": "array",
               "items": {
                 "type": "string"
-              }
+              },
+              "description": "How many positions to move.",
+              "default": []
             },
             "dialog_name": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             }
           },
           "additionalProperties": false,
@@ -221,10 +242,12 @@
           "type": "object",
           "properties": {
             "stdout": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             },
             "stderr": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             },
             "result": {
               "anyOf": [
@@ -234,7 +257,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "captured_variables": {
               "anyOf": [
@@ -245,7 +269,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             }
           },
           "additionalProperties": false,
@@ -285,7 +310,8 @@
           "type": "object",
           "properties": {
             "ref": {
-              "type": "string"
+              "type": "string",
+              "description": "Opaque reference returned by observe, locate or navigate."
             },
             "requested": {
               "type": "boolean"
@@ -338,7 +364,8 @@
               "type": "boolean"
             },
             "schema_version": {
-              "type": "integer"
+              "type": "integer",
+              "default": 1
             },
             "trace": {
               "anyOf": [
@@ -349,7 +376,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "retention": {
               "anyOf": [
@@ -360,10 +388,12 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "missing_reason": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             }
           },
           "additionalProperties": false,
@@ -470,13 +500,15 @@
               "type": "integer"
             },
             "entry_id": {
-              "type": "string"
+              "type": "string",
+              "description": "Stable log entry reference returned by search_logs."
             },
             "anchor": {
               "type": "object",
               "properties": {
                 "entry_id": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Stable log entry reference returned by search_logs."
                 },
                 "timestamp": {
                   "anyOf": [
@@ -553,7 +585,8 @@
                   "type": "object",
                   "properties": {
                     "name": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Name to match; case-insensitive substring unless exact is true."
                     },
                     "id": {
                       "anyOf": [
@@ -563,7 +596,8 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "default": null
                     }
                   },
                   "additionalProperties": false,
@@ -588,13 +622,15 @@
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "default": []
                 },
                 "derived_fields": {
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "default": []
                 },
                 "exception": {
                   "anyOf": [
@@ -605,7 +641,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "enrichment": {
                   "anyOf": [
@@ -616,7 +653,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "raw": {
                   "anyOf": [
@@ -626,7 +664,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 }
               },
               "additionalProperties": false,
@@ -653,7 +692,8 @@
                 "type": "object",
                 "properties": {
                   "entry_id": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Stable log entry reference returned by search_logs."
                   },
                   "timestamp": {
                     "anyOf": [
@@ -730,7 +770,8 @@
                     "type": "object",
                     "properties": {
                       "name": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Name to match; case-insensitive substring unless exact is true."
                       },
                       "id": {
                         "anyOf": [
@@ -740,7 +781,8 @@
                           {
                             "type": "null"
                           }
-                        ]
+                        ],
+                        "default": null
                       }
                     },
                     "additionalProperties": false,
@@ -765,13 +807,15 @@
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "default": []
                   },
                   "derived_fields": {
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "default": []
                   },
                   "exception": {
                     "anyOf": [
@@ -782,7 +826,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   },
                   "enrichment": {
                     "anyOf": [
@@ -793,7 +838,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   },
                   "raw": {
                     "anyOf": [
@@ -803,7 +849,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   }
                 },
                 "additionalProperties": false,
@@ -826,10 +873,12 @@
               }
             },
             "before": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Number of log records to include before the anchor."
             },
             "after": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Number of log records to include after the anchor."
             },
             "returned": {
               "type": "integer"
@@ -853,7 +902,9 @@
                   "type": "integer"
                 },
                 "source": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Which object or subsystem the request starts from.",
+                  "default": "nvda_native_log"
                 }
               },
               "additionalProperties": false,
@@ -861,7 +912,7 @@
                 "generation",
                 "size_bytes"
               ],
-              "description": "Identity of the log generation a response was read from."
+              "description": "Which object or subsystem the request starts from."
             },
             "diagnostics": {
               "type": "object",
@@ -885,7 +936,8 @@
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "default": []
                 }
               },
               "additionalProperties": false,
@@ -956,7 +1008,8 @@
               "type": "integer"
             },
             "max_lines": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Maximum log lines to return (1-10000)."
             },
             "lines": {
               "type": "array",
@@ -975,7 +1028,9 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Only return records at this severity or above.",
+              "default": null
             }
           },
           "additionalProperties": false,
@@ -1032,11 +1087,13 @@
             },
             "errors": {
               "type": "object",
-              "additionalProperties": {}
+              "additionalProperties": {},
+              "default": {}
             },
             "nvda": {
               "type": "object",
-              "additionalProperties": {}
+              "additionalProperties": {},
+              "default": {}
             },
             "focus": {
               "anyOf": [
@@ -1045,10 +1102,12 @@
                   "properties": {
                     "ref": {
                       "type": "string",
-                      "pattern": "^[a-z][a-z0-9]*$"
+                      "pattern": "^[a-z][a-z0-9]*$",
+                      "description": "Opaque reference returned by observe, locate or navigate."
                     },
                     "role": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Accessibility role name, e.g. 'button' or 'edit'."
                     },
                     "name": {
                       "anyOf": [
@@ -1058,7 +1117,9 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "description": "Name to match; case-insensitive substring unless exact is true.",
+                      "default": null
                     },
                     "value": {
                       "anyOf": [
@@ -1068,13 +1129,16 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "description": "Value to set; an empty string clears it.",
+                      "default": null
                     },
                     "states": {
                       "type": "array",
                       "items": {
                         "type": "string"
-                      }
+                      },
+                      "default": []
                     },
                     "location": {
                       "anyOf": [
@@ -1106,7 +1170,8 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "default": null
                     }
                   },
                   "additionalProperties": false,
@@ -1119,7 +1184,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "top_window": {
               "anyOf": [
@@ -1127,16 +1193,30 @@
                   "type": "object",
                   "properties": {
                     "ref": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Opaque reference returned by observe, locate or navigate.",
+                      "default": null
                     },
                     "title": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Window title to match.",
+                      "default": ""
                     },
                     "handle": {
-                      "type": "integer"
+                      "type": "integer",
+                      "description": "Native top-level window handle.",
+                      "default": 0
                     },
                     "class_name": {
-                      "type": "string"
+                      "type": "string",
+                      "default": ""
                     }
                   },
                   "additionalProperties": false,
@@ -1145,7 +1225,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "addons": {
               "anyOf": [
@@ -1162,7 +1243,8 @@
                       "type": "array",
                       "items": {
                         "type": "string"
-                      }
+                      },
+                      "default": []
                     }
                   },
                   "additionalProperties": false,
@@ -1175,7 +1257,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "logs": {
               "anyOf": [
@@ -1189,7 +1272,8 @@
                       "type": "integer"
                     },
                     "max_lines": {
-                      "type": "integer"
+                      "type": "integer",
+                      "description": "Maximum log lines to return (1-10000)."
                     },
                     "lines": {
                       "type": "array",
@@ -1208,7 +1292,9 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "description": "Only return records at this severity or above.",
+                      "default": null
                     }
                   },
                   "additionalProperties": false,
@@ -1224,7 +1310,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             }
           },
           "additionalProperties": false,
@@ -1269,7 +1356,8 @@
           "type": "object",
           "properties": {
             "source": {
-              "type": "string"
+              "type": "string",
+              "description": "Which object or subsystem the request starts from."
             },
             "object": {
               "type": "object",
@@ -1322,7 +1410,8 @@
           "type": "object",
           "properties": {
             "target": {
-              "type": "string"
+              "type": "string",
+              "description": "Which object to inspect."
             },
             "object": {
               "type": "object",
@@ -1370,7 +1459,8 @@
           "type": "object",
           "properties": {
             "ref": {
-              "type": "string"
+              "type": "string",
+              "description": "Opaque reference returned by observe, locate or navigate."
             },
             "invoked": {
               "type": "boolean"
@@ -1385,7 +1475,8 @@
               "type": "array",
               "items": {
                 "type": "string"
-              }
+              },
+              "default": []
             }
           },
           "additionalProperties": false,
@@ -1431,7 +1522,8 @@
           "type": "object",
           "properties": {
             "scope": {
-              "type": "string"
+              "type": "string",
+              "description": "Which scope to read, list or operate on."
             },
             "count": {
               "type": "integer"
@@ -1494,28 +1586,37 @@
           "type": "object",
           "properties": {
             "item": {
-              "type": "string"
+              "type": "string",
+              "description": "Kind of reading target to enumerate.",
+              "default": "heading"
             },
             "available": {
               "type": "array",
               "items": {
                 "type": "string"
-              }
+              },
+              "default": []
             },
             "browse_mode": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": true
             },
             "document": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             },
             "interface": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             },
             "pass_through": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "source": {
-              "type": "string"
+              "type": "string",
+              "description": "Which object or subsystem the request starts from.",
+              "default": ""
             },
             "targets": {
               "type": "array",
@@ -1523,39 +1624,53 @@
                 "type": "object",
                 "properties": {
                   "ref": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Opaque reference returned by observe, locate or navigate.",
+                    "default": ""
                   },
                   "role": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Accessibility role name, e.g. 'button' or 'edit'.",
+                    "default": ""
                   },
                   "label": {
-                    "type": "string"
+                    "type": "string",
+                    "default": ""
                   },
                   "text": {
-                    "type": "string"
+                    "type": "string",
+                    "default": ""
                   },
                   "level": {
-                    "type": "integer"
+                    "type": "integer",
+                    "default": 0
                   }
                 },
                 "additionalProperties": false,
                 "description": "One position in a document, in reading order."
-              }
+              },
+              "default": []
             },
             "truncated": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "stopped": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             },
             "scanned": {
-              "type": "integer"
+              "type": "integer",
+              "default": 0
             },
             "timeout_ms": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
+              "default": 0
             },
             "elapsed_ms": {
-              "type": "number"
+              "type": "number",
+              "default": 0.0
             }
           },
           "additionalProperties": false,
@@ -1601,22 +1716,29 @@
                 "properties": {
                   "ref": {
                     "type": "string",
-                    "pattern": "^[a-z][a-z0-9]*$"
+                    "pattern": "^[a-z][a-z0-9]*$",
+                    "description": "Opaque reference returned by observe, locate or navigate."
                   },
                   "role": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Accessibility role name, e.g. 'button' or 'edit'."
                   },
                   "name": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Name to match; case-insensitive substring unless exact is true.",
+                    "default": ""
                   },
                   "value": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Value to set; an empty string clears it.",
+                    "default": ""
                   },
                   "states": {
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "default": []
                   },
                   "location": {
                     "anyOf": [
@@ -1648,22 +1770,28 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   },
                   "automation_id": {
-                    "type": "string"
+                    "type": "string",
+                    "default": ""
                   },
                   "depth": {
-                    "type": "integer"
+                    "type": "integer",
+                    "default": -1
                   },
                   "path": {
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "default": []
                   },
                   "target": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Which object to inspect.",
+                    "default": "uia"
                   }
                 },
                 "additionalProperties": false,
@@ -1672,22 +1800,29 @@
                   "role"
                 ],
                 "description": "One control found by ``locate``."
-              }
+              },
+              "default": []
             },
             "method": {
-              "type": "string"
+              "type": "string",
+              "default": "uia"
             },
             "searched": {
-              "type": "integer"
+              "type": "integer",
+              "default": 0
             },
             "truncated": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "elapsed_ms": {
-              "type": "number"
+              "type": "number",
+              "default": 0.0
             },
             "scope": {
-              "type": "string"
+              "type": "string",
+              "description": "Which scope to read, list or operate on.",
+              "default": ""
             }
           },
           "additionalProperties": false,
@@ -1727,7 +1862,8 @@
           "type": "object",
           "properties": {
             "direction": {
-              "type": "string"
+              "type": "string",
+              "description": "Direction to move in."
             },
             "ref": {
               "anyOf": [
@@ -1737,7 +1873,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Opaque reference returned by observe, locate or navigate."
             },
             "focused": {
               "type": "boolean"
@@ -1784,55 +1921,78 @@
           "type": "object",
           "properties": {
             "item": {
-              "type": "string"
+              "type": "string",
+              "description": "Kind of reading target to enumerate.",
+              "default": "heading"
             },
             "direction": {
-              "type": "string"
+              "type": "string",
+              "description": "Direction to move in.",
+              "default": "next"
             },
             "steps": {
-              "type": "integer"
+              "type": "integer",
+              "description": "How many positions to move.",
+              "default": 1
             },
             "reached": {
-              "type": "integer"
+              "type": "integer",
+              "default": 0
             },
             "stopped": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             },
             "ref": {
-              "type": "string"
+              "type": "string",
+              "description": "Opaque reference returned by observe, locate or navigate.",
+              "default": ""
             },
             "role": {
-              "type": "string"
+              "type": "string",
+              "description": "Accessibility role name, e.g. 'button' or 'edit'.",
+              "default": ""
             },
             "label": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             },
             "text": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             },
             "level": {
-              "type": "integer"
+              "type": "integer",
+              "default": 0
             },
             "landed": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "browse_mode": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": true
             },
             "document": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             },
             "interface": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             },
             "pass_through": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "timeout_ms": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
+              "default": 0
             },
             "elapsed_ms": {
-              "type": "number"
+              "type": "number",
+              "default": 0.0
             }
           },
           "additionalProperties": false,
@@ -1881,7 +2041,8 @@
               "type": "object",
               "additionalProperties": {
                 "type": "string"
-              }
+              },
+              "default": {}
             },
             "focus": {
               "anyOf": [
@@ -1890,10 +2051,12 @@
                   "properties": {
                     "ref": {
                       "type": "string",
-                      "pattern": "^[a-z][a-z0-9]*$"
+                      "pattern": "^[a-z][a-z0-9]*$",
+                      "description": "Opaque reference returned by observe, locate or navigate."
                     },
                     "role": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Accessibility role name, e.g. 'button' or 'edit'."
                     },
                     "name": {
                       "anyOf": [
@@ -1903,7 +2066,9 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "description": "Name to match; case-insensitive substring unless exact is true.",
+                      "default": null
                     },
                     "value": {
                       "anyOf": [
@@ -1913,13 +2078,16 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "description": "Value to set; an empty string clears it.",
+                      "default": null
                     },
                     "states": {
                       "type": "array",
                       "items": {
                         "type": "string"
-                      }
+                      },
+                      "default": []
                     },
                     "location": {
                       "anyOf": [
@@ -1951,7 +2119,8 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "default": null
                     }
                   },
                   "additionalProperties": false,
@@ -1964,7 +2133,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "ancestors": {
               "type": "array",
@@ -1973,10 +2143,12 @@
                 "properties": {
                   "ref": {
                     "type": "string",
-                    "pattern": "^[a-z][a-z0-9]*$"
+                    "pattern": "^[a-z][a-z0-9]*$",
+                    "description": "Opaque reference returned by observe, locate or navigate."
                   },
                   "role": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Accessibility role name, e.g. 'button' or 'edit'."
                   },
                   "name": {
                     "anyOf": [
@@ -1986,7 +2158,9 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "Name to match; case-insensitive substring unless exact is true.",
+                    "default": null
                   },
                   "value": {
                     "anyOf": [
@@ -1996,13 +2170,16 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "Value to set; an empty string clears it.",
+                    "default": null
                   },
                   "states": {
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "default": []
                   },
                   "location": {
                     "anyOf": [
@@ -2034,7 +2211,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   }
                 },
                 "additionalProperties": false,
@@ -2043,7 +2221,8 @@
                   "role"
                 ],
                 "description": "One accessibility node, with the reference that points at it."
-              }
+              },
+              "default": []
             },
             "children": {
               "type": "array",
@@ -2052,10 +2231,12 @@
                 "properties": {
                   "ref": {
                     "type": "string",
-                    "pattern": "^[a-z][a-z0-9]*$"
+                    "pattern": "^[a-z][a-z0-9]*$",
+                    "description": "Opaque reference returned by observe, locate or navigate."
                   },
                   "role": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Accessibility role name, e.g. 'button' or 'edit'."
                   },
                   "name": {
                     "anyOf": [
@@ -2065,7 +2246,9 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "Name to match; case-insensitive substring unless exact is true.",
+                    "default": null
                   },
                   "value": {
                     "anyOf": [
@@ -2075,13 +2258,16 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "Value to set; an empty string clears it.",
+                    "default": null
                   },
                   "states": {
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "default": []
                   },
                   "location": {
                     "anyOf": [
@@ -2113,7 +2299,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   }
                 },
                 "additionalProperties": false,
@@ -2122,7 +2309,8 @@
                   "role"
                 ],
                 "description": "One accessibility node, with the reference that points at it."
-              }
+              },
+              "default": []
             },
             "dialog": {
               "anyOf": [
@@ -2131,10 +2319,12 @@
                   "properties": {
                     "ref": {
                       "type": "string",
-                      "pattern": "^[a-z][a-z0-9]*$"
+                      "pattern": "^[a-z][a-z0-9]*$",
+                      "description": "Opaque reference returned by observe, locate or navigate."
                     },
                     "role": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Accessibility role name, e.g. 'button' or 'edit'."
                     },
                     "name": {
                       "anyOf": [
@@ -2144,7 +2334,9 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "description": "Name to match; case-insensitive substring unless exact is true.",
+                      "default": null
                     },
                     "value": {
                       "anyOf": [
@@ -2154,13 +2346,16 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "description": "Value to set; an empty string clears it.",
+                      "default": null
                     },
                     "states": {
                       "type": "array",
                       "items": {
                         "type": "string"
-                      }
+                      },
+                      "default": []
                     },
                     "location": {
                       "anyOf": [
@@ -2192,7 +2387,8 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "default": null
                     },
                     "children": {
                       "type": "array",
@@ -2201,10 +2397,12 @@
                         "properties": {
                           "ref": {
                             "type": "string",
-                            "pattern": "^[a-z][a-z0-9]*$"
+                            "pattern": "^[a-z][a-z0-9]*$",
+                            "description": "Opaque reference returned by observe, locate or navigate."
                           },
                           "role": {
-                            "type": "string"
+                            "type": "string",
+                            "description": "Accessibility role name, e.g. 'button' or 'edit'."
                           },
                           "name": {
                             "anyOf": [
@@ -2214,7 +2412,9 @@
                               {
                                 "type": "null"
                               }
-                            ]
+                            ],
+                            "description": "Name to match; case-insensitive substring unless exact is true.",
+                            "default": null
                           },
                           "value": {
                             "anyOf": [
@@ -2224,13 +2424,16 @@
                               {
                                 "type": "null"
                               }
-                            ]
+                            ],
+                            "description": "Value to set; an empty string clears it.",
+                            "default": null
                           },
                           "states": {
                             "type": "array",
                             "items": {
                               "type": "string"
-                            }
+                            },
+                            "default": []
                           },
                           "location": {
                             "anyOf": [
@@ -2262,7 +2465,8 @@
                               {
                                 "type": "null"
                               }
-                            ]
+                            ],
+                            "default": null
                           }
                         },
                         "additionalProperties": false,
@@ -2271,7 +2475,8 @@
                           "role"
                         ],
                         "description": "One accessibility node, with the reference that points at it."
-                      }
+                      },
+                      "default": []
                     }
                   },
                   "additionalProperties": false,
@@ -2284,7 +2489,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "top_window": {
               "anyOf": [
@@ -2292,16 +2498,30 @@
                   "type": "object",
                   "properties": {
                     "ref": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Opaque reference returned by observe, locate or navigate.",
+                      "default": null
                     },
                     "title": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Window title to match.",
+                      "default": ""
                     },
                     "handle": {
-                      "type": "integer"
+                      "type": "integer",
+                      "description": "Native top-level window handle.",
+                      "default": 0
                     },
                     "class_name": {
-                      "type": "string"
+                      "type": "string",
+                      "default": ""
                     }
                   },
                   "additionalProperties": false,
@@ -2310,7 +2530,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "selection": {
               "anyOf": [
@@ -2320,22 +2541,35 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "truncated": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "truncated_sections": {
               "type": "array",
               "items": {
                 "type": "string"
-              }
+              },
+              "default": []
             },
             "more_available": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "truncation_hint": {
-              "type": "string"
+              "type": "string",
+              "default": ""
+            },
+            "budget_exceeded": {
+              "type": "boolean",
+              "default": false
+            },
+            "observed_bytes": {
+              "type": "integer",
+              "default": 0
             }
           },
           "additionalProperties": false,
@@ -2385,10 +2619,12 @@
               "type": "string"
             },
             "repeat": {
-              "type": "integer"
+              "type": "integer",
+              "description": "How many times to send the gesture."
             },
             "delay_ms": {
-              "type": "integer"
+              "type": "integer",
+              "description": "Milliseconds to wait between repeated key presses."
             },
             "sent": {
               "type": "boolean"
@@ -2400,10 +2636,12 @@
               "type": "boolean"
             },
             "cancelled": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "uncertain": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             }
           },
           "additionalProperties": false,
@@ -2455,10 +2693,12 @@
               "type": "string"
             },
             "scope": {
-              "type": "string"
+              "type": "string",
+              "description": "Which scope to read, list or operate on."
             },
             "source": {
-              "type": "string"
+              "type": "string",
+              "description": "Which object or subsystem the request starts from."
             },
             "ref": {
               "anyOf": [
@@ -2468,10 +2708,13 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "description": "Opaque reference returned by observe, locate or navigate.",
+              "default": null
             },
             "truncated": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             }
           },
           "additionalProperties": false,
@@ -2519,7 +2762,8 @@
               "type": "string"
             },
             "message": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             }
           },
           "additionalProperties": false,
@@ -2605,7 +2849,8 @@
           "type": "object",
           "properties": {
             "direction": {
-              "type": "string"
+              "type": "string",
+              "description": "Direction to move in."
             },
             "amount": {
               "type": "string"
@@ -2668,7 +2913,8 @@
                 "type": "object",
                 "properties": {
                   "entry_id": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Stable log entry reference returned by search_logs."
                   },
                   "timestamp": {
                     "anyOf": [
@@ -2745,7 +2991,8 @@
                     "type": "object",
                     "properties": {
                       "name": {
-                        "type": "string"
+                        "type": "string",
+                        "description": "Name to match; case-insensitive substring unless exact is true."
                       },
                       "id": {
                         "anyOf": [
@@ -2755,7 +3002,8 @@
                           {
                             "type": "null"
                           }
-                        ]
+                        ],
+                        "default": null
                       }
                     },
                     "additionalProperties": false,
@@ -2780,13 +3028,15 @@
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "default": []
                   },
                   "derived_fields": {
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "default": []
                   },
                   "exception": {
                     "anyOf": [
@@ -2797,7 +3047,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   },
                   "enrichment": {
                     "anyOf": [
@@ -2808,7 +3059,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   },
                   "raw": {
                     "anyOf": [
@@ -2818,7 +3070,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   }
                 },
                 "additionalProperties": false,
@@ -2860,10 +3113,12 @@
                   ]
                 },
                 "limit": {
-                  "type": "integer"
+                  "type": "integer",
+                  "description": "Maximum number of items to return."
                 },
                 "order": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Result ordering."
                 }
               },
               "additionalProperties": false,
@@ -2885,7 +3140,9 @@
                   "type": "integer"
                 },
                 "source": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Which object or subsystem the request starts from.",
+                  "default": "nvda_native_log"
                 }
               },
               "additionalProperties": false,
@@ -2893,7 +3150,7 @@
                 "generation",
                 "size_bytes"
               ],
-              "description": "Identity of the log generation a response was read from."
+              "description": "Which object or subsystem the request starts from."
             },
             "diagnostics": {
               "type": "object",
@@ -2926,7 +3183,8 @@
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "default": []
                 }
               },
               "additionalProperties": false,
@@ -2987,28 +3245,35 @@
           "type": "object",
           "properties": {
             "ref": {
-              "type": "string"
+              "type": "string",
+              "description": "Opaque reference returned by observe, locate or navigate."
             },
             "mode": {
               "type": "string"
             },
             "value": {
-              "type": "string"
+              "type": "string",
+              "description": "Value to set; an empty string clears it."
             },
             "previous": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             },
             "units": {
-              "type": "integer"
+              "type": "integer",
+              "default": 0
             },
             "verified": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": true
             },
             "observed": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             },
             "value_source": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             }
           },
           "additionalProperties": false,
@@ -3056,7 +3321,8 @@
               "type": "string"
             },
             "status": {
-              "type": "string"
+              "type": "string",
+              "default": "ok"
             }
           },
           "additionalProperties": false,
@@ -3102,7 +3368,8 @@
               "type": "string"
             },
             "status": {
-              "type": "string"
+              "type": "string",
+              "default": "ok"
             }
           },
           "additionalProperties": false,
@@ -3145,22 +3412,28 @@
           "type": "object",
           "properties": {
             "created": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "browse_mode": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "document": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             },
             "interface": {
-              "type": "string"
+              "type": "string",
+              "default": ""
             },
             "pass_through": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "elapsed_ms": {
-              "type": "number"
+              "type": "number",
+              "default": 0.0
             }
           },
           "additionalProperties": false,
@@ -3231,7 +3504,8 @@
                   "type": "string"
                 },
                 "source": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Which object or subsystem the request starts from."
                 },
                 "generation": {
                   "type": "string"
@@ -3246,13 +3520,15 @@
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "default": []
                 },
                 "limitations": {
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "default": []
                 }
               },
               "additionalProperties": false,
@@ -3314,7 +3590,8 @@
           "type": "object",
           "properties": {
             "journal_id": {
-              "type": "string"
+              "type": "string",
+              "description": "Journal generation that issued `since`; omit to use the current journal."
             },
             "from_version": {
               "type": "integer"
@@ -3323,20 +3600,24 @@
               "type": "integer"
             },
             "earliest_available_version": {
-              "type": "integer"
+              "type": "integer",
+              "default": 0
             },
             "events": {
               "type": "array",
               "items": {
                 "type": "object",
                 "additionalProperties": {}
-              }
+              },
+              "default": []
             },
             "expired": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "resync_required": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "resync_reason": {
               "anyOf": [
@@ -3346,7 +3627,8 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "resync_from": {
               "anyOf": [
@@ -3357,25 +3639,32 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "history_complete": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": true
             },
             "truncated": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "has_more": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "cursor_status": {
-              "type": "string"
+              "type": "string",
+              "default": "ok"
             },
             "timed_out": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             },
             "cancelled": {
-              "type": "boolean"
+              "type": "boolean",
+              "default": false
             }
           },
           "additionalProperties": false,
@@ -3420,7 +3709,8 @@
           "type": "object",
           "properties": {
             "target": {
-              "type": "string"
+              "type": "string",
+              "description": "Which object to inspect."
             },
             "max_depth": {
               "type": "integer"
@@ -3476,13 +3766,19 @@
         "type": "object",
         "properties": {
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Window title to match.",
+            "default": ""
           },
           "handle": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Native top-level window handle.",
+            "default": 0
           },
           "exact": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Require an exact match instead of a case-insensitive substring.",
+            "default": false
           },
           "expect": {
             "anyOf": [
@@ -3514,7 +3810,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}.",
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -3529,28 +3827,37 @@
             "type": "boolean"
           },
           "handle": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Native top-level window handle."
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Window title to match."
           },
           "ref": {
-            "type": "string"
+            "type": "string",
+            "description": "Opaque reference returned by observe, locate or navigate.",
+            "default": ""
           },
           "previous_title": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           },
           "method": {
-            "type": "string"
+            "type": "string",
+            "default": "foreground"
           },
           "restored": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "waited_ms": {
-            "type": "number"
+            "type": "number",
+            "default": 0.0
           },
           "matches": {
-            "type": "integer"
+            "type": "integer",
+            "default": 1
           },
           "focus_in_window": {
             "anyOf": [
@@ -3560,10 +3867,12 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "focus_window": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           }
         },
         "additionalProperties": false,
@@ -3602,10 +3911,12 @@
         "type": "object",
         "properties": {
           "x": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Absolute screen x coordinate in pixels."
           },
           "y": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Absolute screen y coordinate in pixels."
           },
           "button": {
             "type": "string",
@@ -3613,7 +3924,9 @@
               "left",
               "right",
               "middle"
-            ]
+            ],
+            "description": "Mouse button to click.",
+            "default": "left"
           },
           "expect": {
             "anyOf": [
@@ -3645,7 +3958,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}.",
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -3661,13 +3976,16 @@
         "type": "object",
         "properties": {
           "x": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Absolute screen x coordinate in pixels."
           },
           "y": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Absolute screen y coordinate in pixels."
           },
           "button": {
-            "type": "string"
+            "type": "string",
+            "description": "Mouse button to click."
           },
           "hit": {
             "anyOf": [
@@ -3678,16 +3996,20 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "cursor": {
             "type": "array",
             "items": {
               "type": "integer"
-            }
+            },
+            "description": "Opaque continuation cursor from a previous response.",
+            "default": []
           },
           "on_target": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true
           }
         },
         "additionalProperties": false,
@@ -3702,12 +4024,12 @@
         "blocked_on_secure_screen": true,
         "blocked_on_modal": true,
         "blocked_on_menu": true,
-        "dangerous": false,
+        "dangerous": true,
         "requires_explicit_opt_in": false,
         "requires_developer_mode": false
       },
       "readOnly": false,
-      "destructive": false,
+      "destructive": true,
       "idempotent": false,
       "sideEffects": true,
       "requiredPermission": "input_control",
@@ -3755,7 +4077,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}.",
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -3773,10 +4097,13 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "How many positions to move.",
+            "default": []
           },
           "dialog_name": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           }
         },
         "additionalProperties": false,
@@ -3816,7 +4143,8 @@
             "type": "string"
           },
           "snapshot_vars": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "capture_vars": {
             "anyOf": [
@@ -3829,7 +4157,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -3844,10 +4173,12 @@
         "type": "object",
         "properties": {
           "stdout": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           },
           "stderr": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           },
           "result": {
             "anyOf": [
@@ -3857,7 +4188,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "captured_variables": {
             "anyOf": [
@@ -3868,7 +4200,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -3903,7 +4236,8 @@
         "properties": {
           "ref": {
             "type": "string",
-            "pattern": "^[a-z][a-z0-9]*$"
+            "pattern": "^[a-z][a-z0-9]*$",
+            "description": "Opaque reference returned by observe, locate or navigate."
           },
           "expect": {
             "anyOf": [
@@ -3935,7 +4269,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}.",
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -3950,7 +4286,8 @@
         "type": "object",
         "properties": {
           "ref": {
-            "type": "string"
+            "type": "string",
+            "description": "Opaque reference returned by observe, locate or navigate."
           },
           "requested": {
             "type": "boolean"
@@ -4012,7 +4349,8 @@
             "type": "boolean"
           },
           "schema_version": {
-            "type": "integer"
+            "type": "integer",
+            "default": 1
           },
           "trace": {
             "anyOf": [
@@ -4023,7 +4361,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "retention": {
             "anyOf": [
@@ -4034,10 +4373,12 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "missing_reason": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           }
         },
         "additionalProperties": false,
@@ -4075,7 +4416,8 @@
         "type": "object",
         "properties": {
           "max_ancestors": {
-            "type": "integer"
+            "type": "integer",
+            "default": 10
           }
         },
         "additionalProperties": false,
@@ -4141,19 +4483,27 @@
         "type": "object",
         "properties": {
           "entry_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable log entry reference returned by search_logs."
           },
           "before": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Number of log records to include before the anchor.",
+            "default": 20
           },
           "after": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Number of log records to include after the anchor.",
+            "default": 30
           },
           "include_related_threads": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true
           },
           "include_raw": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Include the raw log record alongside the parsed fields.",
+            "default": false
           },
           "before_ms": {
             "anyOf": [
@@ -4163,7 +4513,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "after_ms": {
             "anyOf": [
@@ -4173,7 +4524,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -4191,13 +4543,15 @@
             "type": "integer"
           },
           "entry_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable log entry reference returned by search_logs."
           },
           "anchor": {
             "type": "object",
             "properties": {
               "entry_id": {
-                "type": "string"
+                "type": "string",
+                "description": "Stable log entry reference returned by search_logs."
               },
               "timestamp": {
                 "anyOf": [
@@ -4274,7 +4628,8 @@
                 "type": "object",
                 "properties": {
                   "name": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Name to match; case-insensitive substring unless exact is true."
                   },
                   "id": {
                     "anyOf": [
@@ -4284,7 +4639,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   }
                 },
                 "additionalProperties": false,
@@ -4309,13 +4665,15 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "default": []
               },
               "derived_fields": {
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "default": []
               },
               "exception": {
                 "anyOf": [
@@ -4326,7 +4684,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "enrichment": {
                 "anyOf": [
@@ -4337,7 +4696,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "raw": {
                 "anyOf": [
@@ -4347,7 +4707,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               }
             },
             "additionalProperties": false,
@@ -4374,7 +4735,8 @@
               "type": "object",
               "properties": {
                 "entry_id": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Stable log entry reference returned by search_logs."
                 },
                 "timestamp": {
                   "anyOf": [
@@ -4451,7 +4813,8 @@
                   "type": "object",
                   "properties": {
                     "name": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Name to match; case-insensitive substring unless exact is true."
                     },
                     "id": {
                       "anyOf": [
@@ -4461,7 +4824,8 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "default": null
                     }
                   },
                   "additionalProperties": false,
@@ -4486,13 +4850,15 @@
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "default": []
                 },
                 "derived_fields": {
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "default": []
                 },
                 "exception": {
                   "anyOf": [
@@ -4503,7 +4869,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "enrichment": {
                   "anyOf": [
@@ -4514,7 +4881,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "raw": {
                   "anyOf": [
@@ -4524,7 +4892,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 }
               },
               "additionalProperties": false,
@@ -4547,10 +4916,12 @@
             }
           },
           "before": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Number of log records to include before the anchor."
           },
           "after": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Number of log records to include after the anchor."
           },
           "returned": {
             "type": "integer"
@@ -4574,7 +4945,9 @@
                 "type": "integer"
               },
               "source": {
-                "type": "string"
+                "type": "string",
+                "description": "Which object or subsystem the request starts from.",
+                "default": "nvda_native_log"
               }
             },
             "additionalProperties": false,
@@ -4582,7 +4955,7 @@
               "generation",
               "size_bytes"
             ],
-            "description": "Identity of the log generation a response was read from."
+            "description": "Which object or subsystem the request starts from."
           },
           "diagnostics": {
             "type": "object",
@@ -4606,7 +4979,8 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "default": []
               }
             },
             "additionalProperties": false,
@@ -4665,7 +5039,11 @@
         "type": "object",
         "properties": {
           "max_lines": {
-            "type": "integer"
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000,
+            "description": "Maximum log lines to return (1-10000).",
+            "default": 100
           },
           "filter_level": {
             "anyOf": [
@@ -4682,10 +5060,14 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Only return records at this severity or above.",
+            "default": null
           },
           "use_tail": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Read from the end of the log instead of the start.",
+            "default": true
           }
         },
         "additionalProperties": false,
@@ -4703,7 +5085,8 @@
             "type": "integer"
           },
           "max_lines": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Maximum log lines to return (1-10000)."
           },
           "lines": {
             "type": "array",
@@ -4722,7 +5105,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Only return records at this severity or above.",
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -4764,21 +5149,25 @@
         "properties": {
           "include_focus": {
             "type": "boolean",
-            "description": "Include the focused control and its top-level window."
+            "description": "Include the focused control and its top-level window.",
+            "default": true
           },
           "include_addons": {
             "type": "boolean",
-            "description": "Include add-on counts and the running add-on names."
+            "description": "Include add-on counts and the running add-on names.",
+            "default": false
           },
           "include_logs": {
             "type": "boolean",
-            "description": "Include the tail of NVDA's native log."
+            "description": "Include the tail of NVDA's native log.",
+            "default": false
           },
           "log_lines": {
             "type": "integer",
             "minimum": 1,
             "maximum": 500,
-            "description": "Log lines when include_logs is true."
+            "description": "Log lines when include_logs is true.",
+            "default": 20
           }
         },
         "additionalProperties": false,
@@ -4800,11 +5189,13 @@
           },
           "errors": {
             "type": "object",
-            "additionalProperties": {}
+            "additionalProperties": {},
+            "default": {}
           },
           "nvda": {
             "type": "object",
-            "additionalProperties": {}
+            "additionalProperties": {},
+            "default": {}
           },
           "focus": {
             "anyOf": [
@@ -4813,10 +5204,12 @@
                 "properties": {
                   "ref": {
                     "type": "string",
-                    "pattern": "^[a-z][a-z0-9]*$"
+                    "pattern": "^[a-z][a-z0-9]*$",
+                    "description": "Opaque reference returned by observe, locate or navigate."
                   },
                   "role": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Accessibility role name, e.g. 'button' or 'edit'."
                   },
                   "name": {
                     "anyOf": [
@@ -4826,7 +5219,9 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "Name to match; case-insensitive substring unless exact is true.",
+                    "default": null
                   },
                   "value": {
                     "anyOf": [
@@ -4836,13 +5231,16 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "Value to set; an empty string clears it.",
+                    "default": null
                   },
                   "states": {
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "default": []
                   },
                   "location": {
                     "anyOf": [
@@ -4874,7 +5272,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   }
                 },
                 "additionalProperties": false,
@@ -4887,7 +5286,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "top_window": {
             "anyOf": [
@@ -4895,16 +5295,30 @@
                 "type": "object",
                 "properties": {
                   "ref": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Opaque reference returned by observe, locate or navigate.",
+                    "default": null
                   },
                   "title": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Window title to match.",
+                    "default": ""
                   },
                   "handle": {
-                    "type": "integer"
+                    "type": "integer",
+                    "description": "Native top-level window handle.",
+                    "default": 0
                   },
                   "class_name": {
-                    "type": "string"
+                    "type": "string",
+                    "default": ""
                   }
                 },
                 "additionalProperties": false,
@@ -4913,7 +5327,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "addons": {
             "anyOf": [
@@ -4930,7 +5345,8 @@
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "default": []
                   }
                 },
                 "additionalProperties": false,
@@ -4943,7 +5359,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "logs": {
             "anyOf": [
@@ -4957,7 +5374,8 @@
                     "type": "integer"
                   },
                   "max_lines": {
-                    "type": "integer"
+                    "type": "integer",
+                    "description": "Maximum log lines to return (1-10000)."
                   },
                   "lines": {
                     "type": "array",
@@ -4976,7 +5394,9 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "Only return records at this severity or above.",
+                    "default": null
                   }
                 },
                 "additionalProperties": false,
@@ -4992,7 +5412,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -5036,7 +5457,9 @@
               "focus",
               "navigator",
               "desktop"
-            ]
+            ],
+            "description": "Which object or subsystem the request starts from.",
+            "default": "focus"
           }
         },
         "additionalProperties": false,
@@ -5048,7 +5471,8 @@
         "type": "object",
         "properties": {
           "source": {
-            "type": "string"
+            "type": "string",
+            "description": "Which object or subsystem the request starts from."
           },
           "object": {
             "type": "object",
@@ -5100,10 +5524,13 @@
               "focus",
               "navigator",
               "desktop"
-            ]
+            ],
+            "description": "Which object to inspect.",
+            "default": "focus"
           },
           "include_relations": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -5115,7 +5542,8 @@
         "type": "object",
         "properties": {
           "target": {
-            "type": "string"
+            "type": "string",
+            "description": "Which object to inspect."
           },
           "object": {
             "type": "object",
@@ -5158,7 +5586,8 @@
         "properties": {
           "ref": {
             "type": "string",
-            "pattern": "^[a-z][a-z0-9]*$"
+            "pattern": "^[a-z][a-z0-9]*$",
+            "description": "Opaque reference returned by observe, locate or navigate."
           },
           "action": {
             "anyOf": [
@@ -5168,7 +5597,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Named action to invoke; omit for the object's default action.",
+            "default": null
           },
           "expect": {
             "anyOf": [
@@ -5200,7 +5631,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}.",
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -5215,7 +5648,8 @@
         "type": "object",
         "properties": {
           "ref": {
-            "type": "string"
+            "type": "string",
+            "description": "Opaque reference returned by observe, locate or navigate."
           },
           "invoked": {
             "type": "boolean"
@@ -5230,7 +5664,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "default": []
           }
         },
         "additionalProperties": false,
@@ -5246,12 +5681,12 @@
         "blocked_on_secure_screen": true,
         "blocked_on_modal": true,
         "blocked_on_menu": true,
-        "dangerous": false,
+        "dangerous": true,
         "requires_explicit_opt_in": false,
         "requires_developer_mode": false
       },
       "readOnly": false,
-      "destructive": false,
+      "destructive": true,
       "idempotent": false,
       "sideEffects": true,
       "requiredPermission": "input_control",
@@ -5275,7 +5710,9 @@
               "running",
               "available",
               "all"
-            ]
+            ],
+            "description": "Which scope to read, list or operate on.",
+            "default": "running"
           }
         },
         "additionalProperties": false,
@@ -5287,7 +5724,8 @@
         "type": "object",
         "properties": {
           "scope": {
-            "type": "string"
+            "type": "string",
+            "description": "Which scope to read, list or operate on."
           },
           "count": {
             "type": "integer"
@@ -5344,28 +5782,36 @@
         "type": "object",
         "properties": {
           "item": {
-            "type": "string"
+            "type": "string",
+            "description": "Kind of reading target to enumerate.",
+            "default": "heading"
           },
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 200
+            "maximum": 200,
+            "description": "Maximum number of items to return.",
+            "default": 20
           },
           "within": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9]*$"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "pattern": "^[a-z][a-z0-9]*$",
+            "description": "Only search inside this reference (for example a window ref).",
+            "default": null
           },
           "timeout_ms": {
             "type": "integer",
             "minimum": 50,
-            "maximum": 5000
+            "maximum": 5000,
+            "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
+            "default": 1000
           }
         },
         "additionalProperties": false,
@@ -5377,28 +5823,37 @@
         "type": "object",
         "properties": {
           "item": {
-            "type": "string"
+            "type": "string",
+            "description": "Kind of reading target to enumerate.",
+            "default": "heading"
           },
           "available": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "default": []
           },
           "browse_mode": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true
           },
           "document": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           },
           "interface": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           },
           "pass_through": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "source": {
-            "type": "string"
+            "type": "string",
+            "description": "Which object or subsystem the request starts from.",
+            "default": ""
           },
           "targets": {
             "type": "array",
@@ -5406,39 +5861,53 @@
               "type": "object",
               "properties": {
                 "ref": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Opaque reference returned by observe, locate or navigate.",
+                  "default": ""
                 },
                 "role": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Accessibility role name, e.g. 'button' or 'edit'.",
+                  "default": ""
                 },
                 "label": {
-                  "type": "string"
+                  "type": "string",
+                  "default": ""
                 },
                 "text": {
-                  "type": "string"
+                  "type": "string",
+                  "default": ""
                 },
                 "level": {
-                  "type": "integer"
+                  "type": "integer",
+                  "default": 0
                 }
               },
               "additionalProperties": false,
               "description": "One position in a document, in reading order."
-            }
+            },
+            "default": []
           },
           "truncated": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "stopped": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           },
           "scanned": {
-            "type": "integer"
+            "type": "integer",
+            "default": 0
           },
           "timeout_ms": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
+            "default": 0
           },
           "elapsed_ms": {
-            "type": "number"
+            "type": "number",
+            "default": 0.0
           }
         },
         "additionalProperties": false,
@@ -5479,7 +5948,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Accessibility role name, e.g. 'button' or 'edit'.",
+            "default": null
           },
           "name": {
             "anyOf": [
@@ -5489,36 +5960,47 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Name to match; case-insensitive substring unless exact is true.",
+            "default": null
           },
           "exact": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Require an exact match instead of a case-insensitive substring.",
+            "default": false
           },
           "within": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9]*$"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "pattern": "^[a-z][a-z0-9]*$",
+            "description": "Only search inside this reference (for example a window ref).",
+            "default": null
           },
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 50
+            "maximum": 50,
+            "description": "Maximum number of items to return.",
+            "default": 10
           },
           "max_nodes": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 2000
+            "maximum": 2000,
+            "default": 400
           },
           "timeout_ms": {
             "type": "integer",
             "minimum": 50,
-            "maximum": 3000
+            "maximum": 3000,
+            "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
+            "default": 500
           },
           "detail": {
             "type": "string",
@@ -5526,7 +6008,8 @@
               "summary",
               "full"
             ],
-            "description": "summary leaves path, depth, automation id and states empty."
+            "description": "summary leaves path, depth, automation id and states empty.",
+            "default": "summary"
           }
         },
         "additionalProperties": false,
@@ -5544,22 +6027,29 @@
               "properties": {
                 "ref": {
                   "type": "string",
-                  "pattern": "^[a-z][a-z0-9]*$"
+                  "pattern": "^[a-z][a-z0-9]*$",
+                  "description": "Opaque reference returned by observe, locate or navigate."
                 },
                 "role": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Accessibility role name, e.g. 'button' or 'edit'."
                 },
                 "name": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Name to match; case-insensitive substring unless exact is true.",
+                  "default": ""
                 },
                 "value": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Value to set; an empty string clears it.",
+                  "default": ""
                 },
                 "states": {
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "default": []
                 },
                 "location": {
                   "anyOf": [
@@ -5591,22 +6081,28 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "automation_id": {
-                  "type": "string"
+                  "type": "string",
+                  "default": ""
                 },
                 "depth": {
-                  "type": "integer"
+                  "type": "integer",
+                  "default": -1
                 },
                 "path": {
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "default": []
                 },
                 "target": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Which object to inspect.",
+                  "default": "uia"
                 }
               },
               "additionalProperties": false,
@@ -5615,22 +6111,29 @@
                 "role"
               ],
               "description": "One control found by ``locate``."
-            }
+            },
+            "default": []
           },
           "method": {
-            "type": "string"
+            "type": "string",
+            "default": "uia"
           },
           "searched": {
-            "type": "integer"
+            "type": "integer",
+            "default": 0
           },
           "truncated": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "elapsed_ms": {
-            "type": "number"
+            "type": "number",
+            "default": 0.0
           },
           "scope": {
-            "type": "string"
+            "type": "string",
+            "description": "Which scope to read, list or operate on.",
+            "default": ""
           }
         },
         "additionalProperties": false,
@@ -5672,18 +6175,21 @@
               "last",
               "parent",
               "child"
-            ]
+            ],
+            "description": "Direction to move in."
           },
           "ref": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9]*$"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "pattern": "^[a-z][a-z0-9]*$",
+            "description": "Opaque reference returned by observe, locate or navigate.",
+            "default": null
           },
           "expect": {
             "anyOf": [
@@ -5715,7 +6221,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}.",
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -5730,7 +6238,8 @@
         "type": "object",
         "properties": {
           "direction": {
-            "type": "string"
+            "type": "string",
+            "description": "Direction to move in."
           },
           "ref": {
             "anyOf": [
@@ -5740,7 +6249,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Opaque reference returned by observe, locate or navigate."
           },
           "focused": {
             "type": "boolean"
@@ -5781,31 +6291,41 @@
         "type": "object",
         "properties": {
           "item": {
-            "type": "string"
+            "type": "string",
+            "description": "Kind of reading target to enumerate.",
+            "default": "heading"
           },
           "direction": {
-            "type": "string"
+            "type": "string",
+            "description": "Direction to move in.",
+            "default": "next"
           },
           "steps": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 50
+            "maximum": 50,
+            "description": "How many positions to move.",
+            "default": 1
           },
           "within": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9]*$"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "pattern": "^[a-z][a-z0-9]*$",
+            "description": "Only search inside this reference (for example a window ref).",
+            "default": null
           },
           "timeout_ms": {
             "type": "integer",
             "minimum": 50,
-            "maximum": 5000
+            "maximum": 5000,
+            "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
+            "default": 1000
           },
           "expect": {
             "anyOf": [
@@ -5837,7 +6357,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}.",
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -5849,55 +6371,78 @@
         "type": "object",
         "properties": {
           "item": {
-            "type": "string"
+            "type": "string",
+            "description": "Kind of reading target to enumerate.",
+            "default": "heading"
           },
           "direction": {
-            "type": "string"
+            "type": "string",
+            "description": "Direction to move in.",
+            "default": "next"
           },
           "steps": {
-            "type": "integer"
+            "type": "integer",
+            "description": "How many positions to move.",
+            "default": 1
           },
           "reached": {
-            "type": "integer"
+            "type": "integer",
+            "default": 0
           },
           "stopped": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           },
           "ref": {
-            "type": "string"
+            "type": "string",
+            "description": "Opaque reference returned by observe, locate or navigate.",
+            "default": ""
           },
           "role": {
-            "type": "string"
+            "type": "string",
+            "description": "Accessibility role name, e.g. 'button' or 'edit'.",
+            "default": ""
           },
           "label": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           },
           "text": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           },
           "level": {
-            "type": "integer"
+            "type": "integer",
+            "default": 0
           },
           "landed": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "browse_mode": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true
           },
           "document": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           },
           "interface": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           },
           "pass_through": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "timeout_ms": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
+            "default": 0
           },
           "elapsed_ms": {
-            "type": "number"
+            "type": "number",
+            "default": 0.0
           }
         },
         "additionalProperties": false,
@@ -5942,13 +6487,18 @@
                 "dialog"
               ]
             },
-            "description": "Optional sections beyond focus and the top-level window."
+            "description": "Optional sections beyond focus and the top-level window.",
+            "default": [
+              "focus",
+              "dialog"
+            ]
           },
           "max_text": {
             "type": "integer",
             "minimum": 0,
             "maximum": 2000,
-            "description": "Maximum characters per value."
+            "description": "Maximum characters per value.",
+            "default": 120
           },
           "detail": {
             "type": "string",
@@ -5956,13 +6506,15 @@
               "summary",
               "full"
             ],
-            "description": "summary leaves states empty; full includes them."
+            "description": "summary leaves states empty; full includes them.",
+            "default": "summary"
           },
           "max_bytes": {
             "type": "integer",
             "minimum": 0,
             "maximum": 200000,
-            "description": "Bound the serialized observation; 0 disables the bound. Truncation is reported."
+            "description": "Bound the serialized observation; 0 disables the bound. Truncation is reported.",
+            "default": 0
           }
         },
         "additionalProperties": false,
@@ -5983,7 +6535,8 @@
             "type": "object",
             "additionalProperties": {
               "type": "string"
-            }
+            },
+            "default": {}
           },
           "focus": {
             "anyOf": [
@@ -5992,10 +6545,12 @@
                 "properties": {
                   "ref": {
                     "type": "string",
-                    "pattern": "^[a-z][a-z0-9]*$"
+                    "pattern": "^[a-z][a-z0-9]*$",
+                    "description": "Opaque reference returned by observe, locate or navigate."
                   },
                   "role": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Accessibility role name, e.g. 'button' or 'edit'."
                   },
                   "name": {
                     "anyOf": [
@@ -6005,7 +6560,9 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "Name to match; case-insensitive substring unless exact is true.",
+                    "default": null
                   },
                   "value": {
                     "anyOf": [
@@ -6015,13 +6572,16 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "Value to set; an empty string clears it.",
+                    "default": null
                   },
                   "states": {
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "default": []
                   },
                   "location": {
                     "anyOf": [
@@ -6053,7 +6613,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   }
                 },
                 "additionalProperties": false,
@@ -6066,7 +6627,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "ancestors": {
             "type": "array",
@@ -6075,10 +6637,12 @@
               "properties": {
                 "ref": {
                   "type": "string",
-                  "pattern": "^[a-z][a-z0-9]*$"
+                  "pattern": "^[a-z][a-z0-9]*$",
+                  "description": "Opaque reference returned by observe, locate or navigate."
                 },
                 "role": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Accessibility role name, e.g. 'button' or 'edit'."
                 },
                 "name": {
                   "anyOf": [
@@ -6088,7 +6652,9 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "description": "Name to match; case-insensitive substring unless exact is true.",
+                  "default": null
                 },
                 "value": {
                   "anyOf": [
@@ -6098,13 +6664,16 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "description": "Value to set; an empty string clears it.",
+                  "default": null
                 },
                 "states": {
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "default": []
                 },
                 "location": {
                   "anyOf": [
@@ -6136,7 +6705,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 }
               },
               "additionalProperties": false,
@@ -6145,7 +6715,8 @@
                 "role"
               ],
               "description": "One accessibility node, with the reference that points at it."
-            }
+            },
+            "default": []
           },
           "children": {
             "type": "array",
@@ -6154,10 +6725,12 @@
               "properties": {
                 "ref": {
                   "type": "string",
-                  "pattern": "^[a-z][a-z0-9]*$"
+                  "pattern": "^[a-z][a-z0-9]*$",
+                  "description": "Opaque reference returned by observe, locate or navigate."
                 },
                 "role": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Accessibility role name, e.g. 'button' or 'edit'."
                 },
                 "name": {
                   "anyOf": [
@@ -6167,7 +6740,9 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "description": "Name to match; case-insensitive substring unless exact is true.",
+                  "default": null
                 },
                 "value": {
                   "anyOf": [
@@ -6177,13 +6752,16 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "description": "Value to set; an empty string clears it.",
+                  "default": null
                 },
                 "states": {
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "default": []
                 },
                 "location": {
                   "anyOf": [
@@ -6215,7 +6793,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 }
               },
               "additionalProperties": false,
@@ -6224,7 +6803,8 @@
                 "role"
               ],
               "description": "One accessibility node, with the reference that points at it."
-            }
+            },
+            "default": []
           },
           "dialog": {
             "anyOf": [
@@ -6233,10 +6813,12 @@
                 "properties": {
                   "ref": {
                     "type": "string",
-                    "pattern": "^[a-z][a-z0-9]*$"
+                    "pattern": "^[a-z][a-z0-9]*$",
+                    "description": "Opaque reference returned by observe, locate or navigate."
                   },
                   "role": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Accessibility role name, e.g. 'button' or 'edit'."
                   },
                   "name": {
                     "anyOf": [
@@ -6246,7 +6828,9 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "Name to match; case-insensitive substring unless exact is true.",
+                    "default": null
                   },
                   "value": {
                     "anyOf": [
@@ -6256,13 +6840,16 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "Value to set; an empty string clears it.",
+                    "default": null
                   },
                   "states": {
                     "type": "array",
                     "items": {
                       "type": "string"
-                    }
+                    },
+                    "default": []
                   },
                   "location": {
                     "anyOf": [
@@ -6294,7 +6881,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "default": null
                   },
                   "children": {
                     "type": "array",
@@ -6303,10 +6891,12 @@
                       "properties": {
                         "ref": {
                           "type": "string",
-                          "pattern": "^[a-z][a-z0-9]*$"
+                          "pattern": "^[a-z][a-z0-9]*$",
+                          "description": "Opaque reference returned by observe, locate or navigate."
                         },
                         "role": {
-                          "type": "string"
+                          "type": "string",
+                          "description": "Accessibility role name, e.g. 'button' or 'edit'."
                         },
                         "name": {
                           "anyOf": [
@@ -6316,7 +6906,9 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "description": "Name to match; case-insensitive substring unless exact is true.",
+                          "default": null
                         },
                         "value": {
                           "anyOf": [
@@ -6326,13 +6918,16 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "description": "Value to set; an empty string clears it.",
+                          "default": null
                         },
                         "states": {
                           "type": "array",
                           "items": {
                             "type": "string"
-                          }
+                          },
+                          "default": []
                         },
                         "location": {
                           "anyOf": [
@@ -6364,7 +6959,8 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         }
                       },
                       "additionalProperties": false,
@@ -6373,7 +6969,8 @@
                         "role"
                       ],
                       "description": "One accessibility node, with the reference that points at it."
-                    }
+                    },
+                    "default": []
                   }
                 },
                 "additionalProperties": false,
@@ -6386,7 +6983,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "top_window": {
             "anyOf": [
@@ -6394,16 +6992,30 @@
                 "type": "object",
                 "properties": {
                   "ref": {
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Opaque reference returned by observe, locate or navigate.",
+                    "default": null
                   },
                   "title": {
-                    "type": "string"
+                    "type": "string",
+                    "description": "Window title to match.",
+                    "default": ""
                   },
                   "handle": {
-                    "type": "integer"
+                    "type": "integer",
+                    "description": "Native top-level window handle.",
+                    "default": 0
                   },
                   "class_name": {
-                    "type": "string"
+                    "type": "string",
+                    "default": ""
                   }
                 },
                 "additionalProperties": false,
@@ -6412,7 +7024,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "selection": {
             "anyOf": [
@@ -6422,22 +7035,35 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "truncated": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "truncated_sections": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "default": []
           },
           "more_available": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "truncation_hint": {
-            "type": "string"
+            "type": "string",
+            "default": ""
+          },
+          "budget_exceeded": {
+            "type": "boolean",
+            "default": false
+          },
+          "observed_bytes": {
+            "type": "integer",
+            "default": 0
           }
         },
         "additionalProperties": false,
@@ -6482,12 +7108,16 @@
           "repeat": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 20
+            "maximum": 20,
+            "description": "How many times to send the gesture.",
+            "default": 1
           },
           "delay_ms": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 5000
+            "maximum": 5000,
+            "description": "Milliseconds to wait between repeated key presses.",
+            "default": 0
           },
           "expect": {
             "anyOf": [
@@ -6519,7 +7149,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}.",
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -6540,10 +7172,12 @@
             "type": "string"
           },
           "repeat": {
-            "type": "integer"
+            "type": "integer",
+            "description": "How many times to send the gesture."
           },
           "delay_ms": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Milliseconds to wait between repeated key presses."
           },
           "sent": {
             "type": "boolean"
@@ -6555,10 +7189,12 @@
             "type": "boolean"
           },
           "cancelled": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "uncertain": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -6577,12 +7213,12 @@
         "blocked_on_secure_screen": true,
         "blocked_on_modal": false,
         "blocked_on_menu": false,
-        "dangerous": false,
+        "dangerous": true,
         "requires_explicit_opt_in": false,
         "requires_developer_mode": false
       },
       "readOnly": false,
-      "destructive": false,
+      "destructive": true,
       "idempotent": false,
       "sideEffects": true,
       "requiredPermission": "input_control",
@@ -6603,13 +7239,15 @@
           "ref": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9]*$"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "pattern": "^[a-z][a-z0-9]*$",
+            "description": "Opaque reference returned by observe, locate or navigate.",
+            "default": null
           },
           "scope": {
             "type": "string",
@@ -6618,12 +7256,16 @@
               "selection",
               "document",
               "subtree"
-            ]
+            ],
+            "description": "Which scope to read, list or operate on.",
+            "default": "line"
           },
           "max_chars": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 100000
+            "maximum": 100000,
+            "description": "Maximum characters to return.",
+            "default": 4000
           }
         },
         "additionalProperties": false,
@@ -6638,10 +7280,12 @@
             "type": "string"
           },
           "scope": {
-            "type": "string"
+            "type": "string",
+            "description": "Which scope to read, list or operate on."
           },
           "source": {
-            "type": "string"
+            "type": "string",
+            "description": "Which object or subsystem the request starts from."
           },
           "ref": {
             "anyOf": [
@@ -6651,10 +7295,13 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Opaque reference returned by observe, locate or navigate.",
+            "default": null
           },
           "truncated": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -6704,7 +7351,8 @@
             "type": "string"
           },
           "message": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           }
         },
         "additionalProperties": false,
@@ -6741,10 +7389,12 @@
         "type": "object",
         "properties": {
           "disable_addons": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "debug_logging": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -6799,25 +7449,30 @@
               "down",
               "left",
               "right"
-            ]
+            ],
+            "description": "Direction to move in.",
+            "default": "down"
           },
           "amount": {
             "type": "string",
             "enum": [
               "page",
               "line"
-            ]
+            ],
+            "default": "page"
           },
           "ref": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9]*$"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "pattern": "^[a-z][a-z0-9]*$",
+            "description": "Opaque reference returned by observe, locate or navigate.",
+            "default": null
           },
           "expect": {
             "anyOf": [
@@ -6849,7 +7504,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}.",
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -6861,7 +7518,8 @@
         "type": "object",
         "properties": {
           "direction": {
-            "type": "string"
+            "type": "string",
+            "description": "Direction to move in."
           },
           "amount": {
             "type": "string"
@@ -6913,7 +7571,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "default": []
           },
           "min_level": {
             "anyOf": [
@@ -6923,7 +7582,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "sources": {
             "type": "object",
@@ -6932,13 +7592,16 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "Optional sections or facets to include.",
+                "default": []
               },
               "exclude": {
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "default": []
               }
             },
             "additionalProperties": false,
@@ -6952,7 +7615,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "message": {
             "type": "object",
@@ -6965,7 +7629,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "regex": {
                 "anyOf": [
@@ -6975,10 +7640,12 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "case_sensitive": {
-                "type": "boolean"
+                "type": "boolean",
+                "default": false
               }
             },
             "additionalProperties": false,
@@ -6995,7 +7662,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "start": {
                 "anyOf": [
@@ -7005,7 +7673,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "end": {
                 "anyOf": [
@@ -7015,7 +7684,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               }
             },
             "additionalProperties": false,
@@ -7025,7 +7695,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "default": []
           },
           "trace_id": {
             "anyOf": [
@@ -7035,12 +7706,15 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 200
+            "maximum": 200,
+            "description": "Maximum number of items to return.",
+            "default": 20
           },
           "cursor": {
             "anyOf": [
@@ -7050,22 +7724,29 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Opaque continuation cursor from a previous response.",
+            "default": null
           },
           "order": {
             "type": "string",
             "enum": [
               "newest_first",
               "oldest_first"
-            ]
+            ],
+            "description": "Result ordering.",
+            "default": "newest_first"
           },
           "include_raw": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Include the raw log record alongside the parsed fields.",
+            "default": false
           },
           "max_scan_records": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 5000000
+            "maximum": 5000000,
+            "default": 500000
           }
         },
         "additionalProperties": false,
@@ -7085,7 +7766,8 @@
               "type": "object",
               "properties": {
                 "entry_id": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Stable log entry reference returned by search_logs."
                 },
                 "timestamp": {
                   "anyOf": [
@@ -7162,7 +7844,8 @@
                   "type": "object",
                   "properties": {
                     "name": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Name to match; case-insensitive substring unless exact is true."
                     },
                     "id": {
                       "anyOf": [
@@ -7172,7 +7855,8 @@
                         {
                           "type": "null"
                         }
-                      ]
+                      ],
+                      "default": null
                     }
                   },
                   "additionalProperties": false,
@@ -7197,13 +7881,15 @@
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "default": []
                 },
                 "derived_fields": {
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "default": []
                 },
                 "exception": {
                   "anyOf": [
@@ -7214,7 +7900,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "enrichment": {
                   "anyOf": [
@@ -7225,7 +7912,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "raw": {
                   "anyOf": [
@@ -7235,7 +7923,8 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 }
               },
               "additionalProperties": false,
@@ -7277,10 +7966,12 @@
                 ]
               },
               "limit": {
-                "type": "integer"
+                "type": "integer",
+                "description": "Maximum number of items to return."
               },
               "order": {
-                "type": "string"
+                "type": "string",
+                "description": "Result ordering."
               }
             },
             "additionalProperties": false,
@@ -7302,7 +7993,9 @@
                 "type": "integer"
               },
               "source": {
-                "type": "string"
+                "type": "string",
+                "description": "Which object or subsystem the request starts from.",
+                "default": "nvda_native_log"
               }
             },
             "additionalProperties": false,
@@ -7310,7 +8003,7 @@
               "generation",
               "size_bytes"
             ],
-            "description": "Identity of the log generation a response was read from."
+            "description": "Which object or subsystem the request starts from."
           },
           "diagnostics": {
             "type": "object",
@@ -7343,7 +8036,8 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "default": []
               }
             },
             "additionalProperties": false,
@@ -7399,10 +8093,12 @@
         "properties": {
           "ref": {
             "type": "string",
-            "pattern": "^[a-z][a-z0-9]*$"
+            "pattern": "^[a-z][a-z0-9]*$",
+            "description": "Opaque reference returned by observe, locate or navigate."
           },
           "value": {
-            "type": "string"
+            "type": "string",
+            "description": "Value to set; an empty string clears it."
           },
           "expect": {
             "anyOf": [
@@ -7434,7 +8130,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}.",
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -7450,28 +8148,35 @@
         "type": "object",
         "properties": {
           "ref": {
-            "type": "string"
+            "type": "string",
+            "description": "Opaque reference returned by observe, locate or navigate."
           },
           "mode": {
             "type": "string"
           },
           "value": {
-            "type": "string"
+            "type": "string",
+            "description": "Value to set; an empty string clears it."
           },
           "previous": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           },
           "units": {
-            "type": "integer"
+            "type": "integer",
+            "default": 0
           },
           "verified": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true
           },
           "observed": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           },
           "value_source": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           }
         },
         "additionalProperties": false,
@@ -7486,12 +8191,12 @@
         "blocked_on_secure_screen": true,
         "blocked_on_modal": true,
         "blocked_on_menu": true,
-        "dangerous": false,
+        "dangerous": true,
         "requires_explicit_opt_in": false,
         "requires_developer_mode": false
       },
       "readOnly": false,
-      "destructive": false,
+      "destructive": true,
       "idempotent": true,
       "sideEffects": true,
       "requiredPermission": "input_control",
@@ -7528,7 +8233,8 @@
             "type": "string"
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "default": "ok"
           }
         },
         "additionalProperties": false,
@@ -7583,7 +8289,8 @@
             "type": "string"
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "default": "ok"
           }
         },
         "additionalProperties": false,
@@ -7622,13 +8329,15 @@
           "within": {
             "anyOf": [
               {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9]*$"
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "pattern": "^[a-z][a-z0-9]*$",
+            "description": "Only search inside this reference (for example a window ref).",
+            "default": null
           },
           "expect": {
             "anyOf": [
@@ -7660,7 +8369,9 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}.",
+            "default": null
           }
         },
         "additionalProperties": false,
@@ -7672,22 +8383,28 @@
         "type": "object",
         "properties": {
           "created": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "browse_mode": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "document": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           },
           "interface": {
-            "type": "string"
+            "type": "string",
+            "default": ""
           },
           "pass_through": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "elapsed_ms": {
-            "type": "number"
+            "type": "number",
+            "default": 0.0
           }
         },
         "additionalProperties": false,
@@ -7724,7 +8441,8 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "default": []
           },
           "min_level": {
             "anyOf": [
@@ -7734,7 +8452,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "sources": {
             "type": "object",
@@ -7743,13 +8462,16 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "Optional sections or facets to include.",
+                "default": []
               },
               "exclude": {
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "default": []
               }
             },
             "additionalProperties": false,
@@ -7763,7 +8485,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "time": {
             "type": "object",
@@ -7776,7 +8499,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "start": {
                 "anyOf": [
@@ -7786,7 +8510,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               },
               "end": {
                 "anyOf": [
@@ -7796,7 +8521,8 @@
                   {
                     "type": "null"
                   }
-                ]
+                ],
+                "default": null
               }
             },
             "additionalProperties": false,
@@ -7806,25 +8532,44 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "default": []
           },
           "group_by": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "default": [
+              "source",
+              "level",
+              "message_pattern"
+            ]
           },
           "include": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Optional sections or facets to include.",
+            "default": [
+              "counts",
+              "repeated_patterns",
+              "exceptions",
+              "warnings",
+              "top_sources",
+              "time_buckets",
+              "noise"
+            ]
           },
           "limit": {
-            "type": "integer"
+            "type": "integer",
+            "description": "Maximum number of items to return.",
+            "default": 20
           },
           "max_scan_records": {
-            "type": "integer"
+            "type": "integer",
+            "default": 500000
           }
         },
         "additionalProperties": false,
@@ -7867,7 +8612,8 @@
                 "type": "string"
               },
               "source": {
-                "type": "string"
+                "type": "string",
+                "description": "Which object or subsystem the request starts from."
               },
               "generation": {
                 "type": "string"
@@ -7882,13 +8628,15 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "default": []
               },
               "limitations": {
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "default": []
               }
             },
             "additionalProperties": false,
@@ -7946,29 +8694,34 @@
           "since": {
             "anyOf": [
               {
-                "type": "integer",
-                "minimum": 0
+                "type": "integer"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "minimum": 0,
+            "description": "Event version to resume after; pair it with journal_id for a foreign journal.",
+            "default": null
           },
           "journal_id": {
             "anyOf": [
               {
-                "type": "string",
-                "description": "Journal generation that issued `since`. Omit only for a current-journal convenience."
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Journal generation that issued `since`. Omit only for a current-journal convenience.",
+            "default": null
           },
           "timeout_ms": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 30000
+            "maximum": 30000,
+            "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
+            "default": 1000
           },
           "kinds": {
             "anyOf": [
@@ -7981,12 +8734,16 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Only return these event kinds; an empty list returns all kinds.",
+            "default": null
           },
           "limit": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 500
+            "maximum": 500,
+            "description": "Maximum number of items to return.",
+            "default": 50
           }
         },
         "additionalProperties": false,
@@ -7998,7 +8755,8 @@
         "type": "object",
         "properties": {
           "journal_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Journal generation that issued `since`; omit to use the current journal."
           },
           "from_version": {
             "type": "integer"
@@ -8007,20 +8765,24 @@
             "type": "integer"
           },
           "earliest_available_version": {
-            "type": "integer"
+            "type": "integer",
+            "default": 0
           },
           "events": {
             "type": "array",
             "items": {
               "type": "object",
               "additionalProperties": {}
-            }
+            },
+            "default": []
           },
           "expired": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "resync_required": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "resync_reason": {
             "anyOf": [
@@ -8030,7 +8792,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "resync_from": {
             "anyOf": [
@@ -8041,25 +8804,32 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "default": null
           },
           "history_complete": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": true
           },
           "truncated": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "has_more": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "cursor_status": {
-            "type": "string"
+            "type": "string",
+            "default": "ok"
           },
           "timed_out": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           },
           "cancelled": {
-            "type": "boolean"
+            "type": "boolean",
+            "default": false
           }
         },
         "additionalProperties": false,
@@ -8103,13 +8873,17 @@
               "focus",
               "navigator",
               "desktop"
-            ]
+            ],
+            "description": "Which object to inspect.",
+            "default": "focus"
           },
           "max_depth": {
-            "type": "integer"
+            "type": "integer",
+            "default": 3
           },
           "max_children": {
-            "type": "integer"
+            "type": "integer",
+            "default": 20
           }
         },
         "additionalProperties": false,
@@ -8121,7 +8895,8 @@
         "type": "object",
         "properties": {
           "target": {
-            "type": "string"
+            "type": "string",
+            "description": "Which object to inspect."
           },
           "max_depth": {
             "type": "integer"

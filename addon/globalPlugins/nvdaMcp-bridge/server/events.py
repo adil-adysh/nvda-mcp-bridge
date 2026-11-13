@@ -125,6 +125,11 @@ _COARSE_KIND = {
 	"UIA_notification": "notification",
 }
 
+#: Every value a caller may put in ``kinds``: raw NVDA event names and the
+#: coarse transition names. Anything else is a typo that would otherwise match
+#: nothing and look like "no events happened".
+KNOWN_KINDS = frozenset(JOURNAL_KINDS) | frozenset(_COARSE_KIND.values())
+
 
 def coarse_kind(event_names: Iterable[str]) -> str:
 	"""Summarise a burst of NVDA event names into one transition kind."""

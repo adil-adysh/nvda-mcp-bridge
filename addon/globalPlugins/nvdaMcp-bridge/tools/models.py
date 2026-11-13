@@ -119,7 +119,14 @@ class RestartNvdaInput:
 class GetLogsInput:
 	"""Get NVDA logs."""
 
-	max_lines: int = 100
+	max_lines: int = field(
+		default=100,
+		metadata={
+			"minimum": 1,
+			"maximum": 10000,
+			"description": "Maximum log lines to return (1-10000).",
+		},
+	)
 	filter_level: Optional[Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]] = None
 	use_tail: bool = True
 
@@ -436,9 +443,14 @@ class Location:
 
 @dataclass(frozen=True)
 class WindowInfo:
-	"""The top-level window that scopes an observation or action."""
+	"""The top-level window that scopes an observation or action.
 
-	ref: str = ""
+	``ref`` is only present when the caller holds a live reference for this
+	window (``observe`` registers one, ``health_snapshot`` does not), so it is
+	``null`` rather than a meaningless empty string.
+	"""
+
+	ref: Optional[str] = None
 	title: str = ""
 	handle: int = 0
 	class_name: str = ""
@@ -773,6 +785,8 @@ class ObserveResult:
 	truncated_sections: list[str] = field(default_factory=list)
 	more_available: bool = False
 	truncation_hint: str = ""
+	budget_exceeded: bool = False
+	observed_bytes: int = 0
 
 
 @dataclass(frozen=True)

@@ -43,6 +43,73 @@ _SCHEMA_METADATA_KEYS = frozenset(
 )
 
 
+#: Conservative fallback descriptions for field names shared by many models.
+#:
+#: A field with its own ``description`` metadata always wins. This map exists
+#: because a model that reuses ``ref``/``limit``/``timeout_ms`` should not make
+#: every one of those properties opaque to a tool-calling model; the schema is
+#: how an agent learns the shape of an argument without reading the source.
+_FIELD_DESCRIPTIONS: dict[str, str] = {
+	"ref": "Opaque reference returned by observe, locate or navigate.",
+	"within": "Only search inside this reference (for example a window ref).",
+	"expect": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}.",
+	"timeout_ms": "Maximum milliseconds to wait; 0 returns immediately when supported.",
+	"limit": "Maximum number of items to return.",
+	"max_text": "Maximum characters per text value.",
+	"max_bytes": "Maximum serialized size in bytes; 0 disables the bound.",
+	"since": "Event version to resume after; pair it with journal_id for a foreign journal.",
+	"journal_id": "Journal generation that issued `since`; omit to use the current journal.",
+	"kinds": "Only return these event kinds; an empty list returns all kinds.",
+	"detail": "Level of detail to include in the response.",
+	"include": "Optional sections or facets to include.",
+	"scope": "Which scope to read, list or operate on.",
+	"keys": "Keyboard gesture, e.g. 'control+a' or 'down'.",
+	"action": "Named action to invoke; omit for the object's default action.",
+	"value": "Value to set; an empty string clears it.",
+	"x": "Absolute screen x coordinate in pixels.",
+	"y": "Absolute screen y coordinate in pixels.",
+	"button": "Mouse button to click.",
+	"handle": "Native top-level window handle.",
+	"title": "Window title to match.",
+	"exact": "Require an exact match instead of a case-insensitive substring.",
+	"name": "Name to match; case-insensitive substring unless exact is true.",
+	"role": "Accessibility role name, e.g. 'button' or 'edit'.",
+	"source": "Which object or subsystem the request starts from.",
+	"target": "Which object to inspect.",
+	"max_lines": "Maximum log lines to return (1-10000).",
+	"filter_level": "Only return records at this severity or above.",
+	"use_tail": "Read from the end of the log instead of the start.",
+	"max_chars": "Maximum characters to return.",
+	"cursor": "Opaque continuation cursor from a previous response.",
+	"order": "Result ordering.",
+	"include_raw": "Include the raw log record alongside the parsed fields.",
+	"direction": "Direction to move in.",
+	"steps": "How many positions to move.",
+	"item": "Kind of reading target to enumerate.",
+	"delay_ms": "Milliseconds to wait between repeated key presses.",
+	"repeat": "How many times to send the gesture.",
+	"before": "Number of log records to include before the anchor.",
+	"after": "Number of log records to include after the anchor.",
+	"entry_id": "Stable log entry reference returned by search_logs.",
+	"tag": "Short label for this message.",
+}
+
+
+def _json_safe_default(value: Any) -> Any | None:
+	"""Return a JSON-encodable default, or ``None`` when it cannot be emitted."""
+	import json
+
+	if isinstance(value, (str, int, float, bool)) or value is None:
+		return value
+	if isinstance(value, (list, dict)):
+		try:
+			json.dumps(value)
+		except (TypeError, ValueError):
+			return None
+		return value
+	return None
+
+
 def _hint_to_json_schema(field_type: Any) -> dict[str, Any]:
 	"""Map a Python type hint to a JSON Schema Draft 7 fragment.
 
@@ -144,22 +211,41 @@ def dataclass_to_json_schema(model: Any, *, allow_extra_fields: bool = False) ->
 
 		field_schema = _hint_to_json_schema(field_type)
 
-		# Field metadata is the one place bounds and descriptions live; carrying
-		# it into the published schema is what makes discovery match runtime
-		# validation instead of merely resembling it.
-		for key, value in (f.metadata or {}).items():
-			if key in _SCHEMA_METADATA_KEYS:
-				field_schema[key] = value
+		# Metadata is hoisted onto the property itself. Leaving it inside a
+		# nullable `anyOf` arm hides descriptions and defaults from clients,
+		# which is why so many optional arguments looked undocumented.
+		extras: dict[str, Any] = {
+			key: value
+			for key, value in (f.metadata or {}).items()
+			if key in _SCHEMA_METADATA_KEYS
+		}
+		if "description" not in extras and f.name in _FIELD_DESCRIPTIONS:
+			extras["description"] = _FIELD_DESCRIPTIONS[f.name]
+
+		if "default" not in extras:
+			if f.default is not dataclasses.MISSING:
+				emitted = _json_safe_default(f.default)
+				if emitted is not None or f.default is None:
+					extras["default"] = emitted
+			elif f.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
+				try:
+					emitted = _json_safe_default(f.default_factory())  # type: ignore[misc]
+				except Exception:
+					emitted = None
+				if emitted is not None:
+					extras["default"] = emitted
 
 		if is_optional:
 			# Emit an unambiguous nullable schema. Using {"type": [base, "null"]}
 			# alongside an "enum" is misleading (the enum would still reject null),
 			# so wrap with anyOf instead.
-			properties[f.name] = {
+			prop: dict[str, Any] = {
 				"anyOf": [field_schema, {"type": "null"}],
 			}
 		else:
-			properties[f.name] = field_schema
+			prop = field_schema
+		prop.update(extras)
+		properties[f.name] = prop
 
 		# Add to required if the field has no default and is not optional.
 		if f.default == f.default_factory == dataclasses.MISSING and not is_optional:

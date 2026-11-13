@@ -66,7 +66,7 @@ from .action_trace import (
 	match_native_log,
 )
 from .refs import ReferenceTable
-from .response import build_action_error, build_error_envelope
+from .response import build_action_error, build_error_envelope, build_error_object
 from .settle import DEFAULT_BUDGET_MS, Settler
 from .state import StateProjector
 from .security import (
@@ -1341,6 +1341,22 @@ class NVDAHTTPBridge:
 			"started_at": self.started_at.isoformat(),
 		}
 
+	def _action_error_object(
+		self,
+		code: int,
+		message: str,
+		details: Optional[Dict[str, Any]] = None,
+	) -> Dict[str, Any]:
+		"""One error shape for every failed action.
+
+		``build_error_object`` is the single place that normalises the wire
+		code, attaches the category/retry policy and lifts a domain-specific
+		recovery hint to the top level. Action errors previously rebuilt this
+		by hand, which is why ``recovery`` was missing from the wire even
+		though the docs promised it.
+		"""
+		return build_error_object(code=code, message=message, details=details)
+
 	def get_health_payload(self) -> Dict[str, Any]:
 		capabilities = {
 			"event_cursors": "typed",
@@ -1641,14 +1657,9 @@ class NVDAHTTPBridge:
 					"bridge": self._bridge_meta(),
 					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
 					"result": {"ok": False, "state_version": self.projector.state_version},
-					"error": {
-						"code": error_code,
-						"name": ERROR_CODES[error_code]["name"],
-						"message": inner_message,
-						"category": ERROR_CODES[error_code]["category"],
-						"retry_policy": ERROR_CODES[error_code]["retry_policy"],
-						"details": envelope_details,
-					},
+					"error": self._action_error_object(
+						error_code, inner_message, envelope_details
+					),
 				},
 				outcome=(
 					"cancelled"
@@ -1677,13 +1688,9 @@ class NVDAHTTPBridge:
 					"duration_ms": round(duration_ms, 2),
 					"bridge": self._bridge_meta(),
 					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
-					"error": {
-						"code": 5004,
-						"name": ERROR_CODES[5004]["name"],
-						"message": f"Operation timed out: {str(e)}",
-						"category": ERROR_CODES[5004]["category"],
-						"retry_policy": ERROR_CODES[5004]["retry_policy"],
-					},
+					"error": self._action_error_object(
+						5004, f"Operation timed out: {str(e)}"
+					),
 				},
 				outcome="timed_out",
 			)
@@ -1703,13 +1710,11 @@ class NVDAHTTPBridge:
 					"duration_ms": round(duration_ms, 2),
 					"bridge": self._bridge_meta(),
 					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
-					"error": {
-						"code": 4103,
-						"name": ERROR_CODES[4103]["name"],
-						"message": str(e),
-						"category": ERROR_CODES[4103]["category"],
-						"retry_policy": ERROR_CODES[4103]["retry_policy"],
-					},
+					"error": self._action_error_object(
+						4103,
+						str(e),
+						{"error_code": "invalid_input_schema"},
+					),
 				},
 				outcome="failed",
 			)
@@ -1730,14 +1735,9 @@ class NVDAHTTPBridge:
 					"duration_ms": round(duration_ms, 2),
 					"bridge": self._bridge_meta(),
 					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
-					"error": {
-						"code": 5003,
-						"name": ERROR_CODES[5003]["name"],
-						"message": f"Execution failed: {str(e)}",
-						"category": ERROR_CODES[5003]["category"],
-						"retry_policy": ERROR_CODES[5003]["retry_policy"],
-						"retry_after_ms": ERROR_CODES[5003].get("retry_after_ms", 1000),
-					},
+					"error": self._action_error_object(
+						5003, f"Execution failed: {str(e)}"
+					),
 				},
 				outcome="failed",
 			)

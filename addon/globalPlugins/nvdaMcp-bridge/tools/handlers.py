@@ -85,6 +85,14 @@ def get_logs(
 	filter_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] | None = None,
 	use_tail: bool = True,
 ) -> dict[str, Any]:
+	# Validate first: a caller mistake must surface as 4103 (fix the argument),
+	# never as 5303 (the bridge is broken), and must not depend on NVDA being
+	# importable. The published schema carries the same bounds.
+	if not isinstance(max_lines, int) or isinstance(max_lines, bool):
+		raise ValueError("'max_lines' must be an integer between 1 and 10000")
+	if not 1 <= max_lines <= 10000:
+		raise ValueError("'max_lines' must be between 1 and 10000")
+
 	from .. import nvda_bridge
 
 	return nvda_bridge.get_logs(max_lines=max_lines, filter_level=filter_level, use_tail=use_tail)
@@ -286,6 +294,11 @@ def observe(
 			node.pop("states", None)
 	if max_bytes and max_bytes > 0:
 		_bound_observation(result, max_bytes)
+	else:
+		# Report the real size even when no budget was requested; a literal 0
+		# next to `truncated: false` reads like an empty observation.
+		result["observed_bytes"] = 0
+		result["observed_bytes"] = _observation_bytes(result)
 	return result
 
 
@@ -301,14 +314,19 @@ def _bound_observation(payload: dict[str, Any], max_bytes: int) -> None:
 	Truncation is always reported: a caller must never mistake a bounded
 	observation for the whole screen. The focused control and the top-level
 	window are the last things removed, because they are what an action needs.
-	"""
-	import json  # noqa: F401 — kept local to this boundary helper
 
+	The budget is a hard bound for everything the bridge controls. When even
+	the minimum identity payload is larger than a very small budget, the result
+	says ``budget_exceeded`` instead of pretending the bound was met.
+	"""
+	dropped: list[str] = []
 	if _observation_bytes(payload) <= max_bytes:
 		payload["truncated"] = False
 		payload["truncated_sections"] = []
+		payload["budget_exceeded"] = False
+		payload["observed_bytes"] = 0
+		payload["observed_bytes"] = _observation_bytes(payload)
 		return
-	dropped: list[str] = []
 	for section in ("selection", "ancestors", "children"):
 		if _observation_bytes(payload) <= max_bytes:
 			break
@@ -322,19 +340,42 @@ def _bound_observation(payload: dict[str, Any], max_bytes: int) -> None:
 		dialog["children"] = []
 		dropped.append(f"dialog.children({count})")
 	if _observation_bytes(payload) > max_bytes:
-		# Last resort: keep identity and refs, drop descriptive text.
+		# Identity is preserved, but descriptive text is not: an agent can
+		# still act on the refs and re-observe a single element if it needs
+		# the text.
 		for node in _observation_nodes(payload):
 			node.pop("value", None)
 			node.pop("location", None)
 			if isinstance(node.get("name"), str):
 				node["name"] = node["name"][:80]
 		dropped.append("descriptive_text")
+	if _observation_bytes(payload) > max_bytes and isinstance(dialog, dict):
+		payload["dialog"] = None
+		dropped.append("dialog")
+	if _observation_bytes(payload) > max_bytes:
+		payload["ancestors"] = []
+		payload["children"] = []
+		payload["selection"] = None
+		payload["truncation_hint"] = (
+			"The minimum identity payload is larger than max_bytes. "
+			"Request a larger max_bytes; the focus and window references were kept."
+		)
+	else:
+		payload["truncation_hint"] = (
+			"The observation exceeded max_bytes. Request a larger max_bytes or capture fewer sections."
+		)
+	size = _observation_bytes(payload)
 	payload["truncated"] = True
 	payload["truncated_sections"] = dropped
 	payload["more_available"] = True
-	payload["truncation_hint"] = (
-		"The observation exceeded max_bytes. Request a larger max_bytes or capture fewer sections."
-	)
+	payload["budget_exceeded"] = False
+	payload["observed_bytes"] = 0
+	for _ in range(3):
+		size = _observation_bytes(payload)
+		if payload["observed_bytes"] == size:
+			break
+		payload["observed_bytes"] = size
+	payload["budget_exceeded"] = size > max_bytes
 
 
 def _observation_nodes(result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -982,6 +1023,16 @@ def wait_for_events(
 		raise ValueError("'timeout_ms' must be an integer between 0 and 30000")
 	if journal_id is not None and (not isinstance(journal_id, str) or not journal_id.strip()):
 		raise ValueError("'journal_id' must be a non-empty journal id returned by a previous event response")
+	if kinds:
+		from ..server.events import KNOWN_KINDS
+
+		unknown = [kind for kind in kinds if kind not in KNOWN_KINDS]
+		if unknown:
+			valid = ", ".join(sorted(KNOWN_KINDS))
+			raise ValueError(
+				f"unknown event kind(s): {', '.join(map(str, unknown))}; "
+				f"valid kinds are: {valid}"
+			)
 	if since is None:
 		event_version = getattr(context, "event_version", None)
 		state_version = getattr(context, "state_version", None)

@@ -355,7 +355,7 @@ def health_snapshot(
 
 		foreground = get_window_title()
 		return {
-			"ref": "",
+			"ref": None,
 			"title": foreground.get("title", ""),
 			"handle": foreground.get("handle", 0),
 			"class_name": foreground.get("className", ""),

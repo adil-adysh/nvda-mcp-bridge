@@ -104,7 +104,12 @@ content keeps the envelope metadata).
   optional value/expected/observed/state_version). Sensitive paths are redacted.
 * Failures set `success: false`, omit `data`, and carry `error` with `code`,
   `name`, `message`, `category`, `retry_policy`, `details` and `recovery`.
+  `recovery` is always at the top level of `error` (not only under `details`),
+  including for action failures; `details.recovery` is not duplicated.
   `recovery.action` is a stable enum; its hint never orders an automatic replay.
+* A caller mistake the schema cannot express (`get_logs` with `max_lines=0`,
+  an unknown event kind) is `4103`, never `5303`. `5303` means the bridge itself
+  failed.
 
 ## References and state
 
@@ -149,7 +154,13 @@ content keeps the envelope metadata).
 * `observe` defaults to focus + dialog + top window. `ancestors`, `children`
   and `selection` are opt-in. `detail="summary"` (default) omits states;
   `detail="full"` includes them. `max_bytes` bounds the serialized payload and
-  reports `truncated`, `truncated_sections` and a continuation hint.
+  reports `truncated`, `truncated_sections`, `more_available`,
+  `truncation_hint`, `observed_bytes` and `budget_exceeded`.
+  The bound is best-effort for very small budgets: when even the minimum
+  identity payload is larger, `budget_exceeded` is `true` rather than silently
+  exceeding the budget. `observed_bytes` is always the actual size.
+* `health_snapshot` returns `top_window.ref: null`; it does not register
+  references. Use `observe` when a window ref is needed.
 
 ## Event journal
 
