@@ -109,7 +109,7 @@ document does not duplicate machine-generated data.
 | `ruff check` (changed files) | All checks passed |
 | `python scripts/generate_bridge_schema.py -o schema.json` | Re-run; `test_generated_schema` passes |
 | `scons` | Rebuilt `nvdaMcpBridge-0.10.0.nvda-addon` from this source, including the Rust companion (9,782,784 bytes). The archive was force-rebuilt by removing it because an incremental `scons` considered the previously generated archive up to date after a source edit. |
-| `python scripts/validate_addon_package.py` | Newly built `0.10.0` archive validates; bundled companion SHA-256 `bf020ff…` |
+| `python scripts/validate_addon_package.py` | Newly built `0.10.0` archive validates; bundled companion SHA-256 `34c9109…` |
 | Protocol JSON Schema validation | Health, discovery (31 default / 32 with developer mode), success and error envelopes pass |
 | Assistant MCP tests | 35 passed, 1 skipped; no Assistant change required |
 
