@@ -16,7 +16,7 @@ and what remains an assumption that needs live NVDA evidence.
 | Protocol | `nvda-bridge-protocol 1.0.0` |
 | Bridge / add-on / companion | `0.10.0` |
 | Tool count | **34** in the registry; **33** in default discovery (developer-only `execute_python` requires developer mode) |
-| Baseline tests | `601 passed, 19 subtests passed` (`python -m pytest -q`) |
+| Baseline tests | `602 passed, 19 subtests passed` (`python -m pytest -q`) |
 | Baseline Rust tests | `40 passed` (`cargo test`) |
 | Assistant MCP tests | `1,335 passed, 3 skipped, 40 deselected` (`python -m pytest -q`) |
 
@@ -104,12 +104,12 @@ document does not duplicate machine-generated data.
 
 | Check | Result |
 |---|---|
-| `python -m pytest -q` | **601 passed, 19 subtests passed** |
+| `python -m pytest -q` | **602 passed, 19 subtests passed** |
 | `cargo test` | **40 passed, 0 failed** |
 | `cargo clippy --all-targets` | Finished with pre-existing warnings; no new warning in changed regions |
 | `ruff check` (changed files) | All checks passed |
 | `python scripts/generate_bridge_schema.py -o schema.json` | Re-run; `test_generated_schema` passes |
-| `scons` | Rebuilt `nvdaMcpBridge-0.10.0.nvda-addon` from this source, including the Rust companion (9,784,320 bytes); final archive is 4,616,151 bytes, SHA-256 `3832EF7E…`. The archive was force-rebuilt by removing it because an incremental `scons` considered the previously generated archive up to date after a source edit. |
+| `scons` | Rebuilt `nvdaMcpBridge-0.10.0.nvda-addon` from this source, including the Rust companion (9,784,320 bytes); final archive is 4,616,152 bytes, SHA-256 `C00F2CFB…`. The archive was force-rebuilt by removing it because an incremental `scons` considered the previously generated archive up to date after a source edit. |
 | `python scripts/validate_addon_package.py` | Newly built `0.10.0` archive validates; bundled companion SHA-256 `2d2dc4ff…` |
 | Protocol JSON Schema validation | Health, discovery (33 default / 34 with developer mode), success and error envelopes pass |
 | Assistant MCP tests | `1,335 passed, 3 skipped, 40 deselected` after the settings UI and discovery changes |

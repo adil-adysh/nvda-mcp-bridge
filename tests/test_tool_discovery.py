@@ -78,6 +78,12 @@ class ToolDiscoveryTests(unittest.TestCase):
 		self.assertLessEqual(result.returned, 3)
 		self.assertGreaterEqual(result.total_matches, result.returned)
 
+	def test_multi_word_query_prefers_a_tool_matching_every_word_in_its_name(self) -> None:
+		# get_log_context matches "log" and mentions search_logs in its prose;
+		# search_logs matches both query words in the name and must rank first.
+		result = self._run("find_tools", {"query": "log search", "limit": 5})
+		self.assertEqual(result.tools[0].name, "search_logs")
+
 	def test_category_and_read_only_filters(self) -> None:
 		result = self._run(
 			"find_tools",

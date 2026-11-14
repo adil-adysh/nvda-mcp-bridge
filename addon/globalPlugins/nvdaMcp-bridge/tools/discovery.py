@@ -135,9 +135,9 @@ def _match_score(query: str, meta: Any, title: str, summary: str) -> int | None:
 		return None
 	if query.casefold() == name:
 		return 0
-	if _word_hit(words[0], name):
-		return 1
 	if all(_word_hit(word, name) for word in words):
+		return 1
+	if _word_hit(words[0], name):
 		return 2
 	if all(_word_hit(word, title_text) for word in words):
 		return 3
