@@ -140,9 +140,12 @@ content keeps the envelope metadata).
 }
 ```
 
-* A reference is a string matching `^[a-z][a-z0-9]*$`.
+* A reference is a string matching `^[a-z][a-z0-9]*$`. Its kind is recorded at
+  capture time (`focus`, `ancestor`, `child`, `dialog`, `window`, `located`);
+  reading tools reject a `window` ref passed as `within`.
 * `within` on `locate`/reading tools must be one of those references. A window
-  title is rejected with a validation error naming the argument.
+  title is rejected with a validation error naming the argument, and a window
+  ref is rejected for a document tool before the main-thread hop.
 * A reference is **not** valid only for one `state_version`. Validity is
   identity-based: it ends when the TTL expires, the object's identity changes,
   its owning window is replaced, the Bridge instance changes, or the target is
@@ -153,12 +156,20 @@ content keeps the envelope metadata).
   re-targeted automatically.
 * `observe` defaults to focus + dialog + top window. `ancestors`, `children`
   and `selection` are opt-in. `detail="summary"` (default) omits states;
-  `detail="full"` includes them. `max_bytes` bounds the serialized payload and
-  reports `truncated`, `truncated_sections`, `more_available`,
-  `truncation_hint`, `observed_bytes` and `budget_exceeded`.
+  `detail="full"` includes them. `max_bytes` defaults to 8192 and bounds the
+  serialized payload; `fields` projects each node onto a named subset (the ref
+  is always kept). It reports `truncated`, `truncated_sections`,
+  `more_available`, `truncation_hint`, `observed_bytes` and `budget_exceeded`.
   The bound is best-effort for very small budgets: when even the minimum
   identity payload is larger, `budget_exceeded` is `true` rather than silently
   exceeding the budget. `observed_bytes` is always the actual size.
+* `observe` reports `browse_mode`, `focus_in_foreground_window`,
+  `focus_window_handle` and `foreground_window_handle`. `health_snapshot`
+  reports the same coherence facts, so a focus object from a window behind the
+  foreground is visible rather than inferred.
+* `expect` accepts the same top-level fields: assert
+  `{"focus_in_foreground_window": true}`, `{"focus_window_handle": 123}` or
+  `{"browse_mode": true}` as an ordinary postcondition.
 * `health_snapshot` returns `top_window.ref: null`; it does not register
   references. Use `observe` when a window ref is needed.
 

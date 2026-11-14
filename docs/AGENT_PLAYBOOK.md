@@ -102,6 +102,22 @@ Any action that takes `expect` returns `result.verification`:
 
 `set_value` has its own read-back and reports `verified` / `observed` plus
 `verification`. A `verified: false` is an answer, not a transport failure.
+Use `update="append"` when the field already holds a prefix; `replace` is the
+default.
+
+`observe` and `health_snapshot` report `browse_mode`,
+`focus_in_foreground_window`, `focus_window_handle` and
+`foreground_window_handle`. These are ordinary `expect` paths:
+
+```text
+focus(expect={"focus_in_foreground_window": true})
+activate_window(title="Run", expect={"foreground_window_handle": 123})
+press(sequence=["f6", "f6", "f6"], expect={"browse_mode": true})
+```
+
+`focus_window_handle` answers “which window holds the focus”, while
+`foreground_window_handle` is the OS foreground window. When they differ, do not
+act on the focus object until you have raised its window.
 
 Through MCP, `verification`, `evidence`, `state_version` and `scope` live in
 `result` **inside `structuredContent`**, next to the tool's `data` fields. The

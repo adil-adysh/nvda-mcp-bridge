@@ -235,6 +235,7 @@ def capture(
 			"children": [],
 			"dialog": None,
 			"top_window": None,
+			**attention(None),
 		}, {}
 
 	# Invalidate the focus and its ancestors *before* reading anything: reads
@@ -294,6 +295,7 @@ def capture(
 
 	window, window_object = _window(focus, ancestors)
 	projection["top_window"] = window
+	projection.update(attention(focus))
 	if window_object is not None:
 		objects["w"] = window_object
 
@@ -316,3 +318,59 @@ def selection_text(obj: object, max_chars: int = 200) -> str:
 	except Exception:  # noqa: BLE001 — most objects have no selection
 		return ""
 	return text[:max_chars] if max_chars > 0 else text
+
+
+def _root_window_handle(handle: int) -> int:
+	"""Return the top-level ancestor of a window handle (GA_ROOT)."""
+	if not handle:
+		return 0
+	try:
+		import ctypes
+		from ctypes import wintypes
+
+		user32 = ctypes.WinDLL("user32", use_last_error=True)
+		user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
+		user32.GetAncestor.restype = wintypes.HWND
+		root = user32.GetAncestor(handle, 2)  # GA_ROOT
+		return int(root or 0)
+	except Exception:  # noqa: BLE001 — keep the raw handle rather than losing it
+		return handle
+
+
+def attention(focus: object = None) -> dict:
+	"""Return the coherence facts that are cheaper to compute than to infer.
+
+	``top_window`` is the window that scopes the observation, but it is derived
+	from the focus chain, not from the foreground window. When those disagree an
+	agent can act on a control the user cannot see, so both handles and the
+	comparison travel with the observation.
+	"""
+	if focus is None:
+		try:
+			focus = api.getFocusObject()
+		except Exception:  # noqa: BLE001
+			focus = None
+	focus_handle = _safe_get(focus, "windowHandle") if focus is not None else None
+	focus_handle = int(focus_handle) if isinstance(focus_handle, int) and not isinstance(focus_handle, bool) else 0
+	focus_handle = _root_window_handle(focus_handle)
+	try:
+		import winUser
+
+		foreground_handle = _root_window_handle(int(winUser.getForegroundWindow() or 0))
+	except Exception:  # noqa: BLE001 — no foreground evidence is reported as 0
+		foreground_handle = 0
+	browse_mode = False
+	if focus is not None:
+		try:
+			interceptor = getattr(focus, "treeInterceptor", None)
+			browse_mode = bool(interceptor is not None and not getattr(interceptor, "passThrough", False))
+		except Exception:  # noqa: BLE001 — a dead object has no mode
+			browse_mode = False
+	return {
+		"browse_mode": browse_mode,
+		"focus_window_handle": focus_handle,
+		"foreground_window_handle": foreground_handle,
+		"focus_in_foreground_window": bool(
+			focus_handle and foreground_handle and focus_handle == foreground_handle
+		),
+	}

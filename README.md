@@ -24,7 +24,7 @@ A thread-safe NVDA add-on that exposes NVDA internals as an MCP-compatible inter
 
 1. Download the release package:
    ```
-   nvdaMcpBridge-0.11.1.nvda-addon
+   nvdaMcpBridge-0.12.0.nvda-addon
    ```
 2. Open the `.nvda-addon` file with NVDA to install it.
 3. Restart NVDA when prompted.
@@ -34,7 +34,7 @@ A thread-safe NVDA add-on that exposes NVDA internals as an MCP-compatible inter
 > using those processes disconnect and must reconnect; companions installed
 > elsewhere are left running.
 
-> **Version line:** `0.10.0` is the first public API-1 contract and `0.11.1`
+> **Version line:** `0.10.0` is the first public API-1 contract and `0.12.0`
 > is the current one. A `1.0.0` package that advertises API level 4 predates
 > the reset and is **not** an upgrade; installing it over this line breaks the
 > companion. Check the installed version in NVDA's Add-on Manager if a client
@@ -430,15 +430,22 @@ identifier semantics and the retention limits.
 
 ### Contract invariants
 
-This is the first public contract (`api_level` 1, add-on `0.11.1`); there are no
+This is the first public contract (`api_level` 1, add-on `0.12.0`); there are no
 legacy aliases to carry.
 
 * Inputs are strict: unknown fields, wrong types and prose where a `ref` belongs
   are validation errors, not coercions.
-* References match `^[a-z][a-z0-9]*$`. A stale reference is `4206` and carries a
-  `recovery` hint; it is never auto-retried.
+* References match `^[a-z][a-z0-9]*$` and carry a kind. A stale reference is
+  `4206` and carries a `recovery` hint; it is never auto-retried. A window ref
+  is rejected as `within` for a document tool.
 * JSON is snake_case at every layer. `location` is always
   `{left, top, width, height}`.
+* Observations expose `browse_mode`, `focus_in_foreground_window`,
+  `focus_window_handle` and `foreground_window_handle`; the same paths work in
+  `expect`, alongside `focus_window_handle` for “focus is inside this window”.
+* `observe.max_bytes` defaults to 8192; `fields` projects each node onto named
+  fields. `press` accepts a `sequence`, and `set_value.update` is
+  `replace`/`append`.
 * Payloads are bounded by default: health, logs, locate and observations return
   summaries unless detail is requested.
 * Every tool has a published `inputSchema`; `structuredContent` is validated

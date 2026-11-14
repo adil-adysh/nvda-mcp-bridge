@@ -377,6 +377,12 @@ def health_snapshot(
 		_collect("addons", _addons)
 	if include_logs:
 		_collect("logs", lambda: get_logs(max_lines=log_lines, use_tail=True))
+	try:
+		from .observation import attention
+
+		snapshot.update(attention())
+	except Exception as error:  # noqa: BLE001 — health must still answer
+		snapshot["errors"]["focus_coherence"] = f"{type(error).__name__}: {error}"
 
 	snapshot["ok"] = len(snapshot["errors"]) == 0
 	snapshot["error_count"] = len(snapshot["errors"])

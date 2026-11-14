@@ -280,6 +280,14 @@ class ReferenceTable:
 				raise StaleReference(ref, window_mismatch, window_reason, scope)
 		return entry
 
+	def kind_of(self, ref: str) -> Optional[str]:
+		"""Return the semantic kind recorded for ``ref`` without resolving it."""
+		if not isinstance(ref, str):
+			return None
+		with self._lock:
+			entry = self._refs.get(ref)
+			return entry.kind if entry is not None else None
+
 	def discard(self, ref: str) -> None:
 		with self._lock:
 			self._refs.pop(ref, None)

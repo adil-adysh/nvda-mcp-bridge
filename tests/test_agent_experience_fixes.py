@@ -99,7 +99,7 @@ class SchemaContractTests(unittest.TestCase):
 		self.assertEqual(max_lines["maximum"], 10000)
 
 		observe = schema.dataclass_to_json_schema(models.ObserveInput)
-		self.assertEqual(observe["properties"]["max_bytes"]["default"], 0)
+		self.assertEqual(observe["properties"]["max_bytes"]["default"], 8192)
 
 	def test_descriptions_on_optional_fields_are_not_hidden_in_anyof(self):
 		document = schema.dataclass_to_json_schema(models.WaitForEventsInput)

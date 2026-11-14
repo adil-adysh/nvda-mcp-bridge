@@ -5,7 +5,7 @@
   "protocol": {
     "name": "nvda-bridge-protocol",
     "version": "1.0.0",
-    "bridge_version": "0.11.1",
+    "bridge_version": "0.12.0",
     "api_level": 1,
     "supported_api_levels": [
       1

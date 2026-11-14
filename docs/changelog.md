@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.12.0
+
+### Added
+
+- `observe` and `health_snapshot` report `browse_mode`,
+  `focus_in_foreground_window`, `focus_window_handle` and
+  `foreground_window_handle`. These are ordinary `expect` paths, so an action
+  can assert that focus is inside a named window or that the foreground window
+  is the one it raised.
+- `observe.fields` projects each node onto a requested subset; `ref` is always
+  kept.
+- `press.sequence` sends an ordered list of gestures in one call and one settle
+  round.
+- `set_value.update` supports `append`; `replace` remains the default.
+- `wait_for_events.event_kinds` counts the transitions in the page, and
+  `include_events=false` omits the event objects.
+- `ReferenceTable.kind_of()` exposes the kind recorded when a ref was captured.
+
+### Changed
+
+- `observe.max_bytes` defaults to `8192` instead of unbounded. Pass `0` to
+  disable the bound explicitly.
+- `wait_for_events.limit` defaults to `20` instead of `50`.
+
+### Fixed
+
+- Reading tools reject a window reference passed as `within` before resolving
+  it, instead of searching the frame or returning a domain error.
+- Focus and foreground are no longer presented as one coherent state when they
+  belong to different windows.
+
 ## 0.11.1
 
 ### Fixed

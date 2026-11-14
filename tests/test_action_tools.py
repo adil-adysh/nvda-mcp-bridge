@@ -238,6 +238,9 @@ class FakeContext:
 		self.calls.append(("resolve", ref))
 		return "resolved-object"
 
+	def ref_kind(self, ref):
+		return "window" if ref == "w" else None
+
 	def register(self, obj):
 		self.calls.append(("register", obj))
 		return "n1"
@@ -342,12 +345,14 @@ class SurfaceTests(unittest.TestCase):
 			model_name = self.registry.get(name).get_output_schema().model.__name__
 			self.assertIn(model_name, types_registry, name)
 
-	def test_press_requires_keys(self):
+	def test_press_requires_keys_or_a_sequence(self):
 		tool = self.registry.get("press")
 		schema = tool.get_input_schema()
-		self.assertIn("keys", schema.to_json_schema()["required"])
-		with self.assertRaises(core.ValidationError):
-			schema.validate({"repeat": 2})
+		# Either form is valid, so neither is individually required; the handler
+		# rejects the call that supplies neither.
+		self.assertNotIn("keys", schema.to_json_schema().get("required", []))
+		with self.assertRaises(ValueError):
+			handlers.press(keys=None, repeat=1, delay_ms=0, expect=None, context=FakeContext())
 
 	def test_observe_rejects_unknown_include_values(self):
 		schema = self.registry.get("observe").get_input_schema()
@@ -447,6 +452,47 @@ class HandlerTests(unittest.TestCase):
 		self.assertFalse(result["verified"])
 		self.assertEqual(result["observed"], "previous text")
 		self.assertTrue(context.result.settle.uncertain)
+
+	def test_set_value_append_uses_the_current_value(self):
+		globals()["PLATFORM_WRITE_STICKS"] = True
+		VALUE_AFTER_WRITE["value"] = "prefix-"
+		context = FakeContext()
+
+		result = handlers.set_value(ref="f", value="suffix", update="append", expect=None, context=context)
+
+		self.assertTrue(result["verified"])
+		self.assertEqual(result["value"], "prefix-suffix")
+		self.assertEqual(result["previous"], "prefix-")
+		self.assertIn(("set_value", "prefix-suffix", False), ACTION_CALLS)
+
+	def test_set_value_rejects_an_unknown_update_mode(self):
+		with self.assertRaises(ValueError):
+			handlers.set_value(ref="f", value="x", update="insert", expect=None, context=FakeContext())
+
+	def test_press_sequence_sends_every_gesture_in_one_settle(self):
+		context = FakeContext()
+		result = handlers.press(
+			keys=None,
+			sequence=["f6", "f6", "f6"],
+			repeat=1,
+			delay_ms=0,
+			expect=None,
+			context=context,
+		)
+		self.assertEqual(result["sent_count"], 3)
+		self.assertEqual(result["sequence"], ["f6", "f6", "f6"])
+		self.assertEqual(result["requested"], "f6, f6, f6")
+
+	def test_press_rejects_both_keys_and_a_sequence(self):
+		with self.assertRaises(ValueError):
+			handlers.press(
+				keys="tab",
+				sequence=["tab"],
+				repeat=1,
+				delay_ms=0,
+				expect=None,
+				context=FakeContext(),
+			)
 
 	def test_activate_window_registers_the_window_it_raised(self):
 		context = FakeContext()
@@ -621,10 +667,32 @@ class NewContractDefaultsTests(unittest.TestCase):
 		handlers.wait_for_events(since=None, timeout_ms=1, kinds=None, context=context)
 		self.assertIn(("wait_events", 42, 1, None), context.calls)
 
+	def test_wait_for_events_can_return_counts_without_event_objects(self):
+		context = FakeContext(
+			wait_result={
+				"journal_id": "j",
+				"from_version": 1,
+				"to_version": 2,
+				"events": [{"kind": "focus"}, {"kind": "focus"}],
+			}
+		)
+		result = handlers.wait_for_events(
+			since=1, timeout_ms=10, kinds=None, context=context, include_events=False
+		)
+		self.assertEqual(result["events"], [])
+		self.assertEqual(result["event_kinds"], {"focus": 2})
+
 	def test_within_rejects_a_window_title(self):
 		with self.assertRaises(ValueError) as caught:
 			handlers.locate("BUTTON", None, False, "AI Assistant Settings", 10, 400, 500, FakeContext())
 		self.assertIn("reference", str(caught.exception))
+
+	def test_reading_rejects_a_window_ref_as_within(self):
+		context = FakeContext()
+		with self.assertRaises(ValueError) as caught:
+			handlers.list_reading_targets("heading", 5, "w", 1000, context)
+		self.assertIn("document or control", str(caught.exception))
+		self.assertNotIn(("resolve", "w"), context.calls)
 
 
 if __name__ == "__main__":

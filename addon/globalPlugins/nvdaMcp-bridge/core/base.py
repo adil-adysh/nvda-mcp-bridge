@@ -76,6 +76,9 @@ class ExecutionContext:
 	resolve: Callable[[str], Any] | None = None
 	"""Resolve a ``ref`` to an NVDA object. Main thread only."""
 
+	ref_kind: Callable[[str], str | None] | None = None
+	"""Return the semantic kind recorded for a ``ref`` without resolving it."""
+
 	register: Callable[[Any], str] | None = None
 	"""Capture an NVDA object under a fresh ``ref``. Main thread only."""
 

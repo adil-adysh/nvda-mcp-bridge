@@ -309,21 +309,50 @@ def observe(
 	max_text: int,
 	context: Any,
 	detail: str = "summary",
-	max_bytes: int = 0,
+	max_bytes: int = 8192,
+	fields: list[str] | None = None,
 ) -> dict[str, Any]:
 	"""Capture the screen, with references to what was seen."""
 	result = dict(_dispatch(context, lambda: context.observe(include, max_text)))
+	shape_observation(result, detail, fields, max_bytes)
+	return result
+
+
+def shape_observation(
+	payload: dict[str, Any],
+	detail: str,
+	fields: list[str] | None,
+	max_bytes: int,
+) -> None:
+	"""Apply summary, field projection and the byte bound to one observation.
+
+	The transport validates the handler's output against ``ObserveResult``,
+	which reconstructs every node field at its default. That happens after the
+	handler returns, so the same shaping is applied again by the bridge; keeping
+	it in one function is what stops ``states`` and locations from reappearing
+	after validation.
+	"""
 	if detail == "summary":
-		for node in _observation_nodes(result):
+		for node in _observation_nodes(payload):
 			node.pop("states", None)
+	if fields:
+		_keep_fields(payload, fields)
 	if max_bytes and max_bytes > 0:
-		_bound_observation(result, max_bytes)
+		_bound_observation(payload, max_bytes)
 	else:
 		# Report the real size even when no budget was requested; a literal 0
 		# next to `truncated: false` reads like an empty observation.
-		result["observed_bytes"] = 0
-		result["observed_bytes"] = _observation_bytes(result)
-	return result
+		payload["observed_bytes"] = 0
+		payload["observed_bytes"] = _observation_bytes(payload)
+
+
+def _keep_fields(payload: dict[str, Any], fields: list[str]) -> None:
+	"""Project every node onto the requested fields, always keeping ``ref``."""
+	allowed = {str(field) for field in fields} | {"ref"}
+	for node in _observation_nodes(payload):
+		for key in list(node):
+			if key not in allowed:
+				node.pop(key, None)
 
 
 def _observation_bytes(payload: dict[str, Any]) -> int:
@@ -431,6 +460,24 @@ def _validate_ref_argument(value: str | None, name: str = "ref") -> str | None:
 	return cleaned
 
 
+def _reject_window_within(context: Any, within: str | None) -> None:
+	"""A document tool must not accept the application window as its scope.
+
+	``within`` is a ref, but a window ref is the wrong *kind*: resolving it
+	would search the whole frame rather than the document. Reject it here,
+	before the main-thread hop, so the caller gets a correction rather than a
+	domain error from inside the document model.
+	"""
+	if not within:
+		return
+	kind_of = getattr(context, "ref_kind", None)
+	if callable(kind_of) and kind_of(within) == "window":
+		raise ValueError(
+			f"'within' must be a document or control reference, not the window reference {within!r}; "
+			"call observe and pass a ref from its focus/dialog/children, or omit 'within' to use the focused document"
+		)
+
+
 def locate(
 	role: str | None,
 	name: str | None,
@@ -503,7 +550,9 @@ def start_browse_mode(within: str | None, expect: dict[str, Any] | None, context
 
 	def perform() -> dict[str, Any]:
 		def act() -> dict[str, Any]:
-			root = context.resolve(_validate_ref_argument(within, "within")) if within else None
+			normalized = _validate_ref_argument(within, "within")
+			_reject_window_within(context, normalized)
+			root = context.resolve(normalized) if normalized else None
 			captured.update(reading.create_document(root))
 			return captured
 
@@ -542,6 +591,7 @@ def list_reading_targets(
 	def perform() -> dict[str, Any]:
 		from ..nvda_bridge import reading
 
+		_reject_window_within(context, within)
 		root = context.resolve(_validate_ref_argument(within, "within")) if within else None
 		payload, objects = reading.targets(item=item_type, limit=limit, root=root, timeout_ms=timeout)
 		for record, obj in zip(payload["targets"], objects):
@@ -582,6 +632,7 @@ def navigate_reading(
 		def act() -> dict[str, Any]:
 			from ..nvda_bridge import reading
 
+			_reject_window_within(context, within)
 			root = context.resolve(_validate_ref_argument(within, "within")) if within else None
 			payload, obj = reading.navigate(
 				item=item_type,
@@ -623,7 +674,13 @@ def invoke(ref: str, action: str | None, expect: dict[str, Any] | None, context:
 	}
 
 
-def set_value(ref: str, value: str, expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
+def set_value(
+	ref: str,
+	value: str,
+	expect: dict[str, Any] | None,
+	context: Any,
+	update: str = "replace",
+) -> dict[str, Any]:
 	"""Write a value, read the control back, and retry once when the write did not stick.
 
 	The write used to stop at "the input was dispatched": a keyboard-mode write
@@ -641,16 +698,18 @@ def set_value(ref: str, value: str, expect: dict[str, Any] | None, context: Any)
 	"""
 	from ..nvda_bridge import targets
 
+	if update not in ("replace", "append"):
+		raise ValueError("'update' must be 'replace' or 'append'")
 	captured: dict[str, Any] = {}
 
 	def perform(force_keyboard: bool = False) -> dict[str, Any]:
 		def act() -> dict[str, Any]:
-			return targets.set_value(context.resolve(ref), value, force_keyboard=force_keyboard)
+			return targets.set_value(context.resolve(ref), write_value, force_keyboard=force_keyboard)
 
 		captured.update(context.dispatch(act))
 		return captured
 
-	def read_observed() -> tuple[bool, str, str]:
+	def read_observed(expected: str) -> tuple[bool, str, str]:
 		try:
 			read_back = context.dispatch(lambda: targets.read_value(context.resolve(ref)))
 		except Exception:  # noqa: BLE001 — a vanished control is "unverified", not a failure
@@ -659,14 +718,15 @@ def set_value(ref: str, value: str, expect: dict[str, Any] | None, context: Any)
 		seen = "" if seen_value is None else str(seen_value)
 		# Browsers keep the placeholder in the value pattern on an empty field, and
 		# an emptied contenteditable holds "\n"; compare the text, not the framing.
-		return seen.strip() == value.strip(), seen, str(read_back.get("source", ""))
+		return seen.strip() == expected.strip(), seen, str(read_back.get("source", ""))
 
 	# What the control holds now, so a platform write that changes nothing can be
 	# told apart from one that landed.
-	_before_verified, before, _before_source = read_observed()
+	_before_verified, before, _before_source = read_observed(value)
+	write_value = f"{before}{value}" if update == "append" else value
 
 	outcome = context.settle(perform, expect=expect)
-	verified, observed, value_source = read_observed()
+	verified, observed, value_source = read_observed(write_value)
 
 	# Retry once with keystrokes only when the platform write changed nothing: a
 	# control can expose ValuePattern and ignore SetValue, and typing is the only
@@ -675,7 +735,7 @@ def set_value(ref: str, value: str, expect: dict[str, Any] | None, context: Any)
 	if not verified and str(captured.get("mode", "")) == "platform" and observed.strip() == before.strip():
 		captured.clear()
 		outcome = context.settle(lambda: perform(force_keyboard=True), expect=expect)
-		verified, observed, value_source = read_observed()
+		verified, observed, value_source = read_observed(write_value)
 
 	if not verified:
 		setattr(outcome, "uncertain", True)
@@ -696,7 +756,7 @@ def set_value(ref: str, value: str, expect: dict[str, Any] | None, context: Any)
 		"matched": bool(verified),
 	}
 	if not verified:
-		entry["expected"] = settle_module._bounded_text(value)
+		entry["expected"] = settle_module._bounded_text(write_value)
 	try:
 		outcome.observed = True
 		outcome.verification = (
@@ -709,8 +769,9 @@ def set_value(ref: str, value: str, expect: dict[str, Any] | None, context: Any)
 	return {
 		"ref": ref,
 		"mode": str(captured.get("mode", "keyboard")),
-		"value": value,
+		"value": write_value,
 		"previous": before,
+		"update": update,
 		"units": int(captured.get("units", 0)),
 		"verified": verified,
 		"observed": "" if verified else observed,
@@ -828,45 +889,90 @@ def focus_object(ref: str, expect: dict[str, Any] | None, context: Any) -> dict[
 
 
 def press(
-	keys: str,
+	keys: str | None,
 	repeat: int,
 	delay_ms: int,
 	expect: dict[str, Any] | None,
 	context: Any,
+	sequence: list[str] | None = None,
 ) -> dict[str, Any]:
 	"""Send keys, then wait for the UI to settle.
 
-	The keystroke is still the same primitive it always was; what changed is that
+	``sequence`` sends several gestures in one call and one settle round. The
+	keystroke is still the same primitive it always was; what changed is that
 	the call no longer returns before its effect is visible.
 	"""
 	from .. import nvda_bridge
 	from ..nvda_bridge import ui as nvda_ui
 
+	gestures = list(sequence or [])
+	if sequence and keys:
+		raise ValueError("Use either 'keys' or 'sequence', not both")
+	if not gestures and not keys:
+		raise ValueError("'press' needs 'keys' or a non-empty 'sequence'")
+	if gestures:
+		if len(gestures) > 50:
+			raise ValueError("'sequence' must contain at most 50 gestures")
+		if any(not isinstance(gesture, str) or not gesture.strip() for gesture in gestures):
+			raise ValueError("every 'sequence' entry must be a non-empty gesture name")
+
 	captured: dict[str, Any] = {}
 
 	def perform() -> dict[str, Any]:
-		result = nvda_bridge.send_keyboard(
-			gesture=keys,
-			repeat=repeat,
-			delay_ms=delay_ms,
-			cancellation_event=getattr(context, "cancellation_event", None),
-			main_thread_fn=lambda gesture: context.dispatch(
-				lambda: nvda_ui.send_single_gesture(gesture)
-			),
-			timeout=getattr(context, "timeout", None) or 10.0,
-		)
+		def send(gesture: str) -> dict[str, Any]:
+			return nvda_bridge.send_keyboard(
+				gesture=gesture,
+				repeat=repeat,
+				delay_ms=delay_ms,
+				cancellation_event=getattr(context, "cancellation_event", None),
+				main_thread_fn=lambda value: context.dispatch(
+					lambda: nvda_ui.send_single_gesture(value)
+				),
+				timeout=getattr(context, "timeout", None) or 10.0,
+			)
+
+		if gestures:
+			normalized: list[str] = []
+			sent_count = 0
+			sent = False
+			dispatched = False
+			cancelled = False
+			uncertain = False
+			for gesture in gestures:
+				result = send(gesture)
+				normalized.append(str(result.get("normalized_keys", gesture)))
+				sent_count += int(result.get("sent_count", 0))
+				sent = sent or bool(result.get("sent"))
+				dispatched = dispatched or bool(result.get("dispatched"))
+				cancelled = cancelled or bool(result.get("cancelled"))
+				uncertain = uncertain or bool(result.get("uncertain"))
+				if cancelled:
+					break
+			result = {
+				"normalized_keys": ", ".join(normalized),
+				"repeat": repeat,
+				"delay_ms": delay_ms,
+				"sent": sent,
+				"sent_count": sent_count,
+				"dispatched": dispatched,
+				"cancelled": cancelled,
+				"uncertain": uncertain,
+			}
+		else:
+			result = send(str(keys))
 		captured.update(result)
 		return result
 
 	context.settle(perform, expect=expect)
 	return {
-		"requested": keys,
-		"normalized_keys": str(captured.get("normalized_keys", keys)),
+		"requested": ", ".join(gestures) if gestures else str(keys),
+		"normalized_keys": str(captured.get("normalized_keys", keys or "")),
 		"repeat": int(captured.get("repeat", repeat)),
 		"delay_ms": int(captured.get("delay_ms", delay_ms)),
 		"sent": bool(captured.get("sent", False)),
 		"sent_count": int(captured.get("sent_count", 0)),
 		"dispatched": bool(captured.get("dispatched", False)),
+		"sequence": gestures,
 		"cancelled": bool(captured.get("cancelled", False)),
 		"uncertain": bool(captured.get("uncertain", False)),
 	}
@@ -1043,8 +1149,9 @@ def wait_for_events(
 	timeout_ms: int,
 	kinds: list[str] | None,
 	context: Any,
-	limit: int = 50,
+	limit: int = 20,
 	journal_id: str | None = None,
+	include_events: bool = True,
 ) -> dict[str, Any]:
 	if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool) or timeout_ms < 0 or timeout_ms > 30000:
 		raise ValueError("'timeout_ms' must be an integer between 0 and 30000")
@@ -1082,6 +1189,12 @@ def wait_for_events(
 	to_version = int(result.get("to_version", since))
 	cursor_status = str(result.get("cursor_status", "ok"))
 	mismatch = cursor_status == "journal_mismatch"
+	events = list(result.get("events", []))
+	event_kinds: dict[str, int] = {}
+	for event in events:
+		if isinstance(event, dict):
+			kind = str(event.get("kind", "unknown"))
+			event_kinds[kind] = event_kinds.get(kind, 0) + 1
 	return {
 		"journal_id": str(result.get("journal_id", journal_id or "")),
 		"from_version": int(result.get("from_version", since)),
@@ -1089,7 +1202,8 @@ def wait_for_events(
 		"earliest_available_version": int(
 			result.get("earliest_available_version", result.get("oldest_retained_version", 0))
 		),
-		"events": list(result.get("events", [])),
+		"events": events if include_events else [],
+		"event_kinds": event_kinds,
 		"expired": bool(result.get("expired", False)),
 		"resync_required": bool(result.get("resync_required", False)),
 		"resync_reason": result.get("resync_reason"),

@@ -277,11 +277,23 @@ class ObserveInput:
 		metadata={"description": "summary leaves states empty; full includes them."},
 	)
 	max_bytes: int = field(
-		default=0,
+		default=8192,
 		metadata={
 			"minimum": 0,
 			"maximum": 200000,
-			"description": "Bound the serialized observation; 0 disables the bound. Truncation is reported.",
+			"description": (
+				"Bound the serialized observation; 0 disables the bound. "
+				"Truncation is reported."
+			),
+		},
+	)
+	fields: list[Literal["ref", "role", "name", "value", "states", "location"]] = field(
+		default_factory=list,
+		metadata={
+			"description": (
+				"Keep only these fields on each node; an empty list keeps all. "
+				"The ref is always retained."
+			)
 		},
 	)
 
@@ -301,6 +313,10 @@ class SetValueInput:
 
 	ref: str = field(metadata={"pattern": REF_PATTERN})
 	value: str
+	update: Literal["replace", "append"] = field(
+		default="replace",
+		metadata={"description": "replace sets the whole value; append appends to the current value."},
+	)
 	expect: Expectation = None
 
 
@@ -331,8 +347,19 @@ class PressInput:
 	names ``up``/``down``/``left``/``right``.
 	"""
 
-	keys: str = field(
-		metadata={"minLength": 1, "description": "Gesture name, e.g. control+a or down."},
+	keys: Optional[str] = field(
+		default=None,
+		metadata={
+			"minLength": 1,
+			"description": "Gesture name, e.g. control+a or down. Omit when 'sequence' is set.",
+		},
+	)
+	sequence: list[str] = field(
+		default_factory=list,
+		metadata={
+			"maxItems": 50,
+			"description": "Ordered gestures sent in one call, e.g. ['f6', 'f6', 'f6']; repeat applies to each.",
+		},
 	)
 	repeat: int = field(default=1, metadata={"minimum": 1, "maximum": 20})
 	delay_ms: int = field(default=0, metadata={"minimum": 0, "maximum": 5000})
@@ -406,7 +433,11 @@ class WaitForEventsInput:
 	)
 	timeout_ms: int = field(default=1000, metadata={"minimum": 0, "maximum": 30000})
 	kinds: Optional[list[str]] = None
-	limit: int = field(default=50, metadata={"minimum": 1, "maximum": 500})
+	limit: int = field(default=20, metadata={"minimum": 1, "maximum": 500})
+	include_events: bool = field(
+		default=True,
+		metadata={"description": "Return event objects; set false for counts and cursors only."},
+	)
 
 
 @dataclass(frozen=True)
@@ -635,6 +666,10 @@ class HealthSnapshot:
 	nvda: dict[str, Any] = field(default_factory=dict)
 	focus: Optional[Node] = None
 	top_window: Optional[WindowInfo] = None
+	browse_mode: bool = False
+	focus_in_foreground_window: Optional[bool] = None
+	focus_window_handle: int = 0
+	foreground_window_handle: int = 0
 	addons: Optional[AddonSummary] = None
 	logs: Optional["LogEntries"] = None
 
@@ -847,6 +882,10 @@ class ObserveResult:
 	dialog: Optional[DialogNode] = None
 	top_window: Optional[WindowInfo] = None
 	selection: Optional[str] = None
+	browse_mode: bool = False
+	focus_in_foreground_window: Optional[bool] = None
+	focus_window_handle: int = 0
+	foreground_window_handle: int = 0
 	truncated: bool = False
 	truncated_sections: list[str] = field(default_factory=list)
 	more_available: bool = False
@@ -892,6 +931,7 @@ class SetValueResult:
 	value: str
 	previous: str = ""
 	units: int = 0
+	update: str = "replace"
 	verified: bool = True
 	observed: str = ""
 	value_source: str = ""
@@ -951,6 +991,7 @@ class PressResult:
 	sent: bool
 	sent_count: int
 	dispatched: bool
+	sequence: list[str] = field(default_factory=list)
 	cancelled: bool = False
 	uncertain: bool = False
 
@@ -1024,6 +1065,7 @@ class WaitEventsResult:
 	to_version: int
 	earliest_available_version: int = 0
 	events: list[dict[str, Any]] = field(default_factory=list)
+	event_kinds: dict[str, int] = field(default_factory=dict)
 	expired: bool = False
 	resync_required: bool = False
 	resync_reason: Optional[str] = None

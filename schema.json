@@ -1,7 +1,7 @@
 {
   "protocol": "nvda-bridge-protocol",
   "protocol_version": "1.0.0",
-  "bridge_version": "0.11.1",
+  "bridge_version": "0.12.0",
   "api_level": 1,
   "types": {
     "ActivateWindowResult": {
@@ -1470,6 +1470,29 @@
               ],
               "default": null
             },
+            "browse_mode": {
+              "type": "boolean",
+              "default": false
+            },
+            "focus_in_foreground_window": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "focus_window_handle": {
+              "type": "integer",
+              "default": 0
+            },
+            "foreground_window_handle": {
+              "type": "integer",
+              "default": 0
+            },
             "addons": {
               "anyOf": [
                 {
@@ -2786,6 +2809,29 @@
               ],
               "default": null
             },
+            "browse_mode": {
+              "type": "boolean",
+              "default": false
+            },
+            "focus_in_foreground_window": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "focus_window_handle": {
+              "type": "integer",
+              "default": 0
+            },
+            "foreground_window_handle": {
+              "type": "integer",
+              "default": 0
+            },
             "truncated": {
               "type": "boolean",
               "default": false
@@ -2876,6 +2922,13 @@
             },
             "dispatched": {
               "type": "boolean"
+            },
+            "sequence": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
             },
             "cancelled": {
               "type": "boolean",
@@ -3505,6 +3558,10 @@
               "type": "integer",
               "default": 0
             },
+            "update": {
+              "type": "string",
+              "default": "replace"
+            },
             "verified": {
               "type": "boolean",
               "default": true
@@ -3852,6 +3909,13 @@
                 "additionalProperties": {}
               },
               "default": []
+            },
+            "event_kinds": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "default": {}
             },
             "expired": {
               "type": "boolean",
@@ -5883,6 +5947,29 @@
             ],
             "default": null
           },
+          "browse_mode": {
+            "type": "boolean",
+            "default": false
+          },
+          "focus_in_foreground_window": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "focus_window_handle": {
+            "type": "integer",
+            "default": 0
+          },
+          "foreground_window_handle": {
+            "type": "integer",
+            "default": 0
+          },
           "addons": {
             "anyOf": [
               {
@@ -7076,7 +7163,23 @@
             "minimum": 0,
             "maximum": 200000,
             "description": "Bound the serialized observation; 0 disables the bound. Truncation is reported.",
-            "default": 0
+            "default": 8192
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "ref",
+                "role",
+                "name",
+                "value",
+                "states",
+                "location"
+              ]
+            },
+            "description": "Keep only these fields on each node; an empty list keeps all. The ref is always retained.",
+            "default": []
           }
         },
         "additionalProperties": false,
@@ -7600,6 +7703,29 @@
             ],
             "default": null
           },
+          "browse_mode": {
+            "type": "boolean",
+            "default": false
+          },
+          "focus_in_foreground_window": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "focus_window_handle": {
+            "type": "integer",
+            "default": 0
+          },
+          "foreground_window_handle": {
+            "type": "integer",
+            "default": 0
+          },
           "truncated": {
             "type": "boolean",
             "default": false
@@ -7656,16 +7782,33 @@
     {
       "name": "press",
       "version": "1.0.0",
-      "description": "Send keyboard keys (e.g. 'tab', 'control+a'), then wait for the UI to settle. 'dispatched' means the input was posted; changed/delta say what the UI did.",
+      "description": "Send keyboard keys (e.g. 'tab', 'control+a'), then wait for the UI to settle. Use 'sequence' for several gestures in one call, e.g. ['f6','f6','f6']. 'dispatched' means the input was posted; changed/delta say what the UI did.",
       "category": "input",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
         "properties": {
           "keys": {
-            "type": "string",
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
             "minLength": 1,
-            "description": "Gesture name, e.g. control+a or down."
+            "description": "Gesture name, e.g. control+a or down. Omit when 'sequence' is set.",
+            "default": null
+          },
+          "sequence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "description": "Ordered gestures sent in one call, e.g. ['f6', 'f6', 'f6']; repeat applies to each.",
+            "default": []
           },
           "repeat": {
             "type": "integer",
@@ -7717,9 +7860,6 @@
           }
         },
         "additionalProperties": false,
-        "required": [
-          "keys"
-        ],
         "description": "Send keyboard keys."
       },
       "outputType": "PressResult",
@@ -7749,6 +7889,13 @@
           },
           "dispatched": {
             "type": "boolean"
+          },
+          "sequence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": []
           },
           "cancelled": {
             "type": "boolean",
@@ -8647,7 +8794,7 @@
     {
       "name": "set_value",
       "version": "1.0.0",
-      "description": "Set a control's value by ref; an empty string clears it. Uses the platform value pattern when the control exposes one, otherwise focus + select-all + type; 'mode' says which. Reads the control back afterwards: 'verified' says the write landed, 'observed' carries what the control actually contains when it did not.",
+      "description": "Set a control's value by ref; an empty string clears it. update='replace' sets the whole value; update='append' appends to it. Uses the platform value pattern when the control exposes one, otherwise focus + select-all + type; 'mode' says which. Reads the control back afterwards: 'verified' says the write landed, 'observed' carries what the control actually contains when it did not.",
       "category": "action",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -8661,6 +8808,15 @@
           "value": {
             "type": "string",
             "description": "Value to set; an empty string clears it."
+          },
+          "update": {
+            "type": "string",
+            "enum": [
+              "replace",
+              "append"
+            ],
+            "description": "replace sets the whole value; append appends to the current value.",
+            "default": "replace"
           },
           "expect": {
             "anyOf": [
@@ -8727,6 +8883,10 @@
           "units": {
             "type": "integer",
             "default": 0
+          },
+          "update": {
+            "type": "string",
+            "default": "replace"
           },
           "verified": {
             "type": "boolean",
@@ -9241,7 +9401,7 @@
     {
       "name": "wait_for_events",
       "version": "1.0.0",
-      "description": "Block until the next coalesced UI transition (or timeout) and return the transition kinds. Use for idle waits instead of polling observe.",
+      "description": "Block until the next coalesced UI transition (or timeout) and return the transition kinds. Use for idle waits instead of polling observe. 'event_kinds' counts what arrived; set include_events=false to omit event objects.",
       "category": "observation",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -9299,7 +9459,12 @@
             "minimum": 1,
             "maximum": 500,
             "description": "Maximum number of items to return.",
-            "default": 50
+            "default": 20
+          },
+          "include_events": {
+            "type": "boolean",
+            "description": "Return event objects; set false for counts and cursors only.",
+            "default": true
           }
         },
         "additionalProperties": false,
@@ -9331,6 +9496,13 @@
               "additionalProperties": {}
             },
             "default": []
+          },
+          "event_kinds": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {}
           },
           "expired": {
             "type": "boolean",

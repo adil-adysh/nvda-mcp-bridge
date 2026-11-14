@@ -403,6 +403,7 @@ def send_keyboard(
 		# claiming otherwise is what made this tool report success over a stale
 		# screen. Settling is the caller's (the coordinator's) job.
 		"dispatched": not was_cancelled and sent_count == repeat,
+		"sequence": [],
 		"uncertain": False,
 	}
 

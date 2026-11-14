@@ -198,6 +198,22 @@ class LookupTests(unittest.TestCase):
 		self.assertTrue(settle.evaluate_expect(projection, {"focus.states": ["FOCUSABLE", "FOCUSED"]}).satisfied)
 		self.assertFalse(settle.evaluate_expect(projection, {"focus.states": ["FOCUSED"]}).satisfied)
 
+	def test_coherence_fields_are_ordinary_expectation_paths(self):
+		projection = {
+			"focus_in_foreground_window": False,
+			"focus_window_handle": 12,
+			"foreground_window_handle": 99,
+			"browse_mode": True,
+		}
+		self.assertFalse(
+			settle.evaluate_expect(projection, {"focus_in_foreground_window": True}).satisfied
+		)
+		self.assertTrue(settle.evaluate_expect(projection, {"focus_window_handle": 12}).satisfied)
+		self.assertFalse(
+			settle.evaluate_expect(projection, {"focus_window_handle": 99}).satisfied
+		)
+		self.assertTrue(settle.evaluate_expect(projection, {"browse_mode": True}).satisfied)
+
 
 if __name__ == "__main__":
 	unittest.main()

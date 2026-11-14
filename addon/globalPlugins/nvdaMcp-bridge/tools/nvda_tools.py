@@ -394,6 +394,7 @@ ALL_NVDA_TOOLS = [
             max_text=input_obj.max_text,
             detail=input_obj.detail,
             max_bytes=input_obj.max_bytes,
+            fields=input_obj.fields,
             context=context,
         ),
     ),
@@ -563,7 +564,9 @@ ALL_NVDA_TOOLS = [
             name="set_value",
             version="1.0.0",
             description=(
-                "Set a control's value by ref; an empty string clears it. Uses the platform "
+                "Set a control's value by ref; an empty string clears it. "
+                "update='replace' sets the whole value; update='append' appends to it. "
+                "Uses the platform "
                 "value pattern when the control exposes one, otherwise focus + select-all + "
                 "type; 'mode' says which. Reads the control back afterwards: 'verified' says "
                 "the write landed, 'observed' carries what the control actually contains when "
@@ -585,6 +588,7 @@ ALL_NVDA_TOOLS = [
         lambda input_obj, context: tool_handlers.set_value(
             ref=input_obj.ref,
             value=input_obj.value,
+            update=input_obj.update,
             expect=input_obj.expect,
             context=context,
         ),
@@ -651,6 +655,7 @@ ALL_NVDA_TOOLS = [
             version="1.0.0",
             description=(
                 "Send keyboard keys (e.g. 'tab', 'control+a'), then wait for the UI to settle. "
+                "Use 'sequence' for several gestures in one call, e.g. ['f6','f6','f6']. "
                 "'dispatched' means the input was posted; changed/delta say what the UI did."
             ),
             category="input",
@@ -669,6 +674,7 @@ ALL_NVDA_TOOLS = [
         models.PressResult,
         lambda input_obj, context: tool_handlers.press(
             keys=input_obj.keys,
+            sequence=input_obj.sequence,
             repeat=input_obj.repeat,
             delay_ms=input_obj.delay_ms,
             expect=input_obj.expect,
@@ -819,7 +825,8 @@ ALL_NVDA_TOOLS = [
             version="1.0.0",
             description=(
                 "Block until the next coalesced UI transition (or timeout) and return the "
-                "transition kinds. Use for idle waits instead of polling observe."
+                "transition kinds. Use for idle waits instead of polling observe. "
+                "'event_kinds' counts what arrived; set include_events=false to omit event objects."
             ),
             category="observation",
             read_only=True,
@@ -841,6 +848,7 @@ ALL_NVDA_TOOLS = [
             timeout_ms=input_obj.timeout_ms,
             kinds=input_obj.kinds,
             limit=input_obj.limit,
+            include_events=input_obj.include_events,
             context=context,
         ),
     ),

@@ -1086,6 +1086,10 @@ class NVDAHTTPBridge:
 			"children": projection.get("children") if "children" in wanted else [],
 			"dialog": projection.get("dialog") if "dialog" in wanted else None,
 			"top_window": projection.get("top_window"),
+			"browse_mode": bool(projection.get("browse_mode", False)),
+			"focus_in_foreground_window": projection.get("focus_in_foreground_window"),
+			"focus_window_handle": int(projection.get("focus_window_handle", 0) or 0),
+			"foreground_window_handle": int(projection.get("foreground_window_handle", 0) or 0),
 		}
 		if "selection" in wanted:
 			payload["selection"] = projection.get("selection")
@@ -1573,6 +1577,7 @@ class NVDAHTTPBridge:
 				timeout=effective_timeout,
 				settle=_settle,
 				resolve=self._resolve_ref,
+				ref_kind=self.refs.kind_of,
 				register=self._register_ref,
 				observe=self._observe,
 				wait_events=self.event_journal.wait,
@@ -1597,6 +1602,24 @@ class NVDAHTTPBridge:
 					timeout=effective_timeout,
 					cancellation_event=cancellation_event,
 				)
+
+			if action_name == "observe" and bool(result.get("success")):
+				# Output validation reconstructs ObserveResult nodes with every
+				# field defaulted, undoing summary/fields/bounds. Shape the
+				# validated output once more before it reaches the caller.
+				try:
+					from ..tools import handlers as tool_handlers
+
+					output = result.get("output")
+					if isinstance(output, dict):
+						tool_handlers.shape_observation(
+							output,
+							str(resolved_params.get("detail", "summary")),
+							resolved_params.get("fields"),
+							int(resolved_params.get("max_bytes", 8192)),
+						)
+				except Exception as error:  # noqa: BLE001 — the observation still answers
+					logHandler.log.warning(f"bridge.observe.shape_failed {type(error).__name__}: {error}")
 
 			duration_ms = (time.perf_counter() - start_time) * 1000
 

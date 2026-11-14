@@ -1839,6 +1839,10 @@
             ],
             "default": null
           },
+          "browse_mode": {
+            "default": false,
+            "type": "boolean"
+          },
           "error_count": {
             "type": "integer"
           },
@@ -1938,6 +1942,25 @@
               }
             ],
             "default": null
+          },
+          "focus_in_foreground_window": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "focus_window_handle": {
+            "default": 0,
+            "type": "integer"
+          },
+          "foreground_window_handle": {
+            "default": 0,
+            "type": "integer"
           },
           "logs": {
             "anyOf": [
@@ -3169,7 +3192,7 @@
       "category": "observation",
       "defaults": {
         "detail": "summary",
-        "max_bytes": 0,
+        "max_bytes": 8192,
         "max_text": 120
       },
       "error_codes": [
@@ -3190,6 +3213,22 @@
             ],
             "type": "string"
           },
+          "fields": {
+            "default": [],
+            "description": "Keep only these fields on each node; an empty list keeps all. The ref is always retained.",
+            "items": {
+              "enum": [
+                "ref",
+                "role",
+                "name",
+                "value",
+                "states",
+                "location"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
           "include": {
             "default": [
               "focus",
@@ -3209,7 +3248,7 @@
             "type": "array"
           },
           "max_bytes": {
-            "default": 0,
+            "default": 8192,
             "description": "Bound the serialized observation; 0 disables the bound. Truncation is reported.",
             "maximum": 200000,
             "minimum": 0,
@@ -3319,6 +3358,10 @@
               "type": "object"
             },
             "type": "array"
+          },
+          "browse_mode": {
+            "default": false,
+            "type": "boolean"
           },
           "budget_exceeded": {
             "default": false,
@@ -3684,6 +3727,25 @@
             ],
             "default": null
           },
+          "focus_in_foreground_window": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "focus_window_handle": {
+            "default": 0,
+            "type": "integer"
+          },
+          "foreground_window_handle": {
+            "default": 0,
+            "type": "integer"
+          },
           "more_available": {
             "default": false,
             "type": "boolean"
@@ -3799,6 +3861,7 @@
       "defaults": {
         "delay_ms": 0,
         "expect": null,
+        "keys": null,
         "repeat": 1
       },
       "error_codes": [
@@ -3852,9 +3915,17 @@
             "description": "Postcondition to confirm after the action, e.g. {\"focus.name\": \"Search\"}."
           },
           "keys": {
-            "description": "Gesture name, e.g. control+a or down.",
-            "minLength": 1,
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Gesture name, e.g. control+a or down. Omit when 'sequence' is set.",
+            "minLength": 1
           },
           "repeat": {
             "default": 1,
@@ -3862,11 +3933,17 @@
             "maximum": 20,
             "minimum": 1,
             "type": "integer"
+          },
+          "sequence": {
+            "default": [],
+            "description": "Ordered gestures sent in one call, e.g. ['f6', 'f6', 'f6']; repeat applies to each.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
           }
         },
-        "required": [
-          "keys"
-        ],
         "type": "object"
       },
       "mutating": true,
@@ -3903,6 +3980,13 @@
           "sent_count": {
             "type": "integer"
           },
+          "sequence": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "uncertain": {
             "default": false,
             "type": "boolean"
@@ -3923,12 +4007,10 @@
         "input_bounded": true,
         "truncation_reported": false
       },
-      "purpose": "Send keyboard keys (e.g. 'tab', 'control+a'), then wait for the UI to settle. 'dispatched' means the input was posted; changed/delta say what the UI did.",
+      "purpose": "Send keyboard keys (e.g. 'tab', 'control+a'), then wait for the UI to settle. Use 'sequence' for several gestures in one call, e.g. ['f6','f6','f6']. 'dispatched' means the input was posted; changed/delta say what the UI did.",
       "read_only": false,
       "reference_inputs": [],
-      "required": [
-        "keys"
-      ],
+      "required": [],
       "verification": {
         "evidence_sources": [
           "projection"
@@ -4827,7 +4909,8 @@
     {
       "category": "action",
       "defaults": {
-        "expect": null
+        "expect": null,
+        "update": "replace"
       },
       "error_codes": [
         4103,
@@ -4879,6 +4962,15 @@
             "pattern": "^[a-z][a-z0-9]*$",
             "type": "string"
           },
+          "update": {
+            "default": "replace",
+            "description": "replace sets the whole value; append appends to the current value.",
+            "enum": [
+              "replace",
+              "append"
+            ],
+            "type": "string"
+          },
           "value": {
             "description": "Value to set; an empty string clears it.",
             "type": "string"
@@ -4916,6 +5008,10 @@
             "default": 0,
             "type": "integer"
           },
+          "update": {
+            "default": "replace",
+            "type": "string"
+          },
           "value": {
             "description": "Value to set; an empty string clears it.",
             "type": "string"
@@ -4940,7 +5036,7 @@
         "input_bounded": false,
         "truncation_reported": false
       },
-      "purpose": "Set a control's value by ref; an empty string clears it. Uses the platform value pattern when the control exposes one, otherwise focus + select-all + type; 'mode' says which. Reads the control back afterwards: 'verified' says the write landed, 'observed' carries what the control actually contains when it did not.",
+      "purpose": "Set a control's value by ref; an empty string clears it. update='replace' sets the whole value; update='append' appends to it. Uses the platform value pattern when the control exposes one, otherwise focus + select-all + type; 'mode' says which. Reads the control back afterwards: 'verified' says the write landed, 'observed' carries what the control actually contains when it did not.",
       "read_only": false,
       "reference_inputs": [
         "ref"
@@ -5450,9 +5546,10 @@
     {
       "category": "observation",
       "defaults": {
+        "include_events": true,
         "journal_id": null,
         "kinds": null,
-        "limit": 50,
+        "limit": 20,
         "since": null,
         "timeout_ms": 1000
       },
@@ -5468,6 +5565,11 @@
         "additionalProperties": false,
         "description": "Wait for the next coalesced transition.",
         "properties": {
+          "include_events": {
+            "default": true,
+            "description": "Return event objects; set false for counts and cursors only.",
+            "type": "boolean"
+          },
           "journal_id": {
             "anyOf": [
               {
@@ -5496,7 +5598,7 @@
             "description": "Only return these event kinds; an empty list returns all kinds."
           },
           "limit": {
-            "default": 50,
+            "default": 20,
             "description": "Maximum number of items to return.",
             "maximum": 500,
             "minimum": 1,
@@ -5543,6 +5645,13 @@
           "earliest_available_version": {
             "default": 0,
             "type": "integer"
+          },
+          "event_kinds": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "default": {},
+            "type": "object"
           },
           "events": {
             "default": [],
@@ -5621,7 +5730,7 @@
         "input_bounded": true,
         "truncation_reported": false
       },
-      "purpose": "Block until the next coalesced UI transition (or timeout) and return the transition kinds. Use for idle waits instead of polling observe.",
+      "purpose": "Block until the next coalesced UI transition (or timeout) and return the transition kinds. Use for idle waits instead of polling observe. 'event_kinds' counts what arrived; set include_events=false to omit event objects.",
       "read_only": true,
       "reference_inputs": [],
       "required": [],

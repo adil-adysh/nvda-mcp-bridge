@@ -336,6 +336,21 @@ default for a screen reader.
 its former size and the trace tool no longer dumps a record by default. The
 catalog is still schema-heavy and `find_tools` does not remove it.
 
+### 0.12.0 follow-up
+
+| Change | Effect |
+|---|---|
+| `browse_mode`, `focus_in_foreground_window`, `focus_window_handle`, `foreground_window_handle` | Focus and foreground are separate facts; a focus object in a background window is visible rather than inferred. |
+| These fields as `expect` paths | An action can assert “focus is in this window” or “this window is foreground”. |
+| `observe.fields` and 8192-byte default | Nodes can be projected to `role`/`name`; the default observation is bounded. |
+| `press.sequence` | Several gestures in one call and one settle round. |
+| `set_value.update=append` | Appending no longer requires reading and rewriting the whole field. |
+| `wait_for_events.event_kinds` / `include_events=false` | Counts and cursors without the event objects. |
+| Window refs rejected as `within` | A document tool cannot silently search the application frame. |
+
+**Revised call efficiency: 6.5/10.** The remaining cost is the catalog and the
+number of overlapping observation tools, not a missing action vocabulary.
+
 ## Bottom line
 
 This is a strong, semantically honest tool contract wrapped in an expensive and slightly

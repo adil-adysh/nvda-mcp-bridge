@@ -86,6 +86,18 @@ class ObservationBoundTests(unittest.TestCase):
 		result = handlers.observe(["focus"], 120, Context(_payload(count=0)), detail="summary", max_bytes=100000)
 		self.assertNotIn("states", result["focus"])
 
+	def test_fields_projection_keeps_ref_and_only_requested_fields(self):
+		result = handlers.observe(
+			["focus", "children"],
+			120,
+			Context(_payload(count=2)),
+			detail="full",
+			max_bytes=0,
+			fields=["role", "name"],
+		)
+		self.assertEqual(set(result["focus"]), {"ref", "role", "name"})
+		self.assertEqual(set(result["children"][0]), {"ref", "role", "name"})
+
 
 if __name__ == "__main__":
 	unittest.main()

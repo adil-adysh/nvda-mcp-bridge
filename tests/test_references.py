@@ -161,6 +161,12 @@ class ReferenceTableTests(unittest.TestCase):
 		self.table.register({"f": FakeObject()}, state_version=1, identity_of=identity_of)
 		self.assertEqual(self.table.get("f").target_kind, "nvda")
 
+	def test_kind_of_answers_without_resolving_the_object(self):
+		self.table.register({"w": FakeObject(), "f": FakeObject()}, state_version=1, identity_of=identity_of)
+		self.assertEqual(self.table.kind_of("w"), "window")
+		self.assertEqual(self.table.kind_of("f"), "focus")
+		self.assertIsNone(self.table.kind_of("missing"))
+
 
 if __name__ == "__main__":
 	unittest.main()

@@ -53,9 +53,10 @@ def build_report(addon_root: Path) -> str:
 			"## Invariants",
 			"",
 			"- References are strings matching `^[a-z][a-z0-9]*$`; every action result carries `state_version`.",
-			"- `observe` returns `refs` and `top_window`; detail is `summary` unless requested.",
+			"- `observe` returns `refs`, `top_window`, `browse_mode`, `focus_in_foreground_window`, `focus_window_handle` and `foreground_window_handle`; detail is `summary` unless requested.",
 			"- Inputs reject unknown fields; outputs are validated against their published schema.",
-			"- `press` normalizes aliases and reports `requested` and `normalized_keys`.",
+			"- `press` normalizes aliases and reports `requested` and `normalized_keys`; `sequence` sends several gestures in one settle.",
+			"- `set_value.update` is `replace` or `append`; `wait_for_events.include_events=false` returns counts only.",
 			"- Every JSON-Schema property that has a bound is enforced at runtime too.",
 			"",
 		]

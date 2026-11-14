@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 
 DEFAULT_BRIDGE_TOKEN = ""
 TOKEN_HEADER = "X-NVDA-Bridge-Token"
-BRIDGE_VERSION = "0.11.1"
+BRIDGE_VERSION = "0.12.0"
 PROTOCOL = "nvda-bridge-protocol"
 PROTOCOL_VERSION = "1.0.0"
 API_LEVEL = 1
