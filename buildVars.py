@@ -29,15 +29,14 @@ Perfect for building automated accessibility solutions, AI assistants, and integ
 The add-on runs in the background on localhost:8765 and safely queues all NVDA operations to the main thread
 to prevent crashes. Use it with any tool that can make HTTP requests—no special protocol required."""),
 	# version
-	addon_version="0.11.0",
+	addon_version="0.11.1",
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version to be shown in the add-on store
-	addon_changelog=_("""Version 0.11.0:
-- MCP tools/list omits outputSchema by default, cutting the catalog roughly in half; NVDA_BRIDGE_OUTPUT_SCHEMAS=1 restores it
-- tools/list honours MCP pagination and rejects an unknown cursor instead of silently returning everything
-- get_action_trace returns a summary by default; detail="full" restores events, projection delta and log lines
-- locate rejects an unknown role with a suggestion instead of walking the window and returning an empty list
-- Clarified that 0.10.0 is the first public API-1 contract; stale 1.0.0/API-4 packages are not upgrades"""),
+	addon_changelog=_("""Version 0.11.1:
+- Install or Repair now stops every companion process running from the install folder before replacing the binary, and reports how many clients must reconnect
+- A companion that cannot be stopped aborts the update before any file is changed
+- Uninstall stops running companions first
+- Fixed 64-bit Windows process handles used by the process check"""),
 	# Author(s)
 	addon_author="adil shaikh <ah.shaikh97@gmail.com>",
 	# URL for the add-on documentation support

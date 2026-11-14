@@ -86,6 +86,113 @@ def validate_pe_binary(file_path: Path, expected_arch: str = "windows-x64") -> T
 		return False, f"Failed to parse PE binary: {e}"
 
 
+#: Every companion process image starts with this. The suffix matches rollback
+#: copies too (``.old``, ``.old-0.10.0``), so a failed earlier install cannot
+#: leave a stale process holding the old binary.
+_COMPANION_IMAGE_PREFIX = "nvda-mcp-server.exe"
+
+
+def _normalize_process_path(value: object) -> str:
+	"""Return a comparable Windows path without the extended-length prefix."""
+	text = os.fspath(value)
+	if text.startswith("\\\\?\\"):
+		text = text[4:]
+	return os.path.normcase(os.path.abspath(text))
+
+
+def is_companion_image_path(image_path: object, install_dir: Path) -> bool:
+	"""Whether a process image belongs to this companion install directory.
+
+	Only exact-directory matches are killed. A companion installed for another
+	client, or a developer build in another folder, must survive this install.
+	"""
+	if not image_path:
+		return False
+	try:
+		image = _normalize_process_path(image_path)
+		directory = _normalize_process_path(install_dir)
+	except Exception:
+		return False
+	return os.path.dirname(image) == directory and os.path.basename(image).startswith(_COMPANION_IMAGE_PREFIX)
+
+
+def _process_image_path(pid: int) -> Optional[str]:
+	"""Return a process's executable path, or ``None`` when it cannot be read."""
+	if os.name != "nt":
+		return None
+	import ctypes
+	from ctypes import wintypes
+
+	process_query_limited_information = 0x1000
+	kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+	kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+	kernel32.OpenProcess.restype = wintypes.HANDLE
+	kernel32.QueryFullProcessImageNameW.argtypes = [
+		wintypes.HANDLE,
+		wintypes.DWORD,
+		wintypes.LPWSTR,
+		ctypes.POINTER(wintypes.DWORD),
+	]
+	kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+	kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+	kernel32.CloseHandle.restype = wintypes.BOOL
+
+	handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
+	if not handle:
+		return None
+	try:
+		buffer = ctypes.create_unicode_buffer(32768)
+		size = wintypes.DWORD(len(buffer))
+		if not kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+			return None
+		return buffer.value
+	finally:
+		kernel32.CloseHandle(handle)
+
+
+def _terminate_process(pid: int) -> Tuple[bool, str]:
+	"""Terminate one process and wait for it to exit."""
+	if os.name != "nt":
+		return False, "not running on Windows"
+	import ctypes
+	from ctypes import wintypes
+
+	process_terminate = 0x0001
+	synchronize = 0x00100000
+	process_query_limited_information = 0x1000
+	error_invalid_parameter = 87
+	wait_timeout = 258
+	kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+	kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+	kernel32.OpenProcess.restype = wintypes.HANDLE
+	kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+	kernel32.TerminateProcess.restype = wintypes.BOOL
+	kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+	kernel32.WaitForSingleObject.restype = wintypes.DWORD
+	kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+	kernel32.CloseHandle.restype = wintypes.BOOL
+
+	handle = kernel32.OpenProcess(
+		process_terminate | synchronize | process_query_limited_information,
+		False,
+		pid,
+	)
+	if not handle:
+		error = ctypes.get_last_error()
+		if error == error_invalid_parameter:
+			return True, "already exited"
+		return False, f"OpenProcess failed (Windows error {error})"
+	try:
+		if not kernel32.TerminateProcess(handle, 1):
+			error = ctypes.get_last_error()
+			return False, f"TerminateProcess failed (Windows error {error})"
+		if kernel32.WaitForSingleObject(handle, 5000) == wait_timeout:
+			return False, "did not exit within 5 seconds"
+		return True, "stopped"
+	finally:
+		kernel32.CloseHandle(handle)
+
+
 @dataclass
 class CompanionStatus:
 	installed: bool
@@ -96,6 +203,11 @@ class CompanionStatus:
 	compatible: bool
 	integrity_state: str  # "missing", "installed", "outdated", "corrupt", "incompatible"
 	status_message: str
+
+
+def _format_stop_failures(failures: list[Tuple[int, str]]) -> str:
+	"""Describe stop failures without inventing a PID for enumeration errors."""
+	return "; ".join(reason if pid < 0 else f"PID {pid} ({reason})" for pid, reason in failures)
 
 
 class CompanionManager:
@@ -110,6 +222,97 @@ class CompanionManager:
 		self.bundled_dir = bundled_dir or get_bundled_companion_dir()
 		self.installed_exe_path = self.install_dir / "nvda-mcp-server.exe"
 		self.installed_manifest_path = self.install_dir / "installed_manifest.json"
+
+	def find_running_companion_pids(self) -> list[int]:
+		"""Return PIDs of companion processes started from this install directory.
+
+		The process is identified by the image path its own process reports, not
+		by image name alone, so another copy of the companion elsewhere is left
+		alone. Covered names include ``.old`` and ``.old-<version>`` rollback
+		copies from earlier failed upgrades.
+		"""
+		if os.name != "nt":
+			return []
+		import ctypes
+		from ctypes import wintypes
+
+		toolhelp_snapshot_process = 0x00000002
+		invalid_handle_value = ctypes.c_void_p(-1).value
+		kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+		class PROCESSENTRY32W(ctypes.Structure):
+			_fields_ = [
+				("dwSize", wintypes.DWORD),
+				("cntUsage", wintypes.DWORD),
+				("th32ProcessID", wintypes.DWORD),
+				("th32DefaultHeapID", ctypes.c_size_t),
+				("th32ModuleID", wintypes.DWORD),
+				("cntThreads", wintypes.DWORD),
+				("th32ParentProcessID", wintypes.DWORD),
+				("pcPriClassBase", wintypes.LONG),
+				("dwFlags", wintypes.DWORD),
+				("szExeFile", wintypes.WCHAR * 260),
+			]
+
+		kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+		kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+		kernel32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+		kernel32.Process32FirstW.restype = wintypes.BOOL
+		kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+		kernel32.Process32NextW.restype = wintypes.BOOL
+		kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+		kernel32.CloseHandle.restype = wintypes.BOOL
+
+		snapshot = kernel32.CreateToolhelp32Snapshot(toolhelp_snapshot_process, 0)
+		if snapshot == invalid_handle_value:
+			error = ctypes.get_last_error()
+			raise OSError(f"CreateToolhelp32Snapshot failed (Windows error {error})")
+		pids: list[int] = []
+		try:
+			entry = PROCESSENTRY32W()
+			entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+			if not kernel32.Process32FirstW(snapshot, ctypes.byref(entry)):
+				error = ctypes.get_last_error()
+				raise OSError(f"Process32FirstW failed (Windows error {error})")
+			while True:
+				pid = int(entry.th32ProcessID)
+				if pid and pid != os.getpid():
+					image_path = _process_image_path(pid)
+					if image_path and is_companion_image_path(image_path, self.install_dir):
+						pids.append(pid)
+				if not kernel32.Process32NextW(snapshot, ctypes.byref(entry)):
+					break
+		finally:
+			kernel32.CloseHandle(snapshot)
+		return pids
+
+	def stop_running_companions(self) -> Tuple[list[int], list[Tuple[int, str]]]:
+		"""Stop every companion running from this install directory.
+
+		Returns ``(stopped_pids, failures)``. A failure is ``(pid, reason)`` and
+		means a live process may still hold the old binary; callers must not
+		claim a clean replacement in that case.
+		"""
+		stopped: list[int] = []
+		failures: list[Tuple[int, str]] = []
+		try:
+			pids = self.find_running_companion_pids()
+		except OSError as e:
+			# An unreadable process list is not "no processes": replacement must
+			# not proceed when the old instances cannot be accounted for.
+			return [], [(-1, f"could not enumerate processes: {e}")]
+		for pid in pids:
+			ok, reason = _terminate_process(pid)
+			if ok:
+				stopped.append(pid)
+			else:
+				failures.append((pid, reason))
+		if stopped:
+			logHandler.log.info(f"Stopped running companion process(es): {stopped}")
+		if failures:
+			logHandler.log.warning(f"Could not stop companion process(es): {failures}")
+		return stopped, failures
+
 
 	def get_bundled_manifest(self) -> Optional[Dict[str, Any]]:
 		"""Read the bundled manifest.json if present."""
@@ -278,24 +481,29 @@ class CompanionManager:
 		force: bool = False,
 		is_cancelled: Optional[Callable[[], bool]] = None,
 		on_progress: Optional[Callable[[int, int, str], None]] = None,
+		terminate_running: bool = True,
 	) -> Tuple[bool, str]:
-		"""Safely install or repair the companion executable with complete 9-stage transaction.
+		"""Safely install or repair the companion executable with a 10-stage transaction.
 
 		Transaction stages:
 		1. Verify bundled executable and manifest
 		2. Stage new binary to .tmp
 		3. Verify staged integrity
 		4. Stage installation metadata to .tmp
-		5. Preserve previous installation (.old)
-		6. Activate new installation
-		7. Verify active installation on disk (triggers rollback on failure)
-		8. Commit installation state
-		9. Remove old backups only when safe
+		5. Stop companion processes running from this install directory
+		6. Preserve previous installation (.old)
+		7. Activate new installation
+		8. Verify active installation on disk (triggers rollback on failure)
+		9. Commit installation state
+		10. Remove old backups only when safe
 
 		Args:
 			force: Whether to overwrite even if the same version is already installed.
 			is_cancelled: Optional callback to check for user cancellation before activation.
 			on_progress: Optional callback taking (current_stage, total_stages, message).
+			terminate_running: Stop companion processes before replacing the binary. This
+				disconnects their MCP clients, which must reconnect; without it a client can
+				keep serving the old binary from memory after the file on disk is replaced.
 
 		Returns:
 			Tuple of (success: bool, message: str)
@@ -303,7 +511,7 @@ class CompanionManager:
 		def report_progress(stage: int, msg: str):
 			if on_progress:
 				try:
-					on_progress(stage, 9, msg)
+					on_progress(stage, 10, msg)
 				except Exception:
 					pass
 
@@ -384,8 +592,28 @@ class CompanionManager:
 			staged_bin_path.unlink(missing_ok=True)
 			return False, f"Failed to stage installation metadata: {e}"
 
-		# Stage 5: Preserve previous installation (.old)
-		report_progress(5, "Preserving existing installation for rollback safety...")
+		# Stage 5: Stop companions running from this install directory.
+		# Renaming a running executable works on Windows, but the process keeps
+		# executing the old image and its client keeps the stale tool catalog.
+		stopped_pids: list[int] = []
+		if terminate_running:
+			report_progress(5, "Stopping running companion processes...")
+			if is_cancelled and is_cancelled():
+				staged_bin_path.unlink(missing_ok=True)
+				staged_manifest_path.unlink(missing_ok=True)
+				return False, "Installation cancelled by user"
+			stopped_pids, failures = self.stop_running_companions()
+			if failures:
+				staged_bin_path.unlink(missing_ok=True)
+				staged_manifest_path.unlink(missing_ok=True)
+				details = _format_stop_failures(failures)
+				return False, (
+					f"Cannot replace companion: could not stop running process(es): {details}. "
+					"Close the MCP client using the companion and try again."
+				)
+
+		# Stage 6: Preserve previous installation (.old)
+		report_progress(6, "Preserving existing installation for rollback safety...")
 		had_existing_bin = self.installed_exe_path.is_file()
 		had_existing_manifest = self.installed_manifest_path.is_file()
 
@@ -417,8 +645,8 @@ class CompanionManager:
 			except Exception:
 				pass
 
-		# Stage 6: Activate new installation
-		report_progress(6, "Activating companion binary...")
+		# Stage 7: Activate new installation
+		report_progress(7, "Activating companion binary...")
 		try:
 			staged_bin_path.rename(self.installed_exe_path)
 		except Exception as activate_err:
@@ -437,8 +665,8 @@ class CompanionManager:
 			staged_manifest_path.unlink(missing_ok=True)
 			return False, f"Failed to activate companion binary: {activate_err}"
 
-		# Stage 7: Verify active installation on disk
-		report_progress(7, "Verifying active companion on disk...")
+		# Stage 8: Verify active installation on disk
+		report_progress(8, "Verifying active companion on disk...")
 		active_pe_valid, active_pe_msg = validate_pe_binary(self.installed_exe_path, manifest.get("architecture", "windows-x64"))
 		active_sha = calculate_sha256(self.installed_exe_path) if self.installed_exe_path.is_file() else ""
 
@@ -459,15 +687,15 @@ class CompanionManager:
 			staged_manifest_path.unlink(missing_ok=True)
 			return False, "Active companion failed verification after placement; rolled back to previous installation."
 
-		# Stage 8: Commit installation state
-		report_progress(8, "Committing installation metadata...")
+		# Stage 9: Commit installation state
+		report_progress(9, "Committing installation metadata...")
 		try:
 			staged_manifest_path.replace(self.installed_manifest_path)
 		except Exception as e:
 			logHandler.log.warning(f"Failed to commit installed companion manifest: {e}")
 
-		# Stage 9: Remove old backups only when safe
-		report_progress(9, "Finalizing installation...")
+		# Stage 10: Remove old backups only when safe
+		report_progress(10, "Finalizing installation...")
 		for p in (backup_bin_path, backup_manifest_path):
 			if p.is_file():
 				try:
@@ -476,12 +704,30 @@ class CompanionManager:
 					pass  # OS may clean up later if handles are releasing
 
 		logHandler.log.info(f"Successfully installed MCP companion v{version} at {self.installed_exe_path}")
-		return True, f"Successfully installed NVDA MCP companion v{version} to {self.installed_exe_path}"
+		stopped_note = (
+			f" Stopped {len(stopped_pids)} running companion process(es); MCP clients must reconnect."
+			if stopped_pids
+			else ""
+		)
+		return True, (
+			f"Successfully installed NVDA MCP companion v{version} to {self.installed_exe_path}.{stopped_note}"
+		)
 
-	def uninstall(self) -> Tuple[bool, str]:
-		"""Safely uninstall the companion binary."""
+	def uninstall(self, terminate_running: bool = True) -> Tuple[bool, str]:
+		"""Safely uninstall the companion binary.
+
+		Running companions are stopped first by default, for the same reason as
+		installation: a running image cannot be removed and a stale client would
+		otherwise keep using the deleted binary.
+		"""
 		if not self.installed_exe_path.is_file() and not self.installed_manifest_path.is_file():
 			return True, "Companion is not installed"
+
+		if terminate_running:
+			_, failures = self.stop_running_companions()
+			if failures:
+				details = _format_stop_failures(failures)
+				return False, f"Failed to stop running companion process(es): {details}"
 
 		try:
 			if self.installed_exe_path.is_file():

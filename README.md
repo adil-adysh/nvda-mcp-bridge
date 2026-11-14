@@ -24,12 +24,17 @@ A thread-safe NVDA add-on that exposes NVDA internals as an MCP-compatible inter
 
 1. Download the release package:
    ```
-   nvdaMcpBridge-0.11.0.nvda-addon
+   nvdaMcpBridge-0.11.1.nvda-addon
    ```
 2. Open the `.nvda-addon` file with NVDA to install it.
 3. Restart NVDA when prompted.
 
-> **Version line:** `0.10.0` is the first public API-1 contract and `0.11.0`
+> **Companion updates:** Install or Repair stops every companion process
+> started from its own install folder before replacing the binary. Clients
+> using those processes disconnect and must reconnect; companions installed
+> elsewhere are left running.
+
+> **Version line:** `0.10.0` is the first public API-1 contract and `0.11.1`
 > is the current one. A `1.0.0` package that advertises API level 4 predates
 > the reset and is **not** an upgrade; installing it over this line breaks the
 > companion. Check the installed version in NVDA's Add-on Manager if a client
@@ -425,7 +430,7 @@ identifier semantics and the retention limits.
 
 ### Contract invariants
 
-This is the first public contract (`api_level` 1, add-on `0.11.0`); there are no
+This is the first public contract (`api_level` 1, add-on `0.11.1`); there are no
 legacy aliases to carry.
 
 * Inputs are strict: unknown fields, wrong types and prose where a `ref` belongs

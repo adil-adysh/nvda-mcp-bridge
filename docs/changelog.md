@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.11.1
+
+### Fixed
+
+- Install or Repair stops every companion process started from the install
+  directory before replacing the binary. Renaming a running executable already
+  worked, but the live process kept serving the old build and its client kept a
+  stale tool catalog. The result now reports how many clients must reconnect,
+  and a process that cannot be stopped aborts before any file is changed.
+- Uninstall stops running companions first, so the executable is no longer
+  reported as permanently in use.
+- Windows process handles are declared as 64-bit handles; the previous
+  default `c_int` return could truncate a handle on 64-bit Windows.
+
 ## 0.11.0
 
 ### Changed

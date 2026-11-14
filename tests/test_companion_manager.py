@@ -4,9 +4,12 @@
 import hashlib
 import json
 import os
+import shutil
 import struct
+import subprocess
 import sys
 import tempfile
+import time
 import types
 import unittest
 from pathlib import Path
@@ -34,6 +37,7 @@ if _PACKAGE_NAME not in sys.modules:
 from nvdaMcpBridge.companion_manager import (  # noqa: E402
     CompanionManager,
     calculate_sha256,
+    is_companion_image_path,
     validate_pe_binary,
 )
 
@@ -253,6 +257,119 @@ class TestCompanionManager(unittest.TestCase):
         self.assertTrue(success)
         self.assertFalse(self.mgr.installed_exe_path.is_file())
         self.assertFalse(self.mgr.installed_manifest_path.is_file())
+
+
+class RunningCompanionTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.install_dir = self.root / "installed"
+        self.bundled_dir = self.root / "bundled"
+        self.install_dir.mkdir(parents=True)
+        self.bundled_dir.mkdir(parents=True)
+        binary = make_mock_pe_binary(0x8664)
+        (self.bundled_dir / "nvda-mcp-server.exe").write_bytes(binary)
+        (self.bundled_dir / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "binary_name": "nvda-mcp-server.exe",
+                    "version": "1.0.0",
+                    "architecture": "windows-x64",
+                    "sha256": hashlib.sha256(binary).hexdigest(),
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.mgr = CompanionManager(install_dir=self.install_dir, bundled_dir=self.bundled_dir)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_only_images_in_this_install_directory_match(self):
+        install = self.install_dir
+        self.assertTrue(is_companion_image_path(install / "nvda-mcp-server.exe", install))
+        self.assertTrue(is_companion_image_path(install / "nvda-mcp-server.exe.old-0.10.0", install))
+        self.assertFalse(is_companion_image_path(self.root / "other" / "nvda-mcp-server.exe", install))
+        self.assertFalse(is_companion_image_path(install / "unrelated.exe", install))
+        self.assertFalse(is_companion_image_path("", install))
+
+    def test_install_stops_running_companions_and_reports_them(self):
+        self.mgr.stop_running_companions = lambda: ([4242], [])
+        success, msg = self.mgr.install_or_repair(force=True)
+        self.assertTrue(success, msg)
+        self.assertIn("Stopped 1 running companion process", msg)
+        self.assertIn("must reconnect", msg)
+
+    def test_a_process_that_cannot_be_stopped_aborts_before_replacement(self):
+        self.mgr.stop_running_companions = lambda: ([], [(999, "access denied")])
+        success, msg = self.mgr.install_or_repair(force=True)
+        self.assertFalse(success)
+        self.assertIn("PID 999", msg)
+        self.assertFalse(self.mgr.installed_exe_path.exists(), "a failed stop must not leave a partial install")
+
+    def test_an_unreadable_process_list_aborts_before_replacement(self):
+        def fail():
+            raise OSError("snapshot failed")
+
+        self.mgr.find_running_companion_pids = fail
+        success, msg = self.mgr.install_or_repair(force=True)
+        self.assertFalse(success)
+        self.assertIn("could not enumerate processes", msg)
+        self.assertFalse(self.mgr.installed_exe_path.exists())
+
+    @unittest.skipUnless(os.name == "nt", "Windows process enumeration")
+    def test_a_real_process_from_the_install_directory_is_found_and_stopped(self):
+        source = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "ping.exe"
+        if not source.is_file():
+            self.skipTest("ping.exe not available")
+        dummy = self.install_dir / "nvda-mcp-server.exe"
+        shutil.copy2(source, dummy)
+        process = subprocess.Popen(
+            [str(dummy), "-n", "30", "127.0.0.1"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=0x08000000,
+        )
+        try:
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and process.pid not in self.mgr.find_running_companion_pids():
+                time.sleep(0.05)
+            self.assertIn(process.pid, self.mgr.find_running_companion_pids())
+            stopped, failures = self.mgr.stop_running_companions()
+            self.assertIn(process.pid, stopped)
+            self.assertEqual(failures, [])
+            process.wait(timeout=5)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+
+    @unittest.skipUnless(os.name == "nt", "Windows process enumeration")
+    def test_install_replaces_a_binary_while_its_process_is_running(self):
+        source = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "ping.exe"
+        if not source.is_file():
+            self.skipTest("ping.exe not available")
+        self.mgr.install_or_repair()
+        shutil.copy2(source, self.mgr.installed_exe_path)
+        process = subprocess.Popen(
+            [str(self.mgr.installed_exe_path), "-n", "30", "127.0.0.1"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=0x08000000,
+        )
+        try:
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline and process.pid not in self.mgr.find_running_companion_pids():
+                time.sleep(0.05)
+            success, msg = self.mgr.install_or_repair(force=True)
+            self.assertTrue(success, msg)
+            self.assertIn("Stopped 1 running companion process", msg)
+            self.assertIsNotNone(process.poll(), "the old process must be gone")
+            self.assertEqual(calculate_sha256(self.mgr.installed_exe_path), hashlib.sha256(make_mock_pe_binary()).hexdigest())
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
 
 
 if __name__ == "__main__":

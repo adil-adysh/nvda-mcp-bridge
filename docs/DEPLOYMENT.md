@@ -8,8 +8,8 @@ bridge fails closed with no tools, which looks like a broken client.
 
 | Artifact | Current | Notes |
 |---|---|---|
-| Add-on | `0.11.0` | `api_level` 1 |
-| Companion | `0.11.0` | speaks API level 1 only |
+| Add-on | `0.11.1` | `api_level` 1 |
+| Companion | `0.11.1` | speaks API level 1 only |
 | Protocol | `1.0.0` | `nvda-bridge-protocol` |
 
 `0.10.0` was the first public API-1 contract. A `1.0.0` package advertising API
@@ -23,7 +23,9 @@ this line, and do not treat its backup as the current build. Keep at most one
    changed).
 2. Install `nvdaMcpBridge-<version>.nvda-addon` with NVDA's Add-on Manager.
 3. Install or repair the companion from **NVDA Menu → Tools → NVDA MCP Bridge
-   → Install or Repair MCP Companion**.
+   → Install or Repair MCP Companion**. This stops every companion process
+   started from that install folder; their MCP clients must reconnect. A
+   companion installed in another folder is left running.
 4. Restart NVDA.
 5. Verify the bridge and the companion independently:
 
@@ -37,7 +39,7 @@ python scripts/mcp_tool_catalog_probe.py
 The health response must report `bridge_version` equal to the package version
 and `api_level: 1` with `supported_api_levels: [1]`. The catalog probe must
 report the same tool count the bridge's `/tools` endpoint returns (33 for
-`0.11.0` without developer mode).
+`0.11.1` without developer mode).
 
 ## Companion environment
 
@@ -74,7 +76,7 @@ dialogs before restarting when a hands-off restart matters.
 
 | Artifact | Size | SHA-256 |
 |---|---:|---|
-| `nvdaMcpBridge-0.11.0.nvda-addon` | 4,623,722 B | `A6B924382E39FA926986CC9BC75E91B717C613AF9171122BE53F2580F2571960` |
+| `nvdaMcpBridge-0.11.1.nvda-addon` | 4,625,977 B | `56151204D0256A7B9DE13DFA797FDBE4BA456B7FAF4647588D7A0698CCE3349D` |
 | `AIAssistant-0.14.1.nvda-addon` | 24,899,770 B | `7116F9FA0DA4A162FBA8A22A677FAF1A7069740495DD20D92CC0479422D21E79` |
 
 ## Rollback

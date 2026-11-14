@@ -181,6 +181,10 @@ def install_companion_interactive(
 	"""
 	comp_mgr = CompanionManager()
 	status = comp_mgr.inspect_installed(verify_hash=False)
+	try:
+		running_count = len(comp_mgr.find_running_companion_pids())
+	except Exception:
+		running_count = 0
 
 	if _GUI_AVAILABLE and wx and gui:
 		title = "NVDA MCP Bridge — Install Companion"
@@ -191,6 +195,11 @@ def install_companion_interactive(
 			f"Current status: {status.status_message}\n\n"
 			f"Would you like to install / repair the companion executable now?"
 		)
+		if running_count:
+			prompt += (
+				f"\n\n{running_count} running companion process(es) will be stopped so the new "
+				f"binary is used. Their MCP clients will disconnect and must reconnect."
+			)
 		resp = gui.messageBox(prompt, title, wx.YES_NO | wx.ICON_QUESTION, parent=parent)
 		if resp != wx.YES:
 			return False, "Installation cancelled by user"
