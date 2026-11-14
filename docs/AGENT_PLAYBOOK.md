@@ -20,8 +20,10 @@ search_logs(levels=["ERROR"], limit=20)
 `find_tools` returns compact summaries (name, group, description, required
 parameters), not schemas. `get_tool_schema` returns one tool's input schema,
 and its output schema only when you ask for it. This is an index, not a smaller
-`tools/list`: an MCP client still fetches the catalog it wants. To shrink that
-catalog itself, use `NVDA_BRIDGE_CATEGORIES` on the companion.
+`tools/list`: an MCP client still fetches the catalog it wants. The companion
+omits `outputSchema` from `tools/list` by default; call
+`get_tool_schema(name, include_output_schema=true)` when you need it. To shrink
+the catalog itself, use `NVDA_BRIDGE_CATEGORIES` on the companion.
 
 The group prefix in the title (`Diagnostics · Search Logs`) is display-only;
 tool names are stable.

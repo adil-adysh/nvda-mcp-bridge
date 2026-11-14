@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.11.0
+
+### Changed
+
+- `tools/list` omits each tool's `outputSchema` by default. Output schemas were
+  about half the catalog bytes; `structuredContent` is still validated against
+  the bridge schema, `get_tool_schema(include_output_schema=true)` still returns
+  it, and `NVDA_BRIDGE_OUTPUT_SCHEMAS=1` restores the advertised copy.
+- `get_action_trace` returns a summary by default. The event list, projection
+  delta and native-log line lists are available with `detail="full"`, and
+  `omitted` names what the summary removed.
+
+### Fixed
+
+- `locate` rejects a role NVDA does not have (for example `banana`) with a
+  correction and close matches, instead of walking the window and returning an
+  empty success.
+- `tools/list` honours MCP pagination (`NVDA_BRIDGE_TOOLS_PAGE_SIZE`, default
+  100) and rejects an unknown cursor instead of silently returning every tool.
+- Documented the version line: the API-4 `1.0.0` package predates the reset and
+  is not an upgrade from `0.10.0`/`0.11.0`.
+
 ## 0.10.0
 
 ### Added

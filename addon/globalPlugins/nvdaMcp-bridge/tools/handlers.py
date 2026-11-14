@@ -454,6 +454,9 @@ def locate(
 	"""
 	if not role and not name:
 		raise ValueError("'locate' needs at least one of 'role' or 'name'")
+	from ..server.locate import validate_role
+
+	role = validate_role(role)
 	if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 50:
 		raise ValueError("'limit' must be an integer between 1 and 50")
 	if not isinstance(max_nodes, int) or isinstance(max_nodes, bool) or not 1 <= max_nodes <= 2000:
@@ -1100,7 +1103,37 @@ def wait_for_events(
 	}
 
 
-def get_action_trace(trace_id: str, context: Any) -> dict[str, Any]:
+def _summarize_trace(trace: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+	"""Drop the bulky evidence lists, keeping every diagnostic conclusion.
+
+	The event objects and the native-log lines are the two parts that grow with
+	what happened, and the parts a model reads only after the outcome, stage and
+	exception have already narrowed the question. Counts and status flags stay,
+	so the summary still says whether evidence existed and whether it was
+	complete.
+	"""
+	import copy
+
+	summary = copy.deepcopy(trace)
+	omitted: list[str] = []
+	observation = summary.get("observation")
+	if isinstance(observation, dict):
+		if "events" in observation:
+			observation.pop("events")
+			omitted.append("observation.events")
+		if "delta" in observation:
+			observation.pop("delta")
+			omitted.append("observation.delta")
+	evidence = summary.get("evidence")
+	if isinstance(evidence, dict):
+		for key in ("bridge_logs", "native_log_matches"):
+			if key in evidence:
+				evidence.pop(key)
+				omitted.append(f"evidence.{key}")
+	return summary, omitted
+
+
+def get_action_trace(trace_id: str, context: Any, detail: str = "summary") -> dict[str, Any]:
 	"""Read one retained action trace.
 
 	Purely a store read: no NVDA call, no state change, and no dependency on the
@@ -1108,6 +1141,9 @@ def get_action_trace(trace_id: str, context: Any) -> dict[str, Any]:
 	``found: false`` with the retention window, because an expired trace is a
 	normal consequence of bounded storage rather than a failure of the action
 	being investigated.
+
+	``detail="summary"`` returns the same conclusions with the event list, the
+	projection delta and the log-line lists removed; ``omitted`` names them.
 	"""
 	store = getattr(context, "trace_store", None)
 	trace = None
@@ -1132,14 +1168,22 @@ def get_action_trace(trace_id: str, context: Any) -> dict[str, Any]:
 			"trace_id": trace_id,
 			"found": False,
 			"schema_version": 1,
+			"detail": detail,
 			"missing_reason": "expired_or_unknown" if store is not None else "not_stored",
 			"retention": window,
 		}
+	if detail == "full":
+		payload = trace
+		omitted: list[str] = []
+	else:
+		payload, omitted = _summarize_trace(trace)
 	return {
 		"trace_id": trace_id,
 		"found": True,
 		"schema_version": int(trace.get("schema_version", 1)),
-		"trace": trace,
+		"detail": detail,
+		"trace": payload,
 		"retention": window,
+		"omitted": omitted,
 	}
 

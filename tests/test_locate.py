@@ -85,6 +85,20 @@ class RoleNormalizationTests(unittest.TestCase):
 	def test_unaliased_roles_are_preserved(self):
 		self.assertEqual(locate_rules.normalize_role("table cell"), "TABLECELL")
 
+	def test_a_role_nvda_does_not_have_is_rejected(self):
+		with self.assertRaises(ValueError) as caught:
+			locate_rules.validate_role("banana")
+		self.assertIn("Unknown NVDA role", str(caught.exception))
+
+	def test_a_misspelled_role_suggests_a_real_one(self):
+		with self.assertRaises(ValueError) as caught:
+			locate_rules.validate_role("buton")
+		self.assertIn("BUTTON", str(caught.exception))
+
+	def test_roles_without_a_uia_equivalent_are_still_valid(self):
+		self.assertEqual(locate_rules.validate_role("table cell"), "TABLECELL")
+		self.assertEqual(locate_rules.validate_role("section"), "SECTION")
+
 
 class RoleMatchingTests(unittest.TestCase):
 	def test_missing_filter_matches_everything(self):
@@ -218,6 +232,16 @@ class LocateHandlerTests(unittest.TestCase):
 		with self.assertRaises(ValueError) as caught:
 			handlers.locate(None, None, False, None, 10, 400, 500, FakeContext())
 		self.assertIn("role", str(caught.exception))
+
+	def test_an_unknown_role_is_rejected_before_searching(self):
+		search = FakeSearch([], [])
+		_fake_bridge.locate = search
+
+		with self.assertRaises(ValueError) as caught:
+			handlers.locate("banana", None, False, None, 10, 400, 500, FakeContext())
+
+		self.assertIn("Unknown NVDA role", str(caught.exception))
+		self.assertEqual(search.calls, [], "an invalid role must not walk the UI")
 
 	def test_bounds_are_rejected_with_the_caller_bounds_named(self):
 		context = FakeContext()

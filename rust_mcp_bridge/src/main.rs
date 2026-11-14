@@ -178,6 +178,60 @@ fn extend_output_schema(schema: &Value) -> Value {
     extended
 }
 
+/// Encode a tools/list offset as an opaque-enough cursor.
+///
+/// MCP says the cursor is opaque, not that it must be encrypted. The prefix
+/// makes a malformed value distinguishable from an offset that happens to be
+/// out of range, so the error can say which mistake was made.
+fn encode_tools_cursor(offset: usize) -> String {
+    format!("t{offset:x}")
+}
+
+fn decode_tools_cursor(cursor: &str) -> Option<usize> {
+    cursor
+        .strip_prefix('t')
+        .filter(|digits| !digits.is_empty())
+        .and_then(|digits| usize::from_str_radix(digits, 16).ok())
+}
+
+/// Return one page of the catalog and the cursor for the next, if any.
+///
+/// An unknown cursor is a client error, not an empty result: a client that
+/// keeps a cursor past a catalog refresh must re-list from the start rather
+/// than silently lose tools.
+fn tools_page(
+    tools: Vec<Tool>,
+    cursor: Option<&str>,
+    page_size: usize,
+) -> std::result::Result<(Vec<Tool>, Option<String>), ErrorData> {
+    let total = tools.len();
+    let offset = match cursor {
+        None => 0,
+        Some(cursor) => decode_tools_cursor(cursor).ok_or_else(|| {
+            ErrorData::invalid_params(
+                format!("Unknown tools/list cursor: {cursor:?}; re-list without a cursor"),
+                None,
+            )
+        })?,
+    };
+    if offset > total {
+        return Err(ErrorData::invalid_params(
+            format!(
+                "tools/list cursor points past the end of the catalog ({offset} > {total}); re-list without a cursor"
+            ),
+            None,
+        ));
+    }
+    let end = offset.saturating_add(page_size).min(total);
+    let page = tools
+        .into_iter()
+        .skip(offset)
+        .take(end.saturating_sub(offset))
+        .collect();
+    let next_cursor = (end < total).then(|| encode_tools_cursor(end));
+    Ok((page, next_cursor))
+}
+
 /// A human-facing tool title. MCP clients show it in approval UIs, where
 /// `get_focus_lineage` is much less readable than `Get Focus Lineage`.
 fn human_title(name: &str) -> String {
@@ -238,6 +292,14 @@ impl ToolCatalog {
             runtime_by_name: HashMap::new(),
         }
     }
+
+    /// Drop the advertised `outputSchema`, keeping the runtime copy used for
+    /// validation and `get_tool_schema(include_output_schema=true)`.
+    fn omit_output_schemas(&mut self) {
+        for tool in &mut self.tools_for_mcp {
+            tool.output_schema = None;
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -251,6 +313,13 @@ struct BridgeClient {
     /// every turn. A companion serving a production agent can ask the bridge for
     /// actions and observations only, and never load the diagnostics.
     categories: Option<String>,
+    /// Whether `tools/list` advertises each tool's `outputSchema`.
+    ///
+    /// Output schemas are documentation: `structuredContent` is still returned
+    /// and still validated against the bridge's data model. They are roughly
+    /// half of the catalog bytes, so they are opt-in rather than paid for on
+    /// every client that never reads them.
+    include_output_schemas: bool,
 }
 
 impl BridgeClient {
@@ -306,11 +375,26 @@ impl BridgeClient {
             );
         }
 
+        let include_output_schemas = env::var("NVDA_BRIDGE_OUTPUT_SCHEMAS")
+            .ok()
+            .map(|raw| {
+                matches!(
+                    raw.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false);
+        info!(
+            include_output_schemas,
+            "Output schemas are {} in tools/list", if include_output_schemas { "included" } else { "omitted" }
+        );
+
         Ok(Self {
             client,
             base_url,
             auth_token,
             categories,
+            include_output_schemas,
         })
     }
 
@@ -368,7 +452,11 @@ impl BridgeClient {
             payload.count,
             payload.tools.len(),
         ).map_err(|msg| anyhow!("{}", msg))?;
-        Self::build_catalog(payload)
+        let mut catalog = Self::build_catalog(payload)?;
+        if !self.include_output_schemas {
+            catalog.omit_output_schemas();
+        }
+        Ok(catalog)
     }
 
     fn build_catalog(payload: BridgeToolsResponse) -> Result<ToolCatalog> {
@@ -736,6 +824,13 @@ struct NvdaServer {
     peer: Arc<RwLock<Option<Peer<RoleServer>>>>,
     subscription_tx: broadcast::Sender<i64>,
     shutdown: Arc<AtomicBool>,
+    /// Maximum tools returned by one `tools/list` page.
+    ///
+    /// MCP pagination is a transport contract, not a token-saving feature: a
+    /// client that needs every tool still walks every page. The default is
+    /// high enough that today's catalog is one page, so behaviour only changes
+    /// when a caller asks (or a deployment opts in with a smaller value).
+    tools_page_size: usize,
 }
 
 impl NvdaServer {
@@ -745,12 +840,18 @@ impl NvdaServer {
 
     fn with_catalog(bridge_client: BridgeClient, tool_catalog: Arc<RwLock<ToolCatalog>>) -> Self {
         let (subscription_tx, _) = broadcast::channel(64);
+        let tools_page_size = env::var("NVDA_BRIDGE_TOOLS_PAGE_SIZE")
+            .ok()
+            .and_then(|raw| raw.trim().parse::<usize>().ok())
+            .unwrap_or(100)
+            .clamp(1, 1000);
         Self {
             bridge_client,
             tool_catalog,
             peer: Arc::new(RwLock::new(None)),
             subscription_tx,
             shutdown: Arc::new(AtomicBool::new(false)),
+            tools_page_size,
         }
     }
 
@@ -1035,11 +1136,20 @@ impl ServerHandler for NvdaServer {
 
     fn list_tools(
         &self,
-        _request: Option<PaginatedRequestParams>,
+        request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = std::result::Result<ListToolsResult, ErrorData>> + Send + '_ {
         let tools = self.catalog_read().tools_for_mcp.clone();
-        future::ready(Ok(ListToolsResult::with_all_items(tools)))
+        let cursor = request.and_then(|params| params.cursor);
+        future::ready(
+            tools_page(tools, cursor.as_deref(), self.tools_page_size).map(|(tools, next_cursor)| {
+                ListToolsResult {
+                    tools,
+                    next_cursor,
+                    ..Default::default()
+                }
+            }),
+        )
     }
 
     fn list_resources(
@@ -1967,7 +2077,7 @@ mod tests {
         .expect("validate_tools_payload failed");
 
         // Ensure build_catalog can consume it and produce a catalog
-        let catalog = BridgeClient::build_catalog(payload).expect("build_catalog failed");
+        let mut catalog = BridgeClient::build_catalog(payload).expect("build_catalog failed");
 
         assert!(catalog.tools_for_mcp.len() > 0, "No tools found in schema.json");
         assert_eq!(catalog.tools_for_mcp.len(), catalog.runtime_by_name.len(), "Mismatch between tools_for_mcp and runtime_by_name sizes");
@@ -1980,6 +2090,26 @@ mod tests {
             find_tools.title.as_deref(),
             Some("Discovery · Find Tools"),
             "tool titles should group by category without renaming the tool"
+        );
+        assert!(
+            find_tools.output_schema.is_some(),
+            "catalog construction keeps output schemas for validation"
+        );
+
+        // Compact mode strips only the advertised copy. Runtime validation and
+        // get_tool_schema(include_output_schema=true) still have the schema.
+        catalog.omit_output_schemas();
+        assert!(
+            catalog.tools_for_mcp.iter().all(|tool| tool.output_schema.is_none()),
+            "compact mode must not advertise output schemas"
+        );
+        assert!(
+            catalog
+                .runtime_by_name
+                .get("find_tools")
+                .and_then(|runtime| runtime.output_schema_value.as_ref())
+                .is_some(),
+            "runtime must keep the output schema used to validate responses"
         );
     }
 
@@ -2422,5 +2552,50 @@ mod tests {
         assert!(catalog.tools_for_mcp.is_empty());
         assert!(catalog.bridge_version.starts_with("unavailable"));
         assert!(schema_hash_changed(catalog.schema_hash.as_deref(), Some("abc")));
+    }
+
+    fn named_tools(count: usize) -> Vec<Tool> {
+        (0..count)
+            .map(|index| Tool::new(format!("tool_{index}"), "x", Map::new()))
+            .collect()
+    }
+
+    #[test]
+    fn the_default_page_holds_every_tool() {
+        let (page, next) = tools_page(named_tools(5), None, 100).unwrap();
+        assert_eq!(page.len(), 5);
+        assert!(next.is_none(), "a short page has no successor");
+    }
+
+    #[test]
+    fn a_full_page_reports_an_opaque_cursor_and_resumes() {
+        let (first, cursor) = tools_page(named_tools(5), None, 2).unwrap();
+        assert_eq!(
+            first.iter().map(|tool| tool.name.clone()).collect::<Vec<_>>(),
+            ["tool_0", "tool_1"]
+        );
+        let cursor = cursor.expect("more tools remain");
+        let (second, cursor) = tools_page(named_tools(5), Some(&cursor), 2).unwrap();
+        assert_eq!(
+            second.iter().map(|tool| tool.name.clone()).collect::<Vec<_>>(),
+            ["tool_2", "tool_3"]
+        );
+        let (last, cursor) = tools_page(named_tools(5), cursor.as_deref(), 2).unwrap();
+        assert_eq!(last[0].name, "tool_4");
+        assert!(cursor.is_none());
+    }
+
+    #[test]
+    fn an_unknown_tools_cursor_is_a_client_error() {
+        for cursor in ["banana", "t", "tzz", "tffffffffffffffff"] {
+            let error = tools_page(named_tools(3), Some(cursor), 2)
+                .expect_err("malformed or out-of-range cursors must be rejected");
+            assert_eq!(error.code.0, -32602, "invalid params code");
+            assert!(
+                error.message.contains("cursor"),
+                "error should name the cursor: {}",
+                error.message
+            );
+        }
     }
 }

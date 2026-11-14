@@ -24,10 +24,17 @@ A thread-safe NVDA add-on that exposes NVDA internals as an MCP-compatible inter
 
 1. Download the release package:
    ```
-   nvdaMcpBridge-0.10.0.nvda-addon
+   nvdaMcpBridge-0.11.0.nvda-addon
    ```
 2. Open the `.nvda-addon` file with NVDA to install it.
 3. Restart NVDA when prompted.
+
+> **Version line:** `0.10.0` is the first public API-1 contract and `0.11.0`
+> is the current one. A `1.0.0` package that advertises API level 4 predates
+> the reset and is **not** an upgrade; installing it over this line breaks the
+> companion. Check the installed version in NVDA's Add-on Manager if a client
+> reports `Bridge API level ... does not support this companion's level`.
+> See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ---
 
@@ -400,10 +407,12 @@ and worked examples.
 Every action response carries `trace_id` and a compact `trace` summary
 (`outcome`, `duration_ms`, exception type/stage, event range, projection change,
 expectation status, observation completeness). Pass that id to
-`get_action_trace` for the full record: lifecycle milestones, the structured
+`get_action_trace` for the diagnostic record: lifecycle milestones, the structured
 exception and its traceback, the event window it spanned, the baseline and final
-projection with their delta, the expected-postcondition result, best-effort
-native log matches, and the list of things the record cannot prove.
+projection, the expected-postcondition result, best-effort native log matches,
+and the list of things the record cannot prove. The default read is a summary
+(outcome, stage, timeline, counts and statuses); `detail="full"` adds the event
+list, projection delta and log-line lists.
 
 `result.changed` is a projection diff, not a statement about the whole screen,
 and an `expect` that does not match is reported separately from a handler
@@ -416,7 +425,7 @@ identifier semantics and the retention limits.
 
 ### Contract invariants
 
-This is the first public contract (`api_level` 1, add-on `0.10.0`); there are no
+This is the first public contract (`api_level` 1, add-on `0.11.0`); there are no
 legacy aliases to carry.
 
 * Inputs are strict: unknown fields, wrong types and prose where a `ref` belongs
@@ -427,8 +436,11 @@ legacy aliases to carry.
   `{left, top, width, height}`.
 * Payloads are bounded by default: health, logs, locate and observations return
   summaries unless detail is requested.
-* Every tool has a published `inputSchema` and `outputSchema`; the companion
-  returns matching `structuredContent`.
+* Every tool has a published `inputSchema`; `structuredContent` is validated
+  against the bridge's `outputSchema`, which is advertised only when
+  `NVDA_BRIDGE_OUTPUT_SCHEMAS=1` (it is roughly half of the catalog bytes).
+  Ask the bridge for a tool's output schema with
+  `get_tool_schema(name, include_output_schema=true)`.
 
 See [docs/TOOL_CONTRACT.md](docs/TOOL_CONTRACT.md) for the generated matrix and
 [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md) for canonical workflows.

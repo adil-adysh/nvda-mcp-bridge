@@ -473,6 +473,8 @@ def generate_common_schema(defn: Dict[str, Any]) -> Dict[str, Any]:
                 "properties": {
                     "bridge_version": {"$ref": "#/$defs/semver"},
                     "api_level": {"type": "integer", "minimum": 1},
+                    "instance_id": {"type": "string", "pattern": "^$|^[0-9a-f]{32}$"},
+                    "started_at": {"type": "string", "maxLength": 64},
                 },
             },
             "nvdaStatusSnapshot": {
@@ -505,6 +507,28 @@ def generate_common_schema(defn: Dict[str, Any]) -> Dict[str, Any]:
                     "retry_policy": {"$ref": "#/$defs/retryPolicy"},
                     "retry_after_ms": {"type": "integer", "minimum": 1, "maximum": 600000},
                     "details": {"type": "object"},
+                    "recovery": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["action", "hint"],
+                        "properties": {
+                            "action": {
+                                "type": "string",
+                                "enum": [
+                                    "none",
+                                    "observe",
+                                    "wait",
+                                    "fix_arguments",
+                                    "configure_token",
+                                    "request_permission",
+                                    "retry_later",
+                                    "read_diagnostics",
+                                    "resync",
+                                ],
+                            },
+                            "hint": {"type": "string", "minLength": 1, "maxLength": 512},
+                        },
+                    },
                 },
                 "allOf": [
                     {
@@ -649,6 +673,12 @@ def generate_tool_discovery_schema(defn: Dict[str, Any]) -> Dict[str, Any]:
             },
             "count": {"type": "integer", "minimum": 0},
             "schema_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "instance_id": {
+                "type": "string",
+                "pattern": "^$|^[0-9a-f]{32}$",
+                "description": "Bridge process identity; absent only from older bridges.",
+            },
+            "started_at": {"type": "string", "maxLength": 64},
         },
     }
 
@@ -709,6 +739,25 @@ def generate_action_response_schema(defn: Dict[str, Any]) -> Dict[str, Any]:
                     "uncertain": {"type": "boolean"},
                     "completed": {"type": "boolean"},
                     "expect_mismatch": {"type": "object"},
+                    "projection_available": {"type": "boolean"},
+                    "observed": {"type": "boolean"},
+                    "events_complete": {"type": "boolean"},
+                    "settling_status": {
+                        "type": "string",
+                        "enum": ["settled", "budget_expired", "unavailable", "cancelled"],
+                    },
+                    "budget_expired": {"type": "boolean"},
+                    "verification": {
+                        "type": "string",
+                        "enum": ["confirmed", "contradicted", "unavailable"],
+                    },
+                    "evidence": {
+                        "type": "array",
+                        "maxItems": 8,
+                        "items": {"type": "object"},
+                    },
+                    "cancelled": {"type": "boolean"},
+                    "scope": {"type": "object"},
                 },
             },
             "error": {"$ref": "common.schema.json#/$defs/actionError"},
@@ -767,6 +816,10 @@ def generate_health_schema(defn: Dict[str, Any]) -> Dict[str, Any]:
                     "braille_available": {"type": "boolean"},
                 },
             },
+            "instance_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+            "started_at": {"type": "string", "format": "date-time"},
+            "capabilities": {"type": "object", "additionalProperties": True},
+            "developer_mode": {"type": "boolean"},
         },
     }
 

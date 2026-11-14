@@ -20,6 +20,21 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
+def _version_key(path: Path) -> tuple[int, ...]:
+    """Sort packages by the version in the filename, newest last.
+
+    More than one archive can sit in the repository root while a deployment is
+    being verified. Picking the first alphabetically validated the old package
+    and reported success for a build that was not the one being shipped.
+    """
+    import re
+
+    match = re.search(r"-(\d+(?:\.\d+)*)\.nvda-addon$", path.name)
+    if match is None:
+        return ()
+    return tuple(int(part) for part in match.group(1).split("."))
+
+
 def find_addon_file() -> Path:
     candidates = list(REPO_ROOT.glob("*.nvda-addon"))
     if not candidates:
@@ -27,7 +42,7 @@ def find_addon_file() -> Path:
         candidates = list((REPO_ROOT / "dist").glob("*.nvda-addon"))
     if not candidates:
         sys.exit("Error: No .nvda-addon file found in repository root or dist/")
-    return candidates[0]
+    return max(candidates, key=_version_key)
 
 
 def validate_addon_package(addon_path: Path) -> None:

@@ -853,7 +853,8 @@ ALL_NVDA_TOOLS = [
                 "lifecycle milestones, structured exceptions, the event window it spanned, the "
                 "baseline and final UI projection, the expected-postcondition result, and "
                 "best-effort native log matches. Every action response carries a trace_id. An "
-                "expired trace returns found=false with the retention window."
+                "expired trace returns found=false with the retention window. Returns a summary "
+                "by default; pass detail='full' for the event list, projection delta and log lines."
             ),
             category="diagnostics",
             read_only=True,
@@ -871,6 +872,7 @@ ALL_NVDA_TOOLS = [
         lambda input_obj, context: tool_handlers.get_action_trace(
             trace_id=input_obj.trace_id,
             context=context,
+            detail=input_obj.detail,
         ),
     ),
     # ------------------------------------------------------------------

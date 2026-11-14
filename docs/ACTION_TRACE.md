@@ -7,7 +7,11 @@ links to it rather than replacing it.
 
 Read one back with `get_action_trace`. Every action response already carries the
 id and a compact summary, so no extra call is needed to find out that something
-went wrong — only to find out *why*.
+went wrong — only to find out *why*. The default read is a summary: it keeps the
+outcome, failure stage, exception, timeline, event counts, projection status and
+expectation result, and removes the event list, the projection delta and the
+native-log line lists. `detail="full"` returns the whole record; `omitted` names
+what a summary left out.
 
 ## Three identifiers, three meanings
 

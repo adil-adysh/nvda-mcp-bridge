@@ -1,6 +1,6 @@
 # NVDA MCP Server
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-0.11.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-brightgreen)
 
 Model Context Protocol (MCP) server for NVDA automation, built in Rust. Allows AI assistants like Claude to control NVDA through a standardized interface.
@@ -9,7 +9,7 @@ Model Context Protocol (MCP) server for NVDA automation, built in Rust. Allows A
 
 - Single-threaded Tokio runtime for compatibility with NVDA
 - Dynamically discovers NVDA tools from bridge at startup
-- JSON-RPC 2.0 stdio transport with MCP 2024-11-05 protocol
+- JSON-RPC 2.0 stdio transport with MCP 2025-06-18 protocol
 - Envelope-aware output validation with legacy fallback
 - Atomic request ID generation for bridge actions
 - Comprehensive logging and error handling
@@ -60,6 +60,9 @@ Add to `%APPDATA%\Claude\claude_desktop_config.json`:
 | `NVDA_BRIDGE_TOKEN` | Auto-discovered from `%APPDATA%` | ❌ No | Authentication token for NVDA bridge |
 | `NVDA_BRIDGE_URL` | `http://127.0.0.1:8765` | ❌ No | Bridge server URL |
 | `NVDA_BRIDGE_TIMEOUT_SECS` | `15` | ❌ No | HTTP bridge client timeout in seconds |
+| `NVDA_BRIDGE_CATEGORIES` | all | ❌ No | Comma-separated category allow-list; the only lever that removes tools |
+| `NVDA_BRIDGE_OUTPUT_SCHEMAS` | `0` | ❌ No | Set to `1` to advertise `outputSchema` in `tools/list`; omitted by default to halve the catalog |
+| `NVDA_BRIDGE_TOOLS_PAGE_SIZE` | `100` | ❌ No | Maximum tools per `tools/list` page (1–1000) |
 | `LOG_LEVEL` | `INFO` | ❌ No | Log level (TRACE, DEBUG, INFO, WARN, ERROR) |
 
 ## 🏗️ Architecture
@@ -70,7 +73,7 @@ AI Assistant (Claude/Cursor/etc)
         ├─ Stdin (JSON-RPC 2.0 Request)
         │
     ┌───▼───────────────────┐
-    │  NVDA MCP Server v1.0  │
+    │  NVDA MCP Server 0.11 │
     │    (Rust Binary)       │
     │                        │
     │ • Request ID Injection │
@@ -84,7 +87,7 @@ AI Assistant (Claude/Cursor/etc)
         │ X-NVDA-Bridge-Token
         ▼
 ┌────────────────────────────┐
-│  NVDA Bridge Add-on v2.x   │
+│  NVDA Bridge Add-on 0.11   │
 │   (Inside NVDA Process)    │
 │                            │
 │ • Tool Execution           │

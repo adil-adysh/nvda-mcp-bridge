@@ -323,6 +323,19 @@ that initial surface; a meta-tool that hides tools behind one generic executor
 would trade per-tool approval for token savings, which is not an acceptable
 default for a screen reader.
 
+### 0.11.0 follow-up
+
+| Change | Effect |
+|---|---|
+| `outputSchema` omitted from `tools/list` by default | 33-tool catalog fell from 77,046 B to 36,344 B, with validation and `structuredContent` unchanged. `NVDA_BRIDGE_OUTPUT_SCHEMAS=1` restores it. |
+| MCP pagination and unknown-cursor errors | `tools/list` now honours the protocol contract; a stale cursor fails loudly instead of silently re-serving everything. |
+| `get_action_trace` summary default | Removes the event list, projection delta and log-line lists unless `detail="full"`. |
+| `locate` role validation | `role="banana"` is a correction with close matches, not a 547 ms empty success. |
+
+**Revised token efficiency: 6.0/10.** The initial catalog is now roughly half
+its former size and the trace tool no longer dumps a record by default. The
+catalog is still schema-heavy and `find_tools` does not remove it.
+
 ## Bottom line
 
 This is a strong, semantically honest tool contract wrapped in an expensive and slightly

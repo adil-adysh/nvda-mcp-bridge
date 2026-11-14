@@ -68,7 +68,14 @@ def probe(exe: Path, timeout: float) -> dict:
     process.stdin.write(payload)
     process.stdin.flush()
 
-    result: dict = {"capabilities": None, "instructions": None, "tools": [], "server": None}
+    result: dict = {
+        "capabilities": None,
+        "instructions": None,
+        "tools": [],
+        "catalog_bytes": 0,
+        "output_schemas": 0,
+        "server": None,
+    }
     deadline = time.time() + timeout
     while time.time() < deadline and not result["tools"]:
         line = process.stdout.readline() if process.stdout else ""
@@ -84,7 +91,12 @@ def probe(exe: Path, timeout: float) -> dict:
             result["instructions"] = handshake.get("instructions")
             result["server"] = handshake.get("serverInfo")
         elif message.get("id") == 2:
-            result["tools"] = [tool["name"] for tool in message["result"]["tools"]]
+            tools = message["result"]["tools"]
+            result["tools"] = [tool["name"] for tool in tools]
+            result["catalog_bytes"] = len(
+                json.dumps({"tools": tools}, separators=(",", ":")).encode("utf-8")
+            )
+            result["output_schemas"] = sum(1 for tool in tools if tool.get("outputSchema"))
 
     process.stdin.close()
     try:
@@ -119,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"instructions: {result['instructions']}")
     print(f"capabilities: {json.dumps(result['capabilities'])}")
     print(f"tool count:   {len(result['tools'])}")
+    print(f"catalog:      {result['catalog_bytes']} bytes, {result['output_schemas']} outputSchema(s)")
     for name in result["tools"]:
         print(f" - {name}")
     return 0 if result["tools"] else 1

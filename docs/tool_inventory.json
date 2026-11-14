@@ -776,7 +776,9 @@
     },
     {
       "category": "diagnostics",
-      "defaults": {},
+      "defaults": {
+        "detail": "summary"
+      },
       "error_codes": [
         4103
       ],
@@ -786,6 +788,15 @@
         "additionalProperties": false,
         "description": "Identify one action trace to read back.",
         "properties": {
+          "detail": {
+            "default": "summary",
+            "description": "Level of detail to include in the response.",
+            "enum": [
+              "summary",
+              "full"
+            ],
+            "type": "string"
+          },
           "trace_id": {
             "type": "string"
           }
@@ -802,12 +813,28 @@
         "additionalProperties": false,
         "description": "One retained action trace, or the reason it is not available.",
         "properties": {
+          "detail": {
+            "default": "summary",
+            "description": "Level of detail to include in the response.",
+            "enum": [
+              "summary",
+              "full"
+            ],
+            "type": "string"
+          },
           "found": {
             "type": "boolean"
           },
           "missing_reason": {
             "default": "",
             "type": "string"
+          },
+          "omitted": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "retention": {
             "anyOf": [
@@ -851,7 +878,7 @@
         "input_bounded": false,
         "truncation_reported": false
       },
-      "purpose": "Read back the retained diagnostic timeline for one action by its trace_id: lifecycle milestones, structured exceptions, the event window it spanned, the baseline and final UI projection, the expected-postcondition result, and best-effort native log matches. Every action response carries a trace_id. An expired trace returns found=false with the retention window.",
+      "purpose": "Read back the retained diagnostic timeline for one action by its trace_id: lifecycle milestones, structured exceptions, the event window it spanned, the baseline and final UI projection, the expected-postcondition result, and best-effort native log matches. Every action response carries a trace_id. An expired trace returns found=false with the retention window. Returns a summary by default; pass detail='full' for the event list, projection delta and log lines.",
       "read_only": true,
       "reference_inputs": [],
       "required": [

@@ -16,6 +16,35 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+#: Every name in NVDA 2026.3's ``controlTypes.Role``. A role outside this set
+#: cannot match an object, so it is a caller mistake rather than an empty search.
+#: The walk still accepts roles with no UIA control type (``TABLECELL``), which
+#: is why this list is the authority instead of the UIA table above.
+ROLE_NAMES = frozenset(
+	"""
+	UNKNOWN WINDOW TITLEBAR PANE DIALOG CHECKBOX RADIOBUTTON STATICTEXT
+	EDITABLETEXT BUTTON MENUBAR MENUITEM POPUPMENU COMBOBOX LIST LISTITEM GRAPHIC
+	HELPBALLOON TOOLTIP LINK TREEVIEW TREEVIEWITEM TAB TABCONTROL SLIDER
+	PROGRESSBAR SCROLLBAR STATUSBAR TABLE TABLECELL TABLECOLUMN TABLEROW
+	TABLECOLUMNHEADER TABLEROWHEADER FRAME TOOLBAR DROPDOWNBUTTON CLOCK SEPARATOR
+	FORM HEADING HEADING1 HEADING2 HEADING3 HEADING4 HEADING5 HEADING6 PARAGRAPH
+	BLOCKQUOTE TABLEHEADER TABLEBODY TABLEFOOTER DOCUMENT ANIMATION APPLICATION
+	BOX GROUPING PROPERTYPAGE CANVAS CAPTION CHECKMENUITEM DATEEDITOR ICON
+	DIRECTORYPANE EMBEDDEDOBJECT ENDNOTE FOOTER FOOTNOTE GLASSPANE HEADER IMAGEMAP
+	INPUTWINDOW LABEL NOTE PAGE RADIOMENUITEM LAYEREDPANE REDUNDANTOBJECT ROOTPANE
+	EDITBAR TERMINAL RICHEDIT RULER SCROLLPANE SECTION SHAPE SPLITPANE VIEWPORT
+	TEAROFFMENU TEXTFRAME TOGGLEBUTTON BORDER CARET CHARACTER CHART CURSOR DIAGRAM
+	DIAL DROPLIST SPLITBUTTON MENUBUTTON DROPDOWNBUTTONGRID MATH GRIP HOTKEYFIELD
+	INDICATOR SPINBUTTON SOUND WHITESPACE TREEVIEWBUTTON IPADDRESS DESKTOPICON
+	INTERNALFRAME DESKTOPPANE OPTIONPANE COLORCHOOSER FILECHOOSER FILLER MENU
+	PANEL PASSWORDEDIT FONTCHOOSER LINE FONTNAME FONTSIZE BOLD ITALIC UNDERLINE
+	FGCOLOR BGCOLOR SUPERSCRIPT SUBSCRIPT STYLE INDENT ALIGNMENT ALERT DATAGRID
+	DATAITEM HEADERITEM THUMB CALENDAR VIDEO AUDIO CHARTELEMENT DELETED_CONTENT
+	INSERTED_CONTENT LANDMARK ARTICLE REGION FIGURE MARKED_CONTENT BUSY_INDICATOR
+	COMMENT SUGGESTION DEFINITION SWITCH
+	""".split()
+)
+
 #: Alias -> canonical NVDA role name. Aliases exist because the caller types what
 #: it knows: HTML's "text box", UIA's "Hyperlink", ARIA's "tab", and the role list
 #: from an older NVDA all mean something NVDA names differently today.
@@ -144,6 +173,26 @@ def normalize_role(value: Optional[str]) -> str:
 	if not text:
 		return ""
 	return ROLE_ALIASES.get(text, text)
+
+
+def validate_role(value: Optional[str]) -> str:
+	"""Return the canonical role name, or raise for one NVDA does not have.
+
+	``locate(role="banana")`` used to succeed with zero matches after a full
+	window walk, which reads like "no such control" rather than "that is not a
+	role". Rejecting it before the search turns a silent miss into a correction.
+	"""
+	canonical = normalize_role(value)
+	if not canonical or canonical in ROLE_NAMES:
+		return canonical
+	from difflib import get_close_matches
+
+	near = get_close_matches(canonical, sorted(ROLE_NAMES), n=3, cutoff=0.6)
+	suggestion = f" Did you mean {', '.join(near)}?" if near else ""
+	raise ValueError(
+		f"Unknown NVDA role {value!r}. Use a controlTypes.Role name such as "
+		f"BUTTON, LINK or EDITABLETEXT.{suggestion}"
+	)
 
 
 def role_matches(wanted: Optional[str], actual: Optional[str]) -> bool:

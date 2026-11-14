@@ -1270,9 +1270,15 @@ class NavigateReadingResult:
 
 @dataclass(frozen=True)
 class GetActionTraceInput:
-	"""Identify one action trace to read back."""
+	"""Identify one action trace to read back.
+
+	``detail="summary"`` keeps the diagnosis — outcome, failure stage, exception,
+	timeline, event window and expectation — and drops the bulky evidence lists.
+	``detail="full"`` returns the whole retained record.
+	"""
 
 	trace_id: str
+	detail: Literal["summary", "full"] = "summary"
 
 
 @dataclass(frozen=True)
@@ -1283,15 +1289,20 @@ class ActionTraceResult:
 	memory and expire, and a caller that keeps an id past the retention window
 	needs to be told that rather than given an error that looks like the
 	action's own failure. ``retention`` always says what the window was.
+
+	``omitted`` names the paths a summary left out, so a caller can ask for
+	``detail="full"`` deliberately instead of guessing what was removed.
 	"""
 
 	trace_id: str
 	found: bool
 	schema_version: int = 1
+	detail: Literal["summary", "full"] = "summary"
 	trace: Optional[dict[str, Any]] = None
 	retention: Optional[dict[str, Any]] = None
 	missing_reason: str = ""
 	"""Why the record is unavailable: ``expired_or_unknown`` or ``not_stored``."""
+	omitted: list[str] = field(default_factory=list)
 
 
 # ============================================================================

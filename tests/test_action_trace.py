@@ -41,6 +41,7 @@ traces = importlib.import_module(f"{_PACKAGE_NAME}.server.action_trace")
 events = importlib.import_module(f"{_PACKAGE_NAME}.server.events")
 settle = importlib.import_module(f"{_PACKAGE_NAME}.server.settle")
 state = importlib.import_module(f"{_PACKAGE_NAME}.server.state")
+handlers = importlib.import_module(f"{_PACKAGE_NAME}.tools.handlers")
 
 
 class _Clock:
@@ -620,6 +621,66 @@ class NativeLogTests(unittest.TestCase):
 		)
 
 		self.assertEqual(len(matches), 5)
+
+
+class ActionTraceReadTests(unittest.TestCase):
+	def setUp(self):
+		self.store = traces.ActionTraceStore()
+		self.trace = {
+			"schema_version": 1,
+			"trace_id": "at-abc",
+			"action": {"name": "press", "duration_ms": 12.5},
+			"execution": {"outcome": "failed", "failure_stage": "handler"},
+			"observation": {
+				"event_count": 2,
+				"observation_status": "events_without_projected_change",
+				"events": [{"kind": "focus"}, {"kind": "nameChange"}],
+				"delta": {"focus": {"from": {"role": "BUTTON"}, "to": {"role": "TEXT"}}},
+			},
+			"evidence": {
+				"bridge_logs": [{"event": "validated"}],
+				"native_log_matches": [{"line": "boom"}],
+				"limitations": ["A temporal match is not causation."],
+			},
+		}
+		self.store.add(self.trace)
+		self.context = types.SimpleNamespace(trace_store=self.store)
+
+	def test_the_default_read_is_a_summary(self):
+		payload = handlers.get_action_trace("at-abc", self.context)
+
+		self.assertTrue(payload["found"])
+		self.assertEqual(payload["detail"], "summary")
+		self.assertNotIn("events", payload["trace"]["observation"])
+		self.assertNotIn("delta", payload["trace"]["observation"])
+		self.assertNotIn("bridge_logs", payload["trace"]["evidence"])
+		self.assertNotIn("native_log_matches", payload["trace"]["evidence"])
+		self.assertEqual(payload["trace"]["observation"]["event_count"], 2)
+		self.assertEqual(payload["trace"]["execution"]["failure_stage"], "handler")
+		self.assertEqual(
+			set(payload["omitted"]),
+			{
+				"observation.events",
+				"observation.delta",
+				"evidence.bridge_logs",
+				"evidence.native_log_matches",
+			},
+		)
+
+	def test_full_detail_keeps_every_evidence_list(self):
+		payload = handlers.get_action_trace("at-abc", self.context, detail="full")
+
+		self.assertEqual(payload["detail"], "full")
+		self.assertEqual(payload["omitted"], [])
+		self.assertEqual(len(payload["trace"]["observation"]["events"]), 2)
+		self.assertIn("bridge_logs", payload["trace"]["evidence"])
+
+	def test_a_missing_trace_reports_the_requested_detail(self):
+		payload = handlers.get_action_trace("at-missing", self.context, detail="full")
+
+		self.assertFalse(payload["found"])
+		self.assertEqual(payload["detail"], "full")
+		self.assertEqual(payload["missing_reason"], "expired_or_unknown")
 
 
 if __name__ == "__main__":
