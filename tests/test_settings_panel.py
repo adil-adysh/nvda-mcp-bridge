@@ -195,11 +195,34 @@ class _ChoiceStub(_Stub):
         self.tooltip = text
 
 
+class _CheckBoxStub(_Stub):
+    def __init__(self, parent=None, label="", **kwargs):
+        super().__init__(parent, label=label, **kwargs)
+        self.checked = False
+
+    def SetValue(self, value):
+        self.checked = bool(value)
+
+    def IsChecked(self):
+        return self.checked
+
+
 class _FakeBridge:
     def __init__(self, policy):
         self.permission_policy = policy
         self.developer_mode_manager = _FakeDeveloperModeManager()
         self.port = 8765
+        self.speech_enabled_calls = []
+
+    def set_speech_observation_enabled(self, enabled):
+        self.speech_enabled_calls.append(bool(enabled))
+        if enabled:
+            self.permission_policy.grant("speech_observation")
+        else:
+            self.permission_policy.revoke("speech_observation")
+
+    def reset_permissions(self):
+        self.permission_policy.reset()
 
 
 class _Toggle:
@@ -268,6 +291,60 @@ class TestSettingsPanelLifecycle(unittest.TestCase):
         self.assertTrue(self.policy.is_granted(gui_settings.PERMISSION_INPUT_CONTROL))
         self.assertTrue(self.policy.is_granted(gui_settings.PERMISSION_DIAGNOSTICS))
         self.assertFalse(self.policy.is_granted(gui_settings.PERMISSION_NVDA_LIFECYCLE))
+
+    def test_speech_observation_checkbox_reflects_stored_grant_and_label(self):
+        original_checkbox = gui_settings.wx.CheckBox
+        gui_settings.wx.CheckBox = _CheckBoxStub
+        try:
+            self.policy.grant("speech_observation")
+            with (
+                mock.patch.object(
+                    gui_settings.MCPBridgeSettingsPanel,
+                    "_find_bridge",
+                    new=staticmethod(lambda: self.bridge),
+                ),
+                mock.patch.object(gui_settings, "get_bridge_status_summary", return_value="status"),
+            ):
+                panel = gui_settings.MCPBridgeSettingsPanel(parent=None)
+            checkbox = panel.speechObservationCheckbox
+            self.assertTrue(checkbox.checked)
+            self.assertEqual(
+                checkbox._kwargs["label"],
+                "Allow MCP Speech Observation (read NVDA announcements)",
+            )
+        finally:
+            gui_settings.wx.CheckBox = original_checkbox
+
+    def test_speech_observation_save_grants_revokes_and_persists(self):
+        self.panel.speechObservationCheckbox = _Toggle(True)
+        with mock.patch.object(gui_settings, "save_persisted_permissions") as save_permissions:
+            self.panel.onSave()
+            self.assertTrue(self.policy.is_granted("speech_observation"))
+            save_permissions.assert_called_once_with(self.policy.get_granted())
+            save_permissions.reset_mock()
+
+            self.panel.speechObservationCheckbox = _Toggle(False)
+            self.panel.onSave()
+            self.assertFalse(self.policy.is_granted("speech_observation"))
+            save_permissions.assert_called_once_with(self.policy.get_granted())
+        self.assertEqual(self.bridge.speech_enabled_calls, [True, False])
+
+    def test_discard_restores_speech_observation_checkbox(self):
+        self.policy.grant("speech_observation")
+        self.panel.speechObservationCheckbox = _Stub()
+        restored = {}
+        self.panel.speechObservationCheckbox.SetValue = lambda value: restored.setdefault("value", value)
+        self.panel.onDiscard()
+        self.assertTrue(restored["value"])
+
+    def test_reset_unchecks_speech_observation_checkbox(self):
+        self.policy.grant("speech_observation")
+        self.panel.speechObservationCheckbox = _Stub()
+        reset_value = {}
+        self.panel.speechObservationCheckbox.SetValue = lambda value: reset_value.setdefault("value", value)
+        self.panel.onResetPermissions(None)
+        self.assertFalse(self.policy.is_granted("speech_observation"))
+        self.assertFalse(reset_value["value"])
 
     def test_save_without_bridge_does_not_raise(self):
         self.panel._bridge = None

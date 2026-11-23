@@ -12,6 +12,7 @@ import tempfile
 import time
 import types
 import unittest
+from unittest import mock
 from pathlib import Path
 
 _ADDON_DIR = os.path.normpath(
@@ -316,6 +317,74 @@ class RunningCompanionTests(unittest.TestCase):
         self.assertFalse(success)
         self.assertIn("could not enumerate processes", msg)
         self.assertFalse(self.mgr.installed_exe_path.exists())
+
+    def test_pid_reuse_during_shutdown_does_not_terminate_a_different_image(self):
+        import ctypes
+
+        import nvdaMcpBridge.companion_manager as cm_mod
+
+        pid = 4242
+        companion_image = str(self.install_dir / "nvda-mcp-server.exe")
+        unrelated_image = str(self.root / "other" / "unrelated.exe")
+
+        class FakeFunction:
+            def __init__(self, callback):
+                self.callback = callback
+
+            def __call__(self, *args):
+                return self.callback(*args)
+
+        class FakeKernel32:
+            def __init__(self):
+                self.opened_handles = []
+                self.queried_handles = []
+                self.terminated_handles = []
+                self.closed_handles = []
+                self.images = {101: companion_image, 102: unrelated_image}
+                self.OpenProcess = FakeFunction(self.open_process)
+                self.QueryFullProcessImageNameW = FakeFunction(self.query_image)
+                self.TerminateProcess = FakeFunction(self.terminate_process)
+                self.WaitForSingleObject = FakeFunction(lambda handle, timeout: 0)
+                self.CloseHandle = FakeFunction(self.close_handle)
+
+            def open_process(self, access, inherit, requested_pid):
+                handle = 101 if not self.opened_handles else 102
+                self.opened_handles.append(handle)
+                return handle
+
+            def query_image(self, handle, flags, buffer, size):
+                self.queried_handles.append(handle)
+                buffer.value = self.images[handle]
+                size._obj.value = len(buffer.value)
+                return True
+
+            def terminate_process(self, handle, exit_code):
+                self.terminated_handles.append(handle)
+                return True
+
+            def close_handle(self, handle):
+                self.closed_handles.append(handle)
+                return True
+
+        kernel32 = FakeKernel32()
+
+        def find_candidate_pid():
+            image = cm_mod._process_image_path(pid)
+            return [pid] if cm_mod.is_companion_image_path(image, self.install_dir) else []
+
+        self.mgr.find_running_companion_pids = find_candidate_pid
+        with (
+            mock.patch.object(cm_mod.os, "name", "nt"),
+            mock.patch.object(ctypes, "WinDLL", return_value=kernel32, create=True),
+        ):
+            stopped, failures = self.mgr.stop_running_companions()
+
+        self.assertEqual(kernel32.opened_handles, [101, 102])
+        self.assertEqual(kernel32.terminated_handles, [])
+        self.assertEqual(kernel32.queried_handles, [101, 102])
+        self.assertEqual(kernel32.closed_handles, [101, 102])
+        self.assertNotIn(pid, stopped)
+        self.assertEqual(failures, [(pid, "process image changed since discovery")])
 
     @unittest.skipUnless(os.name == "nt", "Windows process enumeration")
     def test_a_real_process_from_the_install_directory_is_found_and_stopped(self):

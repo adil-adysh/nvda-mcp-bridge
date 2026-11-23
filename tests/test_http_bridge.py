@@ -1,10 +1,17 @@
 # pyright: reportMissingImports=false, reportUnusedCallResult=false
 
 import importlib
+import http.client
+import json
 import os
 import sys
+import threading
+import time
 import types
 import unittest
+from email.message import Message
+from urllib.parse import urlsplit
+from unittest import mock
 
 # Add addon directory to path for imports
 _ADDON_DIR = os.path.normpath(
@@ -40,7 +47,180 @@ API_LEVEL = bridge_module.API_LEVEL
 _is_nvda_menu_open = bridge_module._is_nvda_menu_open
 
 
+def _speech_bridge(*, enabled=True, secure=False, protected=False):
+	permissions = {"read_only", "speech_output"}
+	if enabled:
+		permissions.add("speech_observation")
+	bridge = NVDAHTTPBridge(
+		host="127.0.0.1",
+		port=0,
+		bridge_token="test-token",
+		permission_policy=bridge_module.PermissionPolicy(granted_permissions=permissions),
+	)
+	bridge.speech_monitor = types.SimpleNamespace(
+		is_secure_desktop=secure,
+		is_protected_focus=protected,
+	)
+	return bridge
+
+
+def _get_speech(bridge, url, token=None):
+	handler = object.__new__(NVDABridgeRequestHandler)
+	handler.server = bridge
+	handler.headers = Message()
+	if token is not None:
+		handler.headers[bridge_module.TOKEN_HEADER] = token
+	responses = []
+	handler._send_json_response = lambda payload, status=200, extra_headers=None: responses.append(
+		(payload, status, extra_headers)
+	)
+	handler._handle_speech(urlsplit(url))
+	return responses[-1]
+
+
 class HttpBridgeTests(unittest.TestCase):
+
+    def test_speech_endpoint_rejects_missing_or_invalid_token_without_reading(self):
+        bridge = _speech_bridge()
+        with mock.patch.object(bridge.speech_journal, "wait", wraps=bridge.speech_journal.wait) as wait:
+            self.assertEqual(_get_speech(bridge, "/speech")[1], 401)
+            self.assertEqual(_get_speech(bridge, "/speech", token="invalid")[1], 401)
+        wait.assert_not_called()
+
+    def test_speech_endpoint_requires_speech_observation_without_returning_text(self):
+        bridge = _speech_bridge(enabled=False)
+        bridge.speech_journal.record_speech("should not leak", "queued")
+        payload, status, _ = _get_speech(bridge, "/speech", token="test-token")
+        self.assertEqual(status, 403)
+        self.assertNotIn("should not leak", str(payload))
+
+    def test_speech_endpoint_denies_secure_desktop_and_protected_focus(self):
+        for state in ({"secure": True}, {"protected": True}):
+            bridge = _speech_bridge(**state)
+            bridge.speech_journal.record_speech("private", "queued")
+            payload, status, _ = _get_speech(bridge, "/speech", token="test-token")
+            self.assertEqual(status, 403)
+            self.assertNotIn("private", str(payload))
+
+    def test_speech_endpoint_clamps_query_values_and_preserves_typed_cursor(self):
+        bridge = _speech_bridge()
+        bridge.speech_journal.record_speech("announcement", "about_to_synthesize")
+        journal_id = bridge.speech_journal.journal_id
+        with mock.patch.object(bridge.speech_journal, "wait", wraps=bridge.speech_journal.wait) as wait:
+            payload, status, _ = _get_speech(
+                bridge,
+                f"/speech?since=0&journal_id={journal_id}&timeout_ms=999999&limit=999999",
+                token="test-token",
+            )
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["journal_id"], journal_id)
+        self.assertEqual(payload["events"][0]["text"], "announcement")
+        self.assertEqual(wait.call_args.kwargs["timeout_ms"], 30_000)
+        self.assertEqual(wait.call_args.kwargs["limit"], 256)
+        self.assertEqual(wait.call_args.kwargs["since"], 0)
+        self.assertEqual(wait.call_args.kwargs["journal_id"], journal_id)
+
+    def test_speech_endpoint_invalid_query_values_use_bounded_defaults(self):
+        bridge = _speech_bridge()
+        with mock.patch.object(bridge.speech_journal, "wait", wraps=bridge.speech_journal.wait) as wait:
+            payload, status, _ = _get_speech(
+                bridge, "/speech?since=bad&timeout_ms=bad&limit=bad", token="test-token"
+            )
+        self.assertEqual(status, 200)
+        self.assertEqual(wait.call_args.kwargs["since"], 0)
+        self.assertEqual(wait.call_args.kwargs["timeout_ms"], 0)
+        self.assertEqual(wait.call_args.kwargs["limit"], 20)
+
+    def test_started_http_server_exposes_speech_journal_and_access_gate(self):
+        bridge = _speech_bridge()
+        server_thread = threading.Thread(target=bridge.start, daemon=True)
+        server_thread.start()
+        try:
+            deadline = time.monotonic() + 2
+            while (bridge.server is None or not hasattr(bridge.server, "event_journal")) and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertIsNotNone(bridge.server, "bridge server did not start")
+            self.assertTrue(hasattr(bridge.server, "event_journal"), "server services were not attached")
+            bridge.speech_journal.record_speech("live server speech", "queued")
+            port = bridge.server.server_address[1]
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+            connection.request("GET", "/speech", headers={bridge_module.TOKEN_HEADER: "test-token"})
+            response = connection.getresponse()
+            payload = json.loads(response.read().decode("utf-8"))
+            self.assertEqual(response.status, 200, payload)
+            self.assertEqual(payload["events"][0]["text"], "live server speech")
+            connection.close()
+        finally:
+            bridge.shutdown_event.set()
+            bridge.stop()
+            server_thread.join(timeout=3)
+
+    def test_speech_endpoint_rechecks_access_after_wait(self):
+        for transition in ("secure", "protected", "revoke", "revoke_regrant"):
+            with self.subTest(transition=transition):
+                bridge = _speech_bridge()
+                bridge.speech_journal.record_speech("must not escape", "queued")
+                original_wait = bridge.speech_journal.wait
+
+                def wait_then_transition(**kwargs):
+                    page = original_wait(**kwargs)
+                    if transition == "secure":
+                        bridge.speech_monitor.is_secure_desktop = True
+                    elif transition == "protected":
+                        bridge.speech_monitor.is_protected_focus = True
+                    elif transition == "revoke":
+                        bridge.revoke_permission("speech_observation")
+                    else:
+                        bridge.revoke_permission("speech_observation")
+                        bridge.grant_permission("speech_observation")
+                    return page
+
+                with mock.patch.object(bridge.speech_journal, "wait", side_effect=wait_then_transition):
+                    payload, status, _ = _get_speech(
+                        bridge, "/speech?since=0", token="test-token"
+                    )
+                self.assertEqual(status, 403)
+                self.assertNotIn("must not escape", str(payload))
+
+    def test_wait_for_speech_rechecks_access_at_http_delivery(self):
+        bridge = types.SimpleNamespace(
+            execute_action=lambda **kwargs: {
+                "request_id": "req-1",
+                "action": "wait_for_speech",
+                "success": True,
+                "output": {"journal_id": "generation-1", "events": [{"text": "private speech"}]},
+            },
+            check_speech_page_access=mock.Mock(
+                side_effect=bridge_module.SpeechAccessDenied("permission was revoked")
+            ),
+            get_nvda_status_snapshot=lambda: {},
+        )
+        handler = object.__new__(NVDABridgeRequestHandler)
+        handler.server = bridge
+        responses = []
+        handler._build_error_envelope = lambda **kwargs: {
+            "request_id": kwargs["request_id"],
+            "success": False,
+            "action": kwargs["action"],
+            "error": {"code": kwargs["code"], "message": kwargs["message"]},
+        }
+        handler._send_json_response = lambda payload, status=200: responses.append((payload, status))
+
+        handler._handle_action("wait_for_speech", {}, "req-1")
+
+        self.assertEqual(len(responses), 1)
+        payload, status = responses[0]
+        self.assertEqual(status, 403)
+        self.assertEqual(payload["error"]["code"], 4003)
+        self.assertNotIn("private speech", str(payload))
+        bridge.check_speech_page_access.assert_called_once_with(
+            {"journal_id": "generation-1", "events": [{"text": "private speech"}]}
+        )
+
+    def test_speech_tool_is_marked_as_explicit_opt_in_during_discovery(self):
+        metadata = bridge_module.NVDA_TOOLS_REGISTRY.get("wait_for_speech").get_metadata()
+        constraints = NVDAHTTPBridge._compute_tool_constraints(metadata)
+        self.assertTrue(constraints["requires_explicit_opt_in"])
     def test_cached_nvda_menu_identity_does_not_block_after_menu_closes(self):
         # NVDA caches the identified menu popup after it closes. A normal app
         # window in the foreground proves the menu is no longer active.

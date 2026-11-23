@@ -157,6 +157,21 @@ Errors are `isError: true` with a compact JSON body (`success: false`,
 * `GET /health`, `/tools` and every action expose `instance_id`. A changed id
   invalidates cached refs and cursors; re-observe.
 
+## Speech observation
+
+`wait_for_speech` reads NVDA's bounded speech journal and requires the user to
+enable **Speech observation** in the add-on settings. Call it explicitly when
+spoken output matters, then correlate its entries with the action result and UI
+state. Use the returned `journal_id` and `to_version` as the next cursor when
+continuing a read; without a cursor, the tool starts at the current journal
+head.
+
+Speech entries describe preparation: `about_to_synthesize` means NVDA is about
+to send text to the synthesizer, and `queued` means the text was added to the
+speech queue. Neither phase confirms playback finished or proves that a
+particular action caused the speech. Speech cursors are independent of the UI
+event journal.
+
 ## Recovery rules
 
 * `4206 STALE_REFERENCE`: read `details.reason_code` and call `observe` for a

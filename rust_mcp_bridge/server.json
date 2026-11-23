@@ -1,13 +1,13 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.adil-adysh/nvda-mcp-server",
-  "description": "MCP server for interacting with NVDA via a local bridge for screen reader automation",
-  "version": "1.0.0",
+  "description": "Early public preview of the MCP companion for NVDA MCP Bridge screen-reader automation",
+  "version": "0.1.0",
   "packages": [
     {
       "registryType": "generic",
       "identifier": "nvda-mcp-server",
-      "version": "1.0.0",
+      "version": "0.1.0",
       "transport": {
         "type": "stdio",
         "command": "nvda-mcp-server.exe"

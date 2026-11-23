@@ -175,6 +175,9 @@ def normalize_role(value: Optional[str]) -> str:
 	return ROLE_ALIASES.get(text, text)
 
 
+_NORMALIZED_ROLE_NAMES = frozenset(normalize_role(role) for role in ROLE_NAMES)
+
+
 def validate_role(value: Optional[str]) -> str:
 	"""Return the canonical role name, or raise for one NVDA does not have.
 
@@ -183,11 +186,11 @@ def validate_role(value: Optional[str]) -> str:
 	role". Rejecting it before the search turns a silent miss into a correction.
 	"""
 	canonical = normalize_role(value)
-	if not canonical or canonical in ROLE_NAMES:
+	if not canonical or canonical in _NORMALIZED_ROLE_NAMES:
 		return canonical
 	from difflib import get_close_matches
 
-	near = get_close_matches(canonical, sorted(ROLE_NAMES), n=3, cutoff=0.6)
+	near = get_close_matches(canonical, sorted(_NORMALIZED_ROLE_NAMES), n=3, cutoff=0.6)
 	suggestion = f" Did you mean {', '.join(near)}?" if near else ""
 	raise ValueError(
 		f"Unknown NVDA role {value!r}. Use a controlTypes.Role name such as "

@@ -5,7 +5,7 @@ levels or aliases.
 
 * Protocol: `nvda-bridge-protocol` `1.0.0`
 * API level: `1` (`supported_api_levels: [1]`)
-* Bridge / add-on: `0.12.0`
+* Bridge / add-on / companion: `0.1.0` (first public preview)
 * Transport: HTTP on `127.0.0.1:8765`
 * Tool list: `GET /tools`
 * Action: `POST /action`
@@ -20,7 +20,7 @@ reads it when `NVDA_BRIDGE_TOKEN` is unset.
 {
   "protocol": "nvda-bridge-protocol",
   "protocol_version": "1.0.0",
-  "bridge_version": "0.12.0",
+  "bridge_version": "0.1.0",
   "api_level": 1,
   "supported_api_levels": [1],
   "instance_id": "9f3c…",
@@ -44,9 +44,10 @@ reads it when `NVDA_BRIDGE_TOKEN` is unset.
 ```
 
 `inputSchema` and `outputSchema` are generated from the same dataclasses used
-for runtime validation. `outputSchema` describes the tool's `data` payload, and
-the MCP companion returns exactly that object as `structuredContent` (the text
-content keeps the envelope metadata).
+for runtime validation. The MCP companion keeps bridge data fields at the
+`structuredContent` root and places companion-owned metadata under `_meta`.
+Legacy top-level result and trace_id metadata fields are included only when
+the tool's data schema does not already own those names.
 
 ## Action envelope
 
@@ -58,7 +59,7 @@ content keeps the envelope metadata).
   "duration_ms": 18.2,
   "trace_id": "at-…",
   "bridge": {
-    "bridge_version": "0.12.0",
+    "bridge_version": "0.1.0",
     "api_level": 1,
     "instance_id": "9f3c…",
     "started_at": "2026-11-14T03:00:00+00:00"
@@ -110,6 +111,22 @@ content keeps the envelope metadata).
 * A caller mistake the schema cannot express (`get_logs` with `max_lines=0`,
   an unknown event kind) is `4103`, never `5303`. `5303` means the bridge itself
   failed.
+
+## Speech observation
+
+Speech observation is separate from speech output. It is disabled by default
+and requires the `speech_observation` capability in NVDA Settings. When enabled,
+the add-on captures a bounded, in-memory journal of NVDA speech text and
+speech-control events. `GET /speech` requires the bridge token; MCP clients
+normally use the `wait_for_speech` tool, which accepts an optional journal
+cursor (`since`, `journal_id`), `timeout_ms` from 0 to 30,000, and `limit` from
+1 to 256. Omitting the cursor starts at the current journal head.
+
+The journal is cleared when observation is disabled or the bridge shuts down.
+Reads are denied on secure desktops and protected focus, and authorization is
+checked again before a page is returned. A speech record means NVDA prepared
+text for synthesis; it does not prove playback completed or that an action
+caused the announcement.
 
 ## References and state
 

@@ -187,12 +187,7 @@ jobs:
           path: release_artifacts
 
       - name: Generate release notes
-        uses: orhun/git-cliff-action@v4
-        with:
-          config: cliff.toml
-          args: --current
-        env:
-          OUTPUT: RELEASE_NOTES.md
+        run: python3 scripts/extract_release_notes.py --version "${{ needs.build.outputs.version }}" --output RELEASE_NOTES.md
 
       - name: Append checksums to release notes
         run: |

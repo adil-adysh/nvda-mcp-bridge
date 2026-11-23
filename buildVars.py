@@ -18,22 +18,23 @@ addon_info = AddonInfo(
 	# Add-on summary/title, usually the user visible name of the add-on
 	# Translators: Summary/title for this add-on
 	# to be shown on installation and add-on information found in add-on store
-	addon_summary=_("NVDA MCP Bridge"),
+	addon_summary=_("NVDA MCP Bridge (Preview)"),
 	# Add-on description
 	# Translators: Long description to be shown for this add-on on add-on information from add-on store
 	addon_description=_("""Connect NVDA to AI assistants and other MCP clients through a local, authenticated bridge.
 
-The add-on exposes NVDA's focus, documents, UI controls, speech and diagnostic logs as a typed tool catalog. A bundled Rust MCP server lets clients such as Visual Studio Code, Claude Desktop, Claude Code, Codex and Cursor inspect and control the running NVDA session.
+This early public preview exposes NVDA's focus, documents, UI controls, speech and diagnostic logs as a typed tool catalog. Speech observation is optional and requires a separate permission that is off by default. A bundled Rust MCP server lets clients such as Visual Studio Code, Claude Desktop, Claude Code, Codex and Cursor inspect and control the running NVDA session. APIs may change before version 1.0.0.
 
 Everything stays on 127.0.0.1. Input control, diagnostics, NVDA lifecycle actions and Python execution are off by default and must be granted explicitly. Every NVDA call is queued on the main thread, so tool calls behave like NVDA's own commands instead of crashing the screen reader."""),
 	# version
-	addon_version="0.12.0",
+	addon_version="0.1.0",
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version to be shown in the add-on store
-	addon_changelog=_("""Version 0.12.0 (first public release):
+	addon_changelog=_("""Version 0.1.0 (first public preview):
 - A typed API-1 tool catalog for observation, reading, actions, inspection, logs, speech and system control
 - A bundled, checksum-verified Rust MCP server with automatic client configuration
 - Safe defaults: input, diagnostics, NVDA lifecycle and Python execution require explicit permission
+- Optional speech observation is disabled by default and requires explicit permission
 - observe and health_snapshot report browse mode and foreground/focus window identity, and those fields work as expect postconditions
 - observe is bounded to 8192 bytes by default and can project nodes onto selected fields
 - press accepts an ordered gesture sequence, set_value supports append, and wait_for_events reports event kind counts

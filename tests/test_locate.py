@@ -99,6 +99,10 @@ class RoleNormalizationTests(unittest.TestCase):
 		self.assertEqual(locate_rules.validate_role("table cell"), "TABLECELL")
 		self.assertEqual(locate_rules.validate_role("section"), "SECTION")
 
+	def test_roles_with_underscores_validate_after_normalization(self):
+		self.assertEqual(locate_rules.validate_role("deleted content"), "DELETEDCONTENT")
+		self.assertEqual(locate_rules.validate_role("BUSY_INDICATOR"), "BUSYINDICATOR")
+
 
 class RoleMatchingTests(unittest.TestCase):
 	def test_missing_filter_matches_everything(self):

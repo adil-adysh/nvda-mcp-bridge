@@ -347,8 +347,8 @@ def shape_observation(
 
 
 def _keep_fields(payload: dict[str, Any], fields: list[str]) -> None:
-	"""Project every node onto the requested fields, always keeping ``ref``."""
-	allowed = {str(field) for field in fields} | {"ref"}
+	"""Project every node onto requested fields while retaining required ``ref`` and ``role``."""
+	allowed = {str(field) for field in fields} | {"ref", "role"}
 	for node in _observation_nodes(payload):
 		for key in list(node):
 			if key not in allowed:
@@ -359,6 +359,17 @@ def _observation_bytes(payload: dict[str, Any]) -> int:
 	import json
 
 	return len(json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8"))
+
+
+def _update_observed_bytes(payload: dict[str, Any]) -> int:
+	"""Set ``observed_bytes`` to the serialized size including that field."""
+	payload["observed_bytes"] = 0
+	for _ in range(10):
+		size = _observation_bytes(payload)
+		if payload["observed_bytes"] == size:
+			return size
+		payload["observed_bytes"] = size
+	return _observation_bytes(payload)
 
 
 def _bound_observation(payload: dict[str, Any], max_bytes: int) -> None:
@@ -372,27 +383,30 @@ def _bound_observation(payload: dict[str, Any], max_bytes: int) -> None:
 	the minimum identity payload is larger than a very small budget, the result
 	says ``budget_exceeded`` instead of pretending the bound was met.
 	"""
+	previous_sections = payload.get("truncated_sections")
+	previous_sections = list(previous_sections) if isinstance(previous_sections, list) else []
+	previously_truncated = bool(payload.get("truncated")) or bool(previous_sections)
+	payload["truncated"] = previously_truncated
+	payload["truncated_sections"] = previous_sections
+	payload["budget_exceeded"] = False
+	if previously_truncated:
+		payload["more_available"] = True
 	dropped: list[str] = []
-	if _observation_bytes(payload) <= max_bytes:
-		payload["truncated"] = False
-		payload["truncated_sections"] = []
-		payload["budget_exceeded"] = False
-		payload["observed_bytes"] = 0
-		payload["observed_bytes"] = _observation_bytes(payload)
+	if _update_observed_bytes(payload) <= max_bytes:
 		return
 	for section in ("selection", "ancestors", "children"):
-		if _observation_bytes(payload) <= max_bytes:
+		if _update_observed_bytes(payload) <= max_bytes:
 			break
 		value = payload.get(section)
 		if value:
 			payload[section] = [] if isinstance(value, list) else None
 			dropped.append(section)
 	dialog = payload.get("dialog")
-	if _observation_bytes(payload) > max_bytes and isinstance(dialog, dict) and dialog.get("children"):
+	if _update_observed_bytes(payload) > max_bytes and isinstance(dialog, dict) and dialog.get("children"):
 		count = len(dialog["children"])
 		dialog["children"] = []
 		dropped.append(f"dialog.children({count})")
-	if _observation_bytes(payload) > max_bytes:
+	if _update_observed_bytes(payload) > max_bytes:
 		# Identity is preserved, but descriptive text is not: an agent can
 		# still act on the refs and re-observe a single element if it needs
 		# the text.
@@ -402,10 +416,10 @@ def _bound_observation(payload: dict[str, Any], max_bytes: int) -> None:
 			if isinstance(node.get("name"), str):
 				node["name"] = node["name"][:80]
 		dropped.append("descriptive_text")
-	if _observation_bytes(payload) > max_bytes and isinstance(dialog, dict):
+	if _update_observed_bytes(payload) > max_bytes and isinstance(dialog, dict):
 		payload["dialog"] = None
 		dropped.append("dialog")
-	if _observation_bytes(payload) > max_bytes:
+	if _update_observed_bytes(payload) > max_bytes:
 		payload["ancestors"] = []
 		payload["children"] = []
 		payload["selection"] = None
@@ -417,18 +431,14 @@ def _bound_observation(payload: dict[str, Any], max_bytes: int) -> None:
 		payload["truncation_hint"] = (
 			"The observation exceeded max_bytes. Request a larger max_bytes or capture fewer sections."
 		)
-	size = _observation_bytes(payload)
 	payload["truncated"] = True
-	payload["truncated_sections"] = dropped
+	payload["truncated_sections"] = list(dict.fromkeys([*previous_sections, *dropped]))
 	payload["more_available"] = True
 	payload["budget_exceeded"] = False
-	payload["observed_bytes"] = 0
-	for _ in range(3):
-		size = _observation_bytes(payload)
-		if payload["observed_bytes"] == size:
-			break
-		payload["observed_bytes"] = size
+	size = _update_observed_bytes(payload)
 	payload["budget_exceeded"] = size > max_bytes
+	if payload["budget_exceeded"]:
+		_update_observed_bytes(payload)
 
 
 def _observation_nodes(result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -723,6 +733,8 @@ def set_value(
 	# What the control holds now, so a platform write that changes nothing can be
 	# told apart from one that landed.
 	_before_verified, before, _before_source = read_observed(value)
+	if update == "append" and _before_source == "unavailable":
+		raise ValueError("Cannot append because the current value could not be read")
 	write_value = f"{before}{value}" if update == "append" else value
 
 	outcome = context.settle(perform, expect=expect)
@@ -915,6 +927,8 @@ def press(
 			raise ValueError("'sequence' must contain at most 50 gestures")
 		if any(not isinstance(gesture, str) or not gesture.strip() for gesture in gestures):
 			raise ValueError("every 'sequence' entry must be a non-empty gesture name")
+		for gesture in gestures:
+			nvda_ui.resolve_gesture(gesture)
 
 	captured: dict[str, Any] = {}
 
@@ -1214,6 +1228,92 @@ def wait_for_events(
 		"cursor_status": cursor_status,
 		"timed_out": (not mismatch) and to_version <= since and not result.get("has_more", False),
 		"cancelled": bool(result.get("cancelled", False)),
+	}
+
+
+def wait_for_speech(
+	since: int | None,
+	timeout_ms: int,
+	context: Any,
+	limit: int = 20,
+	journal_id: str | None = None,
+) -> dict[str, Any]:
+	"""Wait for explicitly authorized speech records from their own journal."""
+	from ..core import ErrorCode, ToolExecutionError
+	from ..server.speech import SpeechAccessDenied
+
+	if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool) or timeout_ms < 0 or timeout_ms > 30000:
+		raise ValueError("'timeout_ms' must be an integer between 0 and 30000")
+	if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1 or limit > 256:
+		raise ValueError("'limit' must be an integer between 1 and 256")
+	if since is not None and (not isinstance(since, int) or isinstance(since, bool) or since < 0):
+		raise ValueError("'since' must be a non-negative integer, or omitted")
+	if journal_id is not None and (not isinstance(journal_id, str) or not journal_id.strip()):
+		raise ValueError("'journal_id' must be a non-empty speech journal id")
+
+	access = getattr(context, "speech_access", None)
+	try:
+		allowed, reason = access() if callable(access) else (False, "Speech observation safety state is unavailable")
+	except Exception:  # noqa: BLE001 — broken safety state fails closed
+		allowed, reason = False, "Speech observation safety state is unavailable"
+	if not allowed:
+		raise ToolExecutionError(
+			error_code=ErrorCode.HANDLER_EXECUTION_FAILED,
+			tool_name="wait_for_speech",
+			version="1.0.0",
+			message=reason or "Speech observation is unavailable",
+			protocol_code=4003,
+		)
+
+	if since is None:
+		speech_version = getattr(context, "speech_version", None)
+		since = int(speech_version()) if callable(speech_version) else 0
+	wait_speech = getattr(context, "wait_speech", None)
+	if not callable(wait_speech):
+		raise RuntimeError("Speech journal wait service is unavailable")
+	try:
+		result = wait_speech(
+			since=since,
+			timeout_ms=timeout_ms,
+			limit=limit,
+			journal_id=journal_id,
+			cancellation_event=getattr(context, "cancellation_event", None),
+		)
+	except SpeechAccessDenied as error:
+		raise ToolExecutionError(
+			error_code=ErrorCode.HANDLER_EXECUTION_FAILED,
+			tool_name="wait_for_speech",
+			version="1.0.0",
+			message=str(error) or "Speech observation is unavailable",
+			protocol_code=4003,
+		) from error
+	to_version = int(result.get("to_version", since))
+	cancelled = bool(result.get("cancelled", False))
+	resync_required = bool(result.get("resync_required", False))
+	timed_out = (
+		bool(result.get("timed_out", False))
+		and to_version <= since
+		and not cancelled
+		and not resync_required
+		and str(result.get("cursor_status", "ok")) != "journal_mismatch"
+	)
+	return {
+		"journal_id": str(result.get("journal_id", journal_id or "")),
+		"from_version": int(result.get("from_version", since)),
+		"to_version": to_version,
+		"earliest_available_version": int(result.get("earliest_available_version", 0)),
+		"dropped": int(result.get("dropped", 0)),
+		"events": list(result.get("events", [])),
+		"expired": bool(result.get("expired", False)),
+		"resync_required": resync_required,
+		"resync_reason": result.get("resync_reason"),
+		"resync_from": result.get("resync_from"),
+		"history_complete": bool(result.get("history_complete", not result.get("truncated", False))),
+		"truncated": bool(result.get("truncated", False)),
+		"has_more": bool(result.get("has_more", False)),
+		"cursor_status": str(result.get("cursor_status", "ok")),
+		"timed_out": timed_out,
+		"cancelled": cancelled,
 	}
 
 

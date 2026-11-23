@@ -73,7 +73,7 @@ class ProtocolSchemaTests(unittest.TestCase):
 
 	def test_tools_discovery_payload_matches_the_published_schema(self):
 		# The developer-only tool is omitted unless developer mode is on; the
-		# inventory count (34) is the full registry surface.
+		# inventory count (35) is the full registry surface.
 		self.bridge.enable_developer_mode()
 		tools = self.bridge._list_tools()
 		payload = protocol.build_tools_payload(tools, self.bridge._list_output_types())
@@ -81,7 +81,7 @@ class ProtocolSchemaTests(unittest.TestCase):
 		payload["instance_id"] = self.bridge.instance_id
 		payload["started_at"] = self.bridge.started_at.isoformat()
 		_validate(payload, "tool-discovery.schema.json")
-		self.assertEqual(payload["count"], 34)
+		self.assertEqual(payload["count"], 35)
 
 	def test_error_envelope_matches_the_published_schema(self):
 		envelope = response.build_error_envelope(

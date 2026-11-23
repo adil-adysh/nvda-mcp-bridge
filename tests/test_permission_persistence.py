@@ -97,14 +97,14 @@ class TestPermissionPersistence(unittest.TestCase):
 	def test_save_then_load_roundtrip(self):
 		self.security.register_config_spec()
 		saved = self.security.save_persisted_permissions(
-			{"read_only", "speech_output", "input_control", "diagnostics"},
+			{"read_only", "speech_output", "input_control", "diagnostics", "speech_observation"},
 		)
 
 		self.assertTrue(saved)
 		self.assertEqual(1, self.conf.save_count)
 		restored = self.security.load_persisted_permissions()
 		self.assertEqual(
-			frozenset({"read_only", "speech_output", "input_control", "diagnostics"}),
+			frozenset({"read_only", "speech_output", "input_control", "diagnostics", "speech_observation"}),
 			restored,
 		)
 
@@ -135,6 +135,18 @@ class TestPermissionPersistence(unittest.TestCase):
 			frozenset({"read_only", "speech_output"}),
 			self.security.load_persisted_permissions(),
 		)
+
+	def test_unknown_permission_names_are_not_persisted(self):
+		self.security.register_config_spec()
+		self.security.save_persisted_permissions({"read_only", "speech_observation", "unknown"})
+		self.assertEqual("read_only,speech_observation", self.conf["nvdaMcpBridge"]["permissions"])
+
+	def test_speech_observation_is_not_granted_by_default_or_reset(self):
+		policy = self.security.PermissionPolicy()
+		self.assertFalse(policy.is_granted("speech_observation"))
+		policy.grant("speech_observation")
+		policy.reset()
+		self.assertFalse(policy.is_granted("speech_observation"))
 
 
 class TestPolicyRestoresPersistedGrants(unittest.TestCase):

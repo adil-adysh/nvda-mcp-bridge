@@ -58,6 +58,7 @@ from .protocol import (
 	build_tools_payload,
 )
 from .events import EventJournal, EventRecorder
+from .speech import SpeechAccessDenied, SpeechJournal, guarded_speech_wait
 from .action_trace import (
 	ActionTraceRecorder,
 	ActionTraceStore,
@@ -72,6 +73,7 @@ from .state import StateProjector
 from .security import (
 	DeveloperModeManager,
 	PermissionPolicy,
+	PERMISSION_SPEECH_OBSERVATION,
 	check_action_permissions,
 	constant_time_compare,
 	get_or_create_bridge_token,
@@ -332,6 +334,10 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				self._handle_events(route)
 				return
 
+			if route.path == "/speech":
+				self._handle_speech(route)
+				return
+
 			self._send_json_response({"error": "Not found"}, 404)
 		except Exception as e:
 			logHandler.log.error(f"Error in GET handler: {e}", exc_info=True)
@@ -403,6 +409,43 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			journal_id=journal_id,
 		)
 		self._send_json_response(payload)
+
+	def _handle_speech(self, route) -> None:
+		"""Serve speech history only after authentication and the shared safety gate."""
+		if not self._require_auth("speech"):
+			return
+
+		query = parse_qs(route.query)
+
+		def _int_param(name: str, default: int) -> int:
+			try:
+				return int(query.get(name, [default])[0])
+			except (TypeError, ValueError):
+				return default
+
+		since = max(0, _int_param("since", 0))
+		limit = max(1, min(256, _int_param("limit", 20)))
+		timeout_ms = max(0, min(30_000, _int_param("timeout_ms", 0)))
+		journal_id = (query.get("journal_id", [""])[0] or "").strip() or None
+		try:
+			page = self.server.wait_speech(
+				since=since,
+				timeout_ms=timeout_ms,
+				limit=limit,
+				journal_id=journal_id,
+				cancellation_event=None,
+			)
+			self.server.check_speech_page_access(page)
+		except SpeechAccessDenied as error:
+			envelope = self._build_error_envelope(
+				request_id=_new_request_id(),
+				action="speech",
+				code=4003,
+				message=str(error) or "Speech observation is unavailable",
+			)
+			self._send_json_response(envelope, 403)
+			return
+		self._send_json_response(page)
 
 	def _handle_tools_discovery(self):
 		if not self._check_auth():
@@ -859,6 +902,18 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			timeout_ms=timeout_ms,
 			trace_id=trace_id,
 		)
+		if action == "wait_for_speech" and envelope.get("success"):
+			try:
+				self.server.check_speech_page_access(envelope.get("output") or {})
+			except SpeechAccessDenied as error:
+				# Permission or focus may change after action tracing finishes.
+				# Recheck at the last boundary before speech text goes on the wire.
+				envelope = self._build_error_envelope(
+					request_id=request_id,
+					action=action,
+					code=4003,
+					message=str(error),
+				)
 		if envelope.get("success"):
 			status = 200
 		else:
@@ -898,6 +953,10 @@ class NVDAHTTPBridge:
 		# is a debugging aid (`/events?raw=1`); the default surface is coalesced
 		# transitions, because one user action produces many events.
 		self.event_journal = EventJournal()
+		# Transcript text is retained independently from UI transitions and is
+		# cleared whenever its explicit observation capability is revoked.
+		self.speech_journal = SpeechJournal()
+		self.speech_monitor = None
 		# Current observation and its two counters. The projector reads NVDA
 		# objects, so every refresh goes through the main-thread executor.
 		self.projector = StateProjector(self._project)
@@ -961,9 +1020,62 @@ class NVDAHTTPBridge:
 
 	def revoke_permission(self, permission: str) -> None:
 		self.permission_policy.revoke(permission)
+		if permission.strip().lower() == PERMISSION_SPEECH_OBSERVATION:
+			self.speech_journal.reset("permission_revoked")
+
+	def set_speech_observation_enabled(self, enabled: bool) -> None:
+		"""Set the explicit speech-observation grant, clearing history on revoke."""
+		if enabled:
+			self.permission_policy.grant(PERMISSION_SPEECH_OBSERVATION)
+		else:
+			self.revoke_permission(PERMISSION_SPEECH_OBSERVATION)
+
+	def check_speech_access(self) -> tuple[bool, str | None]:
+		"""Shared authorization and runtime safety predicate for speech reads."""
+		if not self.permission_policy.is_granted(PERMISSION_SPEECH_OBSERVATION):
+			return False, "Speech observation permission is not granted"
+		monitor = self.speech_monitor
+		if monitor is None:
+			return False, "Speech observation safety state is unavailable"
+		try:
+			if monitor.is_secure_desktop:
+				return False, "Speech observation is denied on the secure desktop"
+			if monitor.is_protected_focus:
+				return False, "Speech observation is denied while protected focus is active"
+		except Exception:  # noqa: BLE001 — unknown runtime safety state fails closed
+			return False, "Speech observation safety state is unavailable"
+		return True, None
+
+	def wait_speech(
+		self,
+		since: int,
+		timeout_ms: int,
+		limit: int,
+		journal_id: str | None = None,
+		cancellation_event: Any = None,
+	) -> Dict[str, Any]:
+		"""Wait through the shared authorization and journal-generation guard."""
+		return guarded_speech_wait(
+			self.speech_journal,
+			self.check_speech_access,
+			since=since,
+			timeout_ms=timeout_ms,
+			limit=limit,
+			journal_id=journal_id,
+			cancellation_event=cancellation_event,
+		)
+
+	def check_speech_page_access(self, page: Dict[str, Any]) -> None:
+		"""Revalidate authorization and generation immediately before delivery."""
+		allowed, reason = self.check_speech_access()
+		if not allowed:
+			raise SpeechAccessDenied(reason or "Speech observation is unavailable")
+		if page.get("journal_id") != self.speech_journal.journal_id:
+			raise SpeechAccessDenied("Speech history changed before it could be delivered")
 
 	def reset_permissions(self) -> None:
 		self.permission_policy.reset()
+		self.speech_journal.reset("permissions_reset")
 
 	@staticmethod
 	def _compute_tool_constraints(meta: Any) -> Dict[str, Any]:
@@ -979,7 +1091,9 @@ class NVDAHTTPBridge:
 		is_dangerous = getattr(meta, "destructive", False) or is_developer
 
 		constraints["dangerous"] = is_dangerous
-		constraints["requires_explicit_opt_in"] = is_developer or getattr(meta, "required_permission", "") == "nvda_lifecycle"
+		constraints["requires_explicit_opt_in"] = is_developer or getattr(
+			meta, "required_permission", ""
+		) in ("nvda_lifecycle", PERMISSION_SPEECH_OBSERVATION)
 		constraints["requires_developer_mode"] = is_developer
 
 		return constraints
@@ -1581,8 +1695,11 @@ class NVDAHTTPBridge:
 				register=self._register_ref,
 				observe=self._observe,
 				wait_events=self.event_journal.wait,
+				wait_speech=self.wait_speech,
 				state_version=lambda: self.projector.state_version,
 				event_version=lambda: self.event_journal.version,
+				speech_version=lambda: self.speech_journal.version,
+				speech_access=self.check_speech_access,
 				result=result_meta,
 				trace_store=self.trace_store,
 				tool_registry=self.registry,
@@ -1602,6 +1719,9 @@ class NVDAHTTPBridge:
 					timeout=effective_timeout,
 					cancellation_event=cancellation_event,
 				)
+
+			if action_name == "wait_for_speech" and bool(result.get("success")):
+				self.check_speech_page_access(result.get("output") or {})
 
 			if action_name == "observe" and bool(result.get("success")):
 				# Output validation reconstructs ObserveResult nodes with every
@@ -1695,6 +1815,23 @@ class NVDAHTTPBridge:
 				),
 			)
 
+		except SpeechAccessDenied as e:
+			duration_ms = (time.perf_counter() - start_time) * 1000
+			recorder.record_exception(e, "authorization", protocol_code=4003)
+			return self._finish_action(
+				recorder,
+				{
+					"request_id": request_id,
+					"success": False,
+					"action": action_name,
+					"duration_ms": round(duration_ms, 2),
+					"bridge": self._bridge_meta(),
+					"nvda_status_snapshot": self.get_nvda_status_snapshot(),
+					"result": {"ok": False, "state_version": self.projector.state_version},
+					"error": self._action_error_object(4003, str(e)),
+				},
+				outcome="failed",
+			)
 		except TimeoutError as e:
 			duration_ms = (time.perf_counter() - start_time) * 1000
 			logHandler.log.error(
@@ -1793,6 +1930,10 @@ class NVDAHTTPBridge:
 			self.server.get_state_payload = self.get_state_payload
 			self.server.get_events_payload = self.get_events_payload
 			self.server.event_journal = self.event_journal
+			self.server.speech_journal = self.speech_journal
+			self.server.check_speech_access = self.check_speech_access
+			self.server.wait_speech = self.wait_speech
+			self.server.check_speech_page_access = self.check_speech_page_access
 
 			logHandler.log.info(f"NVDA HTTP Bridge listening on {self.host}:{self.port}")
 			logHandler.log.info(f"Bridge token authentication active on header {TOKEN_HEADER}")
@@ -1826,7 +1967,7 @@ class NVDAHTTPBridge:
 			self.shutdown_event.set()
 			self.recorder.stop()
 			self.developer_mode_manager.reset()
-			self.permission_policy.reset()
+			self.reset_permissions()
 
 			if self.server:
 				try:

@@ -54,7 +54,7 @@ class ToolDiscoveryTests(unittest.TestCase):
 		names = {meta.name for meta in self.registry.list_tools()}
 		self.assertIn("find_tools", names)
 		self.assertIn("get_tool_schema", names)
-		self.assertEqual(len(names), 34)
+		self.assertEqual(len(names), 35)
 
 	def test_search_uses_word_starts_not_substrings(self) -> None:
 		# "dialog" only contains "log" as a substring. A naive search returned
@@ -124,6 +124,26 @@ class ToolDiscoveryTests(unittest.TestCase):
 		)
 		self.assertIsNotNone(full.output_schema)
 		self.assertIn("properties", full.output_schema)
+		self.assertIn("result", full.output_schema["properties"])
+		self.assertEqual(full.output_schema["properties"]["trace_id"], {"type": "string"})
+		self.assertIn("_meta", full.output_schema["required"])
+		self.assertFalse(full.output_schema["additionalProperties"])
+
+	def test_companion_schema_preserves_tool_owned_result_and_trace_id(self) -> None:
+		python_output = self._run(
+			"get_tool_schema",
+			{"name": "execute_python", "include_output_schema": True},
+			developer_mode=True,
+		).output_schema
+		self.assertIn("anyOf", python_output["properties"]["result"])
+		self.assertEqual(python_output["properties"]["_meta"]["type"], "object")
+
+		trace_output = self._run(
+			"get_tool_schema",
+			{"name": "get_action_trace", "include_output_schema": True},
+		).output_schema
+		self.assertEqual(trace_output["properties"]["trace_id"]["type"], "string")
+		self.assertEqual(trace_output["properties"]["_meta"]["properties"]["trace_id"]["type"], "string")
 
 	def test_unknown_schema_points_back_to_find_tools(self) -> None:
 		result = self.executor.execute(

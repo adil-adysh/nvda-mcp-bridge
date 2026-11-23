@@ -1,13 +1,13 @@
 # NVDA MCP Server
 
-![Version](https://img.shields.io/badge/version-0.12.0-blue)
+![Version](https://img.shields.io/badge/version-0.1.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-brightgreen)
 
 The Rust MCP companion for **NVDA MCP Bridge**. It speaks the Model Context Protocol over stdio to an MCP client, discovers the bridge's tool catalog, and forwards each tool call to the NVDA add-on over the authenticated local HTTP bridge.
 
 | | |
 |---|---|
-| Companion version | `0.12.0` |
+| Companion version | `0.1.0` |
 | Bridge API level | `1` |
 | Bridge protocol | `nvda-bridge-protocol` `1.0.0` |
 | Transport to client | MCP over stdio (JSON-RPC 2.0) |

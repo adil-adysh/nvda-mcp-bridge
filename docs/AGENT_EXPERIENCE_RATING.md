@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-14
 **Evaluator:** an AI agent driving the tools through MCP over stdio, as a real client would.
-**Current release:** bridge and companion `0.12.0` (API 1). The scores below
+**Historical internal build:** bridge and companion `0.12.0` (API 1). The scores below
 describe the `0.10.0` build named in the next line; the follow-up sections record
 what changed afterwards.
 **Build evaluated:** bridge `0.10.0` (API 1), companion `0.10.0` (SHA-256 `6df47321…`), rebuilt with

@@ -38,7 +38,7 @@
 
 ### Bridge add-on
 
-* Implements `GET /health`, `GET /tools`, `POST /action`.
+* Implements `GET /health`, `GET /tools`, `POST /action` and authenticated `GET /speech`.
 * Authenticates protected endpoints via `X-NVDA-Bridge-Token`.
 * Runs NVDA API calls through main-thread executor for thread safety.
 * Returns structured envelopes with:
@@ -86,7 +86,7 @@ No runtime tool discovery, subclass scanning, or dynamic tool registration occur
   "success": true,
   "action": "observe",
   "duration_ms": 7.12,
-  "bridge": { "bridge_version": "0.12.0", "api_level": 1 },
+  "bridge": { "bridge_version": "0.1.0", "api_level": 1 },
   "nvda_status_snapshot": {
     "secure_screen": false,
     "modal_blocking": false,
@@ -99,7 +99,7 @@ No runtime tool discovery, subclass scanning, or dynamic tool registration occur
 ## Security Model
 
 * Loopback-only binding (`127.0.0.1`).
-* Token-required for `/tools` and `/action`.
+* Token-required for `/tools`, `/action` and `/speech`.
 * Timing-safe token comparison.
 * Centralized error registry with retry semantics.
 
@@ -108,4 +108,5 @@ No runtime tool discovery, subclass scanning, or dynamic tool registration occur
 * The bridge does not implement MCP wire protocol directly.
 * Tool and output contracts are discoverable at runtime via `GET /tools`.
 * Tool order in discovery output is deterministic and matches manifest order.
+* Speech observation uses a separate bounded, in-memory journal and requires the explicit `speech_observation` permission.
 * Protocol schemas live in `docs/protocol/`.

@@ -441,6 +441,19 @@ class WaitForEventsInput:
 
 
 @dataclass(frozen=True)
+class WaitForSpeechInput:
+	"""Wait for or page explicitly authorized NVDA speech observations."""
+
+	since: Optional[int] = field(default=None, metadata={"minimum": 0})
+	journal_id: Optional[str] = field(
+		default=None,
+		metadata={"description": "Speech journal generation that issued `since`."},
+	)
+	timeout_ms: int = field(default=1000, metadata={"minimum": 0, "maximum": 30000})
+	limit: int = field(default=20, metadata={"minimum": 1, "maximum": 256})
+
+
+@dataclass(frozen=True)
 class LocateInput:
 	"""Search for controls by role and name.
 
@@ -1066,6 +1079,28 @@ class WaitEventsResult:
 	earliest_available_version: int = 0
 	events: list[dict[str, Any]] = field(default_factory=list)
 	event_kinds: dict[str, int] = field(default_factory=dict)
+	expired: bool = False
+	resync_required: bool = False
+	resync_reason: Optional[str] = None
+	resync_from: Optional[dict[str, Any]] = None
+	history_complete: bool = True
+	truncated: bool = False
+	has_more: bool = False
+	cursor_status: str = "ok"
+	timed_out: bool = False
+	cancelled: bool = False
+
+
+@dataclass(frozen=True)
+class WaitSpeechResult:
+	"""Speech records plus explicit cursor and bounded-history metadata."""
+
+	journal_id: str
+	from_version: int
+	to_version: int
+	earliest_available_version: int = 0
+	dropped: int = 0
+	events: list[dict[str, Any]] = field(default_factory=list)
 	expired: bool = False
 	resync_required: bool = False
 	resync_reason: Optional[str] = None

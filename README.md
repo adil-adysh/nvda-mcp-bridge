@@ -11,7 +11,7 @@ The add-on queues every NVDA call on NVDA's main thread, so tools behave like ke
 
 | | |
 |---|---|
-| Add-on version | `0.12.0` |
+| Add-on version | `0.1.0` (first public preview) |
 | Bridge API level | `1` |
 | Bridge protocol | `nvda-bridge-protocol` `1.0.0` |
 | Minimum NVDA | `2026.1.0` |
@@ -27,6 +27,7 @@ The add-on queues every NVDA call on NVDA's main thread, so tools behave like ke
 - **Inspect** NVDA objects, app modules, loaded add-ons, bridge health and action traces.
 - **Search logs** with structured, paginated queries and bounded summaries.
 - **Speak** text and show messages through NVDA.
+- **Observe speech** with the separate, opt-in `wait_for_speech` tool after enabling its permission in NVDA Settings.
 - **Control NVDA** with restart and plug-in reload actions when explicitly permitted.
 - **Run Python** in NVDA's process only when developer mode is enabled.
 
@@ -40,7 +41,7 @@ The add-on queues every NVDA call on NVDA's main thread, so tools behave like ke
 
 ### 1. Install the add-on
 
-1. Download `nvdaMcpBridge-0.12.0.nvda-addon` from [Releases](https://github.com/adil-adysh/nvda-mcp-bridge/releases).
+1. Download `nvdaMcpBridge-0.1.0.nvda-addon` from the [v0.1.0 release](https://github.com/adil-adysh/nvda-mcp-bridge/releases/tag/v0.1.0).
 2. Open the file with NVDA, or use **NVDA Menu → Tools → Add-on Store → Install from file**.
 3. Restart NVDA when prompted.
 
@@ -66,7 +67,7 @@ The recommended path is automatic:
 
 If you prefer to configure a client by hand, see [Manual client configuration](#manual-client-configuration).
 
-> **Version note:** `0.12.0` is the first public GitHub release of the current API-1 line. An older `1.0.0` package advertised API level 4 and predates the reset. It is **not** an upgrade, so do not install it over this line. Use the release asset that matches this README.
+> **First public preview:** `0.1.0` is the first GitHub release. The `0.10.0`–`0.12.0` entries in the changelog are internal development builds. Package version, API level `1`, and protocol version `1.0.0` are separate version lines.
 
 ## Manual client configuration
 
@@ -161,7 +162,7 @@ Invoke-RestMethod http://127.0.0.1:8765/health | ConvertTo-Json -Depth 6
 
 The response should report:
 
-- `bridge_version`: `0.12.0`
+- `bridge_version`: `0.1.0`
 - `api_level`: `1`
 - `supported_api_levels`: `[1]`
 
@@ -175,7 +176,13 @@ Start with observation, which needs only the default `read_only` permission:
 Use the nvda tool `observe` with no arguments and tell me what has focus.
 ```
 
-Then try speech, which is also enabled by default:
+Speech output is enabled by default. Reading NVDA's spoken announcements uses a separate permission and is off by default:
+
+```text
+Enable Allow MCP Speech Observation in NVDA MCP Bridge settings, then use the nvda tool `wait_for_speech`.
+```
+
+For example, to speak text:
 
 ```text
 Use the nvda tool `speak_text` to say "NVDA MCP Bridge is connected".
@@ -197,6 +204,7 @@ Defaults are intentionally conservative:
 |---|---|---|
 | `read_only` | **Enabled** | `observe`, `read`, `locate`, `wait_for_events`, `list_reading_targets`, `find_tools`, `get_tool_schema` |
 | `speech_output` | **Enabled** | `speak_text`, `show_message` |
+| `speech_observation` | Off | `wait_for_speech` (reads bounded NVDA speech announcements and speech-control events) |
 | `input_control` | Off | `press`, `invoke`, `set_value`, `focus`, `activate_window`, `navigate`, `navigate_reading`, `scroll`, `click_at`, `start_browse_mode` |
 | `diagnostics` | Off | `health_snapshot`, `inspect_object`, `inspect_app_module`, `walk_object_tree`, `get_focus_lineage`, `list_loaded_addons`, `get_logs`, `search_logs`, `get_log_context`, `summarize_logs`, `get_action_trace` |
 | `nvda_lifecycle` | Off | `restart_nvda`, `reload_plugins` |
@@ -206,6 +214,7 @@ Defaults are intentionally conservative:
 Manage capabilities in **NVDA Menu → Preferences → Settings → NVDA MCP Bridge**:
 
 - Enable input, diagnostics, lifecycle and dialog control individually.
+- Enable **Allow MCP Speech Observation** separately before a client can read NVDA announcements. It is off by default, and observation is blocked on secure desktops or protected focus.
 - Choose the elevation window: 1, 5, 10, 15 or 30 minutes. It is capped at 30 minutes and applies to newly granted capabilities.
 - Enable developer mode through a confirmation dialog that explains the risk and the time limit. Developer mode expires automatically.
 - **Reset Permissions to Safe Defaults** revokes every elevated capability immediately.
@@ -225,7 +234,7 @@ The authoritative list is always the bridge's `/tools` endpoint; the MCP compani
 | Input | `press` | Send one gesture or an ordered sequence |
 | Discovery | `find_tools`, `get_tool_schema` | Search the catalog and fetch one schema on demand |
 | Diagnostics | `get_action_trace`, `get_focus_lineage`, `get_log_context`, `get_logs`, `health_snapshot`, `inspect_app_module`, `inspect_object`, `list_loaded_addons`, `search_logs`, `summarize_logs`, `walk_object_tree` | Inspect NVDA objects, add-ons, logs and action traces |
-| Speech | `speak_text` | Speak through NVDA |
+| Speech | `speak_text`, `wait_for_speech` | Speak through NVDA; read announcements only with the separate speech-observation permission |
 | UI | `show_message` | Show a message to the user |
 | System | `reload_plugins`, `restart_nvda` | Reload add-ons or restart NVDA |
 | Developer | `execute_python` | Run Python in NVDA's process when explicitly authorized |
@@ -348,7 +357,7 @@ The build workflow verifies these values and rejects a `v*` tag that does not ma
 
 ### Releasing
 
-The GitHub workflow builds and validates the add-on on every push and pull request. Pushing a tag in the form `v0.12.0` publishes a release with:
+The GitHub workflow builds and validates the add-on on every push and pull request. Pushing a tag in the form `v<version>` publishes a release with:
 
 - the `.nvda-addon`
 - the translation template
@@ -368,7 +377,7 @@ The GitHub workflow builds and validates the add-on on every push and pull reque
 
 ### A client reports a bridge API level mismatch
 
-The add-on and companion must be from the same release line. Reinstall the companion from the `0.12.0` add-on. Do not install the legacy `1.0.0` API-4 package over this line.
+The add-on and companion must be from the same release line. Reinstall the companion from the matching add-on package.
 
 ### A tool returns `permission_denied`
 

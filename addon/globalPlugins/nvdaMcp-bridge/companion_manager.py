@@ -116,6 +116,25 @@ def is_companion_image_path(image_path: object, install_dir: Path) -> bool:
 	return os.path.dirname(image) == directory and os.path.basename(image).startswith(_COMPANION_IMAGE_PREFIX)
 
 
+def _process_image_path_from_handle(kernel32: Any, handle: Any) -> Optional[str]:
+	"""Read a process image path through an already-open process handle."""
+	import ctypes
+	from ctypes import wintypes
+
+	kernel32.QueryFullProcessImageNameW.argtypes = [
+		wintypes.HANDLE,
+		wintypes.DWORD,
+		wintypes.LPWSTR,
+		ctypes.POINTER(wintypes.DWORD),
+	]
+	kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
+	buffer = ctypes.create_unicode_buffer(32768)
+	size = wintypes.DWORD(len(buffer))
+	if not kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+		return None
+	return buffer.value
+
+
 def _process_image_path(pid: int) -> Optional[str]:
 	"""Return a process's executable path, or ``None`` when it cannot be read."""
 	if os.name != "nt":
@@ -127,13 +146,6 @@ def _process_image_path(pid: int) -> Optional[str]:
 	kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 	kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
 	kernel32.OpenProcess.restype = wintypes.HANDLE
-	kernel32.QueryFullProcessImageNameW.argtypes = [
-		wintypes.HANDLE,
-		wintypes.DWORD,
-		wintypes.LPWSTR,
-		ctypes.POINTER(wintypes.DWORD),
-	]
-	kernel32.QueryFullProcessImageNameW.restype = wintypes.BOOL
 	kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 	kernel32.CloseHandle.restype = wintypes.BOOL
 
@@ -141,17 +153,13 @@ def _process_image_path(pid: int) -> Optional[str]:
 	if not handle:
 		return None
 	try:
-		buffer = ctypes.create_unicode_buffer(32768)
-		size = wintypes.DWORD(len(buffer))
-		if not kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
-			return None
-		return buffer.value
+		return _process_image_path_from_handle(kernel32, handle)
 	finally:
 		kernel32.CloseHandle(handle)
 
 
-def _terminate_process(pid: int) -> Tuple[bool, str]:
-	"""Terminate one process and wait for it to exit."""
+def _terminate_process(pid: int, install_dir: Path) -> Tuple[bool, str]:
+	"""Verify and terminate one process through the same handle, then wait for exit."""
 	if os.name != "nt":
 		return False, "not running on Windows"
 	import ctypes
@@ -183,6 +191,11 @@ def _terminate_process(pid: int) -> Tuple[bool, str]:
 			return True, "already exited"
 		return False, f"OpenProcess failed (Windows error {error})"
 	try:
+		image_path = _process_image_path_from_handle(kernel32, handle)
+		if image_path is None:
+			return False, "could not verify process image before termination"
+		if not is_companion_image_path(image_path, install_dir):
+			return False, "process image changed since discovery"
 		if not kernel32.TerminateProcess(handle, 1):
 			error = ctypes.get_last_error()
 			return False, f"TerminateProcess failed (Windows error {error})"
@@ -302,7 +315,7 @@ class CompanionManager:
 			# not proceed when the old instances cannot be accounted for.
 			return [], [(-1, f"could not enumerate processes: {e}")]
 		for pid in pids:
-			ok, reason = _terminate_process(pid)
+			ok, reason = _terminate_process(pid, self.install_dir)
 			if ok:
 				stopped.append(pid)
 			else:

@@ -11,7 +11,7 @@ ADDON_DIR = os.path.normpath(
 	os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "addon", "globalPlugins", "nvdaMcp-bridge")
 )
 PACKAGE_NAME = "nvdaMcpBridge"
-FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "nvda_sample.log")
+FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "nvda_sample.fixture")
 
 if ADDON_DIR not in sys.path:
 	sys.path.insert(0, ADDON_DIR)

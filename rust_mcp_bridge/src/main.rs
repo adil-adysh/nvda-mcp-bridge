@@ -154,26 +154,55 @@ impl Settings {
     }
 }
 
-/// Schema keywords added to every success payload by the companion.
+/// Extend the bridge data schema with companion metadata.
 ///
-/// The bridge's model describes `data`; the companion also returns the uniform
-/// `result` block (verification/evidence/state) and the correlation ids. They
-/// are advertised here so `structuredContent` stays valid against
-/// `outputSchema` instead of silently carrying undeclared fields.
+/// Tool data stays at the root. Metadata always has a collision-free `_meta`
+/// path; legacy top-level aliases are added only when the tool schema does not
+/// already define those fields.
 fn extend_output_schema(schema: &Value) -> Value {
     let mut extended = schema.clone();
-    if let Some(object) = extended.as_object_mut() {
-        if let Some(properties) = object
-            .get_mut("properties")
-            .and_then(|value| value.as_object_mut())
-        {
-            properties
-                .entry("result".to_string())
-                .or_insert_with(|| json!({"type": "object", "additionalProperties": true}));
-            properties
-                .entry("trace_id".to_string())
-                .or_insert_with(|| json!({"type": "string"}));
+    let Some(object) = extended.as_object_mut() else {
+        return extended;
+    };
+
+    let properties_value = object
+        .entry("properties")
+        .or_insert_with(|| Value::Object(Map::new()));
+    if !properties_value.is_object() {
+        *properties_value = Value::Object(Map::new());
+    }
+    let properties = properties_value
+        .as_object_mut()
+        .expect("properties was normalized to an object");
+    let has_tool_result = properties.contains_key("result");
+    let has_tool_trace_id = properties.contains_key("trace_id");
+    properties.insert(
+        "_meta".to_string(),
+        json!({
+            "type": "object",
+            "properties": {
+                "result": {},
+                "trace_id": {"type": "string"}
+            },
+            "additionalProperties": false
+        }),
+    );
+    if !has_tool_result {
+        properties.insert("result".to_string(), json!({}));
+    }
+    if !has_tool_trace_id {
+        properties.insert("trace_id".to_string(), json!({"type": "string"}));
+    }
+
+    let required_value = object
+        .entry("required")
+        .or_insert_with(|| Value::Array(Vec::new()));
+    if let Some(required) = required_value.as_array_mut() {
+        if !required.iter().any(|field| field == "_meta") {
+            required.push(json!("_meta"));
         }
+    } else {
+        *required_value = json!(["_meta"]);
     }
     extended
 }
@@ -307,6 +336,8 @@ struct BridgeClient {
     client: Client,
     base_url: String,
     auth_token: String,
+    /// Configured per-request deadline, extended only for bounded speech waits.
+    request_timeout: Duration,
     /// Category allow-list for the catalog, from `NVDA_BRIDGE_CATEGORIES`.
     ///
     /// The catalog is context: every tool's schema is paid for by the agent on
@@ -346,8 +377,9 @@ impl BridgeClient {
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(15);
 
+        let request_timeout = Duration::from_secs(timeout_secs);
         let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(timeout_secs))
+            .timeout(request_timeout)
             .build()
             .context("Failed to build HTTP client")?;
 
@@ -393,6 +425,7 @@ impl BridgeClient {
             client,
             base_url,
             auth_token,
+            request_timeout,
             categories,
             include_output_schemas,
         })
@@ -497,9 +530,8 @@ impl BridgeClient {
             };
 
             // The bridge publishes an envelope schema (`{success, data, error}`)
-            // in its types map. The companion's structuredContent is the data
-            // object, enriched with the result block and correlation ids, so
-            // that is the schema to advertise.
+            // in its types map. structuredContent keeps the data fields at the
+            // root and adds companion metadata under `_meta`.
             let data_schema_value = output_schema_value
                 .as_ref()
                 .and_then(data_schema)
@@ -587,6 +619,7 @@ impl BridgeClient {
     }
 
     async fn execute_action(&self, action: &str, params: Map<String, Value>) -> Result<BridgeActionEnvelope> {
+        let action_timeout = Self::request_timeout_for_tool(action, &params, self.request_timeout);
         let request_id = Self::next_request_id();
         let payload = json!({
             "request_id": request_id,
@@ -595,17 +628,38 @@ impl BridgeClient {
         });
 
         let url = format!("{}/action", self.base_url);
-        let response = self
+        let mut request = self
             .client
             .post(&url)
             .header(TOKEN_HEADER, &self.auth_token)
-            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .header(reqwest::header::CONTENT_TYPE, "application/json");
+        if let Some(timeout) = action_timeout {
+            request = request.timeout(timeout);
+        }
+        let response = request
             .json(&payload)
             .send()
             .await
             .with_context(|| format!("Failed to connect to bridge for action: {action}"))?;
 
         Self::parse_action_response(action, response).await
+    }
+
+    fn request_timeout_for_tool(
+        action: &str,
+        params: &Map<String, Value>,
+        configured_timeout: Duration,
+    ) -> Option<Duration> {
+        if action != "wait_for_speech" {
+            return None;
+        }
+        let wait_ms = params
+            .get("timeout_ms")
+            .and_then(Value::as_u64)
+            .unwrap_or(1_000)
+            .min(30_000);
+        let speech_deadline = Duration::from_millis(wait_ms.saturating_add(5_000));
+        Some(configured_timeout.max(speech_deadline))
     }
 
     async fn parse_action_response(action: &str, response: Response) -> Result<BridgeActionEnvelope> {
@@ -948,11 +1002,9 @@ impl NvdaServer {
 
     /// Build the MCP result for a successful bridge response.
     ///
-    /// `structuredContent` is the bridge's `data` object with the uniform
-    /// `result` block and correlation ids flattened alongside it. That keeps
-    /// existing data fields at the top level while making verification,
-    /// evidence and the trace id visible to structured-content clients, which
-    /// previously had to parse the text block to find them.
+    /// `structuredContent` keeps the bridge's data fields at the root and puts
+    /// companion-owned metadata under `_meta`. Legacy top-level metadata aliases
+    /// remain for fields the bridge data does not already own.
     ///
     /// The text block is the same compact JSON, not a second pretty-printed
     /// envelope: one representation, duplicated only for clients that cannot
@@ -964,14 +1016,25 @@ impl NvdaServer {
             Some(other) => json!({ "value": other }),
             None => Value::Object(Map::new()),
         };
-
+        let mut metadata = Map::new();
+        if let Some(ref result) = payload.result {
+            metadata.insert("result".to_string(), result.clone());
+        }
+        if let Some(ref trace_id) = payload.trace_id {
+            metadata.insert("trace_id".to_string(), json!(trace_id));
+        }
         if let Some(object) = structured.as_object_mut() {
             if let Some(ref result) = payload.result {
-                object.insert("result".to_string(), result.clone());
+                object
+                    .entry("result".to_string())
+                    .or_insert_with(|| result.clone());
             }
             if let Some(ref trace_id) = payload.trace_id {
-                object.insert("trace_id".to_string(), json!(trace_id));
+                object
+                    .entry("trace_id".to_string())
+                    .or_insert_with(|| json!(trace_id));
             }
+            object.insert("_meta".to_string(), Value::Object(metadata));
         }
 
         let text = serde_json::to_string(&structured).unwrap_or_default();
@@ -2158,6 +2221,32 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn wait_for_speech_request_allows_its_full_bridge_wait() -> Result<()> {
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        let action_mock = server.mock(|when, then| {
+            when.method(POST).path("/action");
+            then.status(200)
+                .header("content-type", "application/json")
+                .delay(Duration::from_millis(200))
+                .body(r#"{"success":true,"data":{"timed_out":true}}"#);
+        });
+        let mut bridge_client = BridgeClient::new(server.url(""), "test-token".to_string())?;
+        bridge_client.client = Client::builder()
+            .timeout(Duration::from_millis(50))
+            .build()?;
+        let params: Map<String, Value> = serde_json::from_value(json!({"timeout_ms": 30000}))?;
+
+        let response = bridge_client.execute_action("wait_for_speech", params).await?;
+
+        assert!(response.success);
+        assert_eq!(response.data.unwrap().get("timed_out"), Some(&json!(true)));
+        action_mock.assert();
+        Ok(())
+    }
+
     #[test]
     fn server_capabilities_advertise_refreshable_tool_catalog() {
         let dummy_catalog = ToolCatalog {
@@ -2378,27 +2467,48 @@ mod tests {
     }
 
     #[test]
-    fn success_content_includes_result_block() {
+    fn success_content_keeps_legacy_metadata_aliases_without_collisions() {
         let payload = BridgeActionEnvelope {
             success: true,
             data: Some(json!({"sent": true})),
             result: Some(json!({"ok": true, "state_version": 7, "changed": true})),
+            trace_id: Some("companion-trace".into()),
             ..Default::default()
         };
 
         let result = NvdaServer::success_result(&payload);
         let structured = result.structured_content.expect("structured content");
         assert_eq!(structured["sent"], true);
-        // The result block is flattened next to data so a structured-content
-        // client can see verification without parsing text.
         assert_eq!(structured["result"]["state_version"], 7);
+        assert_eq!(structured["trace_id"], "companion-trace");
+        assert_eq!(structured["_meta"]["result"]["state_version"], 7);
+        assert_eq!(structured["_meta"]["trace_id"], "companion-trace");
         let text = first_text(&result.content);
         let same: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(same, structured);
     }
 
     #[test]
-    fn output_schema_advertises_the_metadata_fields() {
+    fn success_content_keeps_tool_result_and_input_trace_id() {
+        let payload = BridgeActionEnvelope {
+            success: true,
+            data: Some(json!({"result": "the executed string", "trace_id": "requested-trace"})),
+            result: Some(json!({"ok": true})),
+            trace_id: Some("companion-trace".into()),
+            ..Default::default()
+        };
+
+        let result = NvdaServer::success_result(&payload);
+        let structured = result.structured_content.expect("structured content");
+
+        assert_eq!(structured["result"], "the executed string");
+        assert_eq!(structured["trace_id"], "requested-trace");
+        assert_eq!(structured["_meta"]["result"]["ok"], true);
+        assert_eq!(structured["_meta"]["trace_id"], "companion-trace");
+    }
+
+    #[test]
+    fn output_schema_keeps_flat_data_and_adds_companion_metadata() {
         let schema = json!({
             "type": "object",
             "properties": {"title": {"type": "string"}},
@@ -2407,9 +2517,34 @@ mod tests {
         });
         let extended = extend_output_schema(&schema);
         assert_eq!(extended["properties"]["title"]["type"], "string");
-        assert!(extended["properties"]["result"].is_object());
+        assert_eq!(extended["properties"]["result"], json!({}));
         assert_eq!(extended["properties"]["trace_id"]["type"], "string");
+        assert!(extended["properties"]["_meta"]["properties"]["result"].is_object());
+        assert_eq!(
+            extended["properties"]["_meta"]["properties"]["trace_id"]["type"],
+            "string"
+        );
+        assert_eq!(extended["required"], json!(["title", "_meta"]));
         assert_eq!(extended["additionalProperties"], false);
+
+        let collision_schema = json!({
+            "type": "object",
+            "properties": {
+                "result": {"type": "string"},
+                "trace_id": {"type": "string"}
+            },
+            "additionalProperties": false
+        });
+        let extended_collision_schema = extend_output_schema(&collision_schema);
+        assert_eq!(
+            extended_collision_schema["properties"]["result"]["type"],
+            "string"
+        );
+        assert_eq!(
+            extended_collision_schema["properties"]["trace_id"]["type"],
+            "string"
+        );
+        assert!(extended_collision_schema["properties"]["_meta"].is_object());
     }
 
     fn first_text(blocks: &[ContentBlock]) -> String {
@@ -2467,6 +2602,7 @@ mod tests {
         let envelope: Value = serde_json::from_str(&text).unwrap();
 
         assert_eq!(envelope["trace_id"], "at-abc");
+        assert_eq!(envelope["_meta"]["trace_id"], "at-abc");
         // The full trace is opt-in via get_action_trace; it must not ride along
         // on every call.
         assert!(envelope["trace"].is_null());

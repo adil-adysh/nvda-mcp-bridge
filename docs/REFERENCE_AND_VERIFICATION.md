@@ -1,11 +1,12 @@
 # Reference and verification — API level 1
 
-Status: implementation audit for the reset first public contract. This document
-separates what the source currently guarantees, what the regression suite proves,
-and what remains an assumption that needs live NVDA evidence.
+Status: historical implementation audit for the internal API-1 development build.
+It predates the first public release and does not describe the v0.1.0 package.
+This document records what the source at that snapshot guaranteed, what its
+regression suite proved, and what remained an assumption needing live NVDA evidence.
 
 > **Baseline note:** the measurements below were recorded against the `0.10.0`
-> baseline. The current release is `0.12.0`; the contract findings still apply,
+> baseline. The current public release is `0.1.0`; the contract findings still apply,
 > while the test counts have grown since the baseline.
 
 ## Baseline (Phase 0)

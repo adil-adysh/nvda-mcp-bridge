@@ -8,14 +8,13 @@ bridge fails closed with no tools, which looks like a broken client.
 
 | Artifact | Current | Notes |
 |---|---|---|
-| Add-on | `0.12.0` | `api_level` 1 |
-| Companion | `0.12.0` | speaks API level 1 only |
+| Add-on | `0.1.0` | first public preview; `api_level` 1 |
+| Companion | `0.1.0` | speaks API level 1 only |
 | Protocol | `1.0.0` | `nvda-bridge-protocol` |
 
-`0.10.0` was the first public API-1 contract. A `1.0.0` package advertising API
-level 4 predates the reset and is **not** an upgrade: do not install it over
-this line, and do not treat its backup as the current build. Keep at most one
-`1.0.0` archive, clearly labelled as stale, until the rollback window closes.
+`0.1.0` is the first public release. The `0.10.0`–`0.12.0` entries were
+internal development builds. Package version is independent of protocol
+version `1.0.0` and API level `1`.
 
 ## Deployment checklist
 
@@ -38,8 +37,8 @@ python scripts/mcp_tool_catalog_probe.py
 
 The health response must report `bridge_version` equal to the package version
 and `api_level: 1` with `supported_api_levels: [1]`. The catalog probe must
-report the same tool count the bridge's `/tools` endpoint returns (33 for
-`0.12.0` without developer mode).
+report the same tool count the bridge's `/tools` endpoint returns (33 by
+default, 34 when developer mode is enabled).
 
 ## Companion environment
 
