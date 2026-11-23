@@ -854,6 +854,37 @@ ALL_NVDA_TOOLS = [
     ),
     TypedToolImpl.from_coordinator(
         ToolMetadata(
+            name="wait_for_speech",
+            version="1.0.0",
+            description=(
+                "Wait for or page explicitly authorized NVDA speech observations. Each text record "
+                "is prepared for synthesis, not proof of completed playback or action causality. "
+                "Omitting the cursor starts at the current speech journal head."
+            ),
+            category="observation",
+            read_only=True,
+            destructive=False,
+            idempotent=False,
+            side_effects=False,
+            required_permission="speech_observation",
+            allowed_nvda_states=("normal",),
+            expected_duration_ms=1000,
+            cancellation_supported=True,
+            retry_safe=True,
+            execution_mode=ExecutionMode.COORDINATOR,
+        ),
+        models.WaitForSpeechInput,
+        models.WaitSpeechResult,
+        lambda input_obj, context: tool_handlers.wait_for_speech(
+            since=input_obj.since,
+            journal_id=input_obj.journal_id,
+            timeout_ms=input_obj.timeout_ms,
+            limit=input_obj.limit,
+            context=context,
+        ),
+    ),
+    TypedToolImpl.from_coordinator(
+        ToolMetadata(
             name="get_action_trace",
             version="1.0.0",
             description=(

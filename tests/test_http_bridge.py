@@ -126,6 +126,11 @@ class HttpBridgeTests(unittest.TestCase):
         self.assertEqual(wait.call_args.kwargs["since"], 0)
         self.assertEqual(wait.call_args.kwargs["timeout_ms"], 0)
         self.assertEqual(wait.call_args.kwargs["limit"], 20)
+
+    def test_speech_tool_is_marked_as_explicit_opt_in_during_discovery(self):
+        metadata = bridge_module.NVDA_TOOLS_REGISTRY.get("wait_for_speech").get_metadata()
+        constraints = NVDAHTTPBridge._compute_tool_constraints(metadata)
+        self.assertTrue(constraints["requires_explicit_opt_in"])
     def test_cached_nvda_menu_identity_does_not_block_after_menu_closes(self):
         # NVDA caches the identified menu popup after it closes. A normal app
         # window in the foreground proves the menu is no longer active.

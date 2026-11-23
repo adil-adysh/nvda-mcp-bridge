@@ -12,6 +12,7 @@ Two contracts are pinned here:
 import importlib
 import os
 import sys
+import threading
 import types
 import unittest
 
@@ -219,6 +220,7 @@ NEW_TOOLS = {
 	"dismiss",
 	"click_at",
 	"wait_for_events",
+	"wait_for_speech",
 }
 
 
@@ -228,6 +230,8 @@ class FakeContext:
 		self.result = core.ResultMeta()
 		self._projections = list(projections or [])
 		self._wait_result = wait_result
+		self._speech_access_result = (True, None)
+		self.cancellation_event = None
 
 	# -- main-thread operations -------------------------------------------
 	def dispatch(self, operation):
@@ -256,6 +260,33 @@ class FakeContext:
 			"from_version": since,
 			"to_version": since,
 			"events": [],
+		}
+
+	def speech_version(self):
+		return 88
+
+	def speech_access(self):
+		return self._speech_access_result
+
+	def wait_speech(self, since, timeout_ms, limit=20, journal_id=None, cancellation_event=None):
+		self.calls.append(("wait_speech", since, timeout_ms, limit, journal_id, cancellation_event))
+		return self._wait_result or {
+			"journal_id": "speech-journal",
+			"from_version": since,
+			"to_version": since,
+			"earliest_available_version": 0,
+			"dropped": 0,
+			"events": [],
+			"expired": False,
+			"resync_required": False,
+			"resync_reason": None,
+			"resync_from": None,
+			"history_complete": True,
+			"truncated": False,
+			"has_more": False,
+			"cursor_status": "ok",
+			"timed_out": True,
+			"cancelled": False,
 		}
 
 	# -- settle ------------------------------------------------------------
@@ -297,6 +328,7 @@ class SurfaceTests(unittest.TestCase):
 			"observe": "read_only",
 			"read": "read_only",
 			"wait_for_events": "read_only",
+			"wait_for_speech": "speech_observation",
 			"invoke": "input_control",
 			"set_value": "input_control",
 			"focus": "input_control",
@@ -634,6 +666,91 @@ class HandlerTests(unittest.TestCase):
 		self.assertFalse(result["timed_out"])
 		self.assertEqual(result["to_version"], 8)
 		self.assertEqual(result["events"], [{"kind": "focus"}])
+
+	def test_wait_for_speech_defaults_to_speech_head_without_replaying_history(self):
+		class SpeechContext(FakeContext):
+			def event_version(self):
+				return 999
+
+			def speech_version(self):
+				return 4
+
+		context = SpeechContext()
+		result = handlers.wait_for_speech(since=None, timeout_ms=0, context=context)
+		self.assertIn(("wait_speech", 4, 0, 20, None, None), context.calls)
+		self.assertEqual(result["events"], [])
+
+	def test_wait_for_speech_preserves_typed_cursor_and_resync_metadata(self):
+		page = {
+			"journal_id": "speech-journal",
+			"from_version": 2,
+			"to_version": 3,
+			"earliest_available_version": 4,
+			"dropped": 3,
+			"events": [{"kind": "speech", "version": 3, "text": "hello"}],
+			"expired": True,
+			"resync_required": True,
+			"resync_reason": "cursor_expired",
+			"resync_from": {"journal_id": "speech-journal", "version": 3},
+			"history_complete": False,
+			"truncated": True,
+			"has_more": True,
+			"cursor_status": "stale",
+			"timed_out": False,
+			"cancelled": False,
+		}
+		result = handlers.wait_for_speech(
+			since=2, journal_id="speech-journal", timeout_ms=100, limit=1,
+			context=FakeContext(wait_result=page),
+		)
+		for key, value in page.items():
+			self.assertEqual(result[key], value, key)
+
+	def test_wait_for_speech_validates_direct_handler_arguments(self):
+		invalid = (
+			{"since": True}, {"since": -1}, {"journal_id": ""},
+			{"timeout_ms": True}, {"timeout_ms": -1}, {"timeout_ms": 30001},
+			{"limit": True}, {"limit": 0}, {"limit": 257},
+		)
+		for override in invalid:
+			with self.subTest(override=override), self.assertRaises(ValueError):
+				arguments = {"since": 5, "journal_id": None, "timeout_ms": 100, "limit": 20}
+				arguments.update(override)
+				handlers.wait_for_speech(context=FakeContext(), **arguments)
+
+	def test_wait_for_speech_passes_cancellation_and_only_times_out_without_progress(self):
+		cancel = threading.Event()
+		context = FakeContext(wait_result={
+			"journal_id": "speech-journal", "from_version": 5, "to_version": 6,
+			"events": [{"kind": "speech", "text": "next"}], "timed_out": True,
+		})
+		context.cancellation_event = cancel
+		advanced = handlers.wait_for_speech(since=5, timeout_ms=200, context=context)
+		self.assertIn(("wait_speech", 5, 200, 20, None, cancel), context.calls)
+		self.assertFalse(advanced["timed_out"])
+		context = FakeContext(wait_result={
+			"journal_id": "speech-journal", "from_version": 5, "to_version": 5,
+			"events": [], "timed_out": True,
+		})
+		self.assertTrue(handlers.wait_for_speech(since=5, timeout_ms=200, context=context)["timed_out"])
+
+	def test_wait_for_speech_fails_closed_when_shared_access_gate_denies(self):
+		context = FakeContext()
+		context._speech_access_result = (False, "protected focus")
+		with self.assertRaises(core.ToolExecutionError) as caught:
+			handlers.wait_for_speech(since=0, timeout_ms=0, context=context)
+		self.assertEqual(caught.exception.protocol_code, 4003)
+		self.assertFalse(any(call[0] == "wait_speech" for call in context.calls))
+
+	def test_wait_for_speech_registry_declares_observation_access_and_output(self):
+		tool = registry_module.NVDA_TOOLS_REGISTRY.get("wait_for_speech", "1.0.0")
+		metadata = tool.get_metadata()
+		self.assertEqual(metadata.category, "observation")
+		self.assertEqual(metadata.required_permission, "speech_observation")
+		self.assertEqual(metadata.allowed_nvda_states, ("normal",))
+		self.assertTrue(metadata.read_only)
+		self.assertEqual(tool.get_input_schema().model().limit, 20)
+		self.assertEqual(tool.get_output_schema().model.__name__, "WaitSpeechResult")
 
 
 class NewContractDefaultsTests(unittest.TestCase):

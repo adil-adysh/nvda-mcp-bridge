@@ -4003,6 +4003,129 @@
       ],
       "additionalProperties": false
     },
+    "WaitSpeechResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "data": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {
+            "journal_id": {
+              "type": "string",
+              "description": "Journal generation that issued `since`; omit to use the current journal."
+            },
+            "from_version": {
+              "type": "integer"
+            },
+            "to_version": {
+              "type": "integer"
+            },
+            "earliest_available_version": {
+              "type": "integer",
+              "default": 0
+            },
+            "dropped": {
+              "type": "integer",
+              "default": 0
+            },
+            "events": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "default": []
+            },
+            "expired": {
+              "type": "boolean",
+              "default": false
+            },
+            "resync_required": {
+              "type": "boolean",
+              "default": false
+            },
+            "resync_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "resync_from": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "history_complete": {
+              "type": "boolean",
+              "default": true
+            },
+            "truncated": {
+              "type": "boolean",
+              "default": false
+            },
+            "has_more": {
+              "type": "boolean",
+              "default": false
+            },
+            "cursor_status": {
+              "type": "string",
+              "default": "ok"
+            },
+            "timed_out": {
+              "type": "boolean",
+              "default": false
+            },
+            "cancelled": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "journal_id",
+            "from_version",
+            "to_version"
+          ],
+          "description": "Speech records plus explicit cursor and bounded-history metadata."
+        },
+        "error": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "integer"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "message"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "additionalProperties": false
+    },
     "ObjectTreeSnapshot": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "object",
@@ -9587,6 +9710,171 @@
       "supersededBy": null
     },
     {
+      "name": "wait_for_speech",
+      "version": "1.0.0",
+      "description": "Wait for or page explicitly authorized NVDA speech observations. Each text record is prepared for synthesis, not proof of completed playback or action causality. Omitting the cursor starts at the current speech journal head.",
+      "category": "observation",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "since": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "minimum": 0,
+            "description": "Event version to resume after; pair it with journal_id for a foreign journal.",
+            "default": null
+          },
+          "journal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Speech journal generation that issued `since`.",
+            "default": null
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 30000,
+            "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
+            "default": 1000
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 256,
+            "description": "Maximum number of items to return.",
+            "default": 20
+          }
+        },
+        "additionalProperties": false,
+        "description": "Wait for or page explicitly authorized NVDA speech observations."
+      },
+      "outputType": "WaitSpeechResult",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+          "journal_id": {
+            "type": "string",
+            "description": "Journal generation that issued `since`; omit to use the current journal."
+          },
+          "from_version": {
+            "type": "integer"
+          },
+          "to_version": {
+            "type": "integer"
+          },
+          "earliest_available_version": {
+            "type": "integer",
+            "default": 0
+          },
+          "dropped": {
+            "type": "integer",
+            "default": 0
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            },
+            "default": []
+          },
+          "expired": {
+            "type": "boolean",
+            "default": false
+          },
+          "resync_required": {
+            "type": "boolean",
+            "default": false
+          },
+          "resync_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "resync_from": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "history_complete": {
+            "type": "boolean",
+            "default": true
+          },
+          "truncated": {
+            "type": "boolean",
+            "default": false
+          },
+          "has_more": {
+            "type": "boolean",
+            "default": false
+          },
+          "cursor_status": {
+            "type": "string",
+            "default": "ok"
+          },
+          "timed_out": {
+            "type": "boolean",
+            "default": false
+          },
+          "cancelled": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "journal_id",
+          "from_version",
+          "to_version"
+        ],
+        "description": "Speech records plus explicit cursor and bounded-history metadata."
+      },
+      "constraints": {
+        "blocked_on_secure_screen": true,
+        "blocked_on_modal": true,
+        "blocked_on_menu": true,
+        "dangerous": false,
+        "requires_explicit_opt_in": false,
+        "requires_developer_mode": false
+      },
+      "readOnly": true,
+      "destructive": false,
+      "idempotent": false,
+      "sideEffects": false,
+      "requiredPermission": "speech_observation",
+      "cancellationSupported": true,
+      "retrySafe": true,
+      "deprecated": false,
+      "supersededBy": null
+    },
+    {
       "name": "walk_object_tree",
       "version": "1.0.0",
       "description": "Walk a bounded object subtree for focus/navigator/desktop.",
@@ -9665,5 +9953,5 @@
       "supersededBy": null
     }
   ],
-  "count": 34
+  "count": 35
 }

@@ -54,7 +54,7 @@ class ToolDiscoveryTests(unittest.TestCase):
 		names = {meta.name for meta in self.registry.list_tools()}
 		self.assertIn("find_tools", names)
 		self.assertIn("get_tool_schema", names)
-		self.assertEqual(len(names), 34)
+		self.assertEqual(len(names), 35)
 
 	def test_search_uses_word_starts_not_substrings(self) -> None:
 		# "dialog" only contains "log" as a substring. A naive search returned

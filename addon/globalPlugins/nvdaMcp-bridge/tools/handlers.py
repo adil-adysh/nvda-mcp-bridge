@@ -1217,6 +1217,82 @@ def wait_for_events(
 	}
 
 
+def wait_for_speech(
+	since: int | None,
+	timeout_ms: int,
+	context: Any,
+	limit: int = 20,
+	journal_id: str | None = None,
+) -> dict[str, Any]:
+	"""Wait for explicitly authorized speech records from their own journal."""
+	if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool) or timeout_ms < 0 or timeout_ms > 30000:
+		raise ValueError("'timeout_ms' must be an integer between 0 and 30000")
+	if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1 or limit > 256:
+		raise ValueError("'limit' must be an integer between 1 and 256")
+	if since is not None and (not isinstance(since, int) or isinstance(since, bool) or since < 0):
+		raise ValueError("'since' must be a non-negative integer, or omitted")
+	if journal_id is not None and (not isinstance(journal_id, str) or not journal_id.strip()):
+		raise ValueError("'journal_id' must be a non-empty speech journal id")
+
+	access = getattr(context, "speech_access", None)
+	try:
+		allowed, reason = access() if callable(access) else (False, "Speech observation safety state is unavailable")
+	except Exception:  # noqa: BLE001 — broken safety state fails closed
+		allowed, reason = False, "Speech observation safety state is unavailable"
+	if not allowed:
+		from ..core import ErrorCode, ToolExecutionError
+
+		raise ToolExecutionError(
+			error_code=ErrorCode.HANDLER_EXECUTION_FAILED,
+			tool_name="wait_for_speech",
+			version="1.0.0",
+			message=reason or "Speech observation is unavailable",
+			protocol_code=4003,
+		)
+
+	if since is None:
+		speech_version = getattr(context, "speech_version", None)
+		since = int(speech_version()) if callable(speech_version) else 0
+	wait_speech = getattr(context, "wait_speech", None)
+	if not callable(wait_speech):
+		raise RuntimeError("Speech journal wait service is unavailable")
+	result = wait_speech(
+		since=since,
+		timeout_ms=timeout_ms,
+		limit=limit,
+		journal_id=journal_id,
+		cancellation_event=getattr(context, "cancellation_event", None),
+	)
+	to_version = int(result.get("to_version", since))
+	cancelled = bool(result.get("cancelled", False))
+	resync_required = bool(result.get("resync_required", False))
+	timed_out = (
+		bool(result.get("timed_out", False))
+		and to_version <= since
+		and not cancelled
+		and not resync_required
+		and str(result.get("cursor_status", "ok")) != "journal_mismatch"
+	)
+	return {
+		"journal_id": str(result.get("journal_id", journal_id or "")),
+		"from_version": int(result.get("from_version", since)),
+		"to_version": to_version,
+		"earliest_available_version": int(result.get("earliest_available_version", 0)),
+		"dropped": int(result.get("dropped", 0)),
+		"events": list(result.get("events", [])),
+		"expired": bool(result.get("expired", False)),
+		"resync_required": resync_required,
+		"resync_reason": result.get("resync_reason"),
+		"resync_from": result.get("resync_from"),
+		"history_complete": bool(result.get("history_complete", not result.get("truncated", False))),
+		"truncated": bool(result.get("truncated", False)),
+		"has_more": bool(result.get("has_more", False)),
+		"cursor_status": str(result.get("cursor_status", "ok")),
+		"timed_out": timed_out,
+		"cancelled": cancelled,
+	}
+
+
 def _summarize_trace(trace: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
 	"""Drop the bulky evidence lists, keeping every diagnostic conclusion.
 

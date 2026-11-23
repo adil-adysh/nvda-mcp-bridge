@@ -1051,7 +1051,9 @@ class NVDAHTTPBridge:
 		is_dangerous = getattr(meta, "destructive", False) or is_developer
 
 		constraints["dangerous"] = is_dangerous
-		constraints["requires_explicit_opt_in"] = is_developer or getattr(meta, "required_permission", "") == "nvda_lifecycle"
+		constraints["requires_explicit_opt_in"] = is_developer or getattr(
+			meta, "required_permission", ""
+		) in ("nvda_lifecycle", PERMISSION_SPEECH_OBSERVATION)
 		constraints["requires_developer_mode"] = is_developer
 
 		return constraints
