@@ -13,7 +13,7 @@ pub const PROTOCOL_NAME: &str = "nvda-bridge-protocol";
 #[allow(dead_code)]
 pub const PROTOCOL_VERSION: &str = "1.0.0";
 #[allow(dead_code)]
-pub const BRIDGE_VERSION: &str = "0.12.0";
+pub const BRIDGE_VERSION: &str = "0.1.0";
 pub const API_LEVEL: u32 = 1;
 #[allow(dead_code)]
 pub const SUPPORTED_API_LEVELS: &[u32] = &[1];

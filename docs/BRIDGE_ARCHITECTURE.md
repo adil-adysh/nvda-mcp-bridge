@@ -86,7 +86,7 @@ No runtime tool discovery, subclass scanning, or dynamic tool registration occur
   "success": true,
   "action": "get_current_focus",
   "duration_ms": 7.12,
-  "bridge": { "bridge_version": "1.0.0", "api_level": 1 },
+  "bridge": { "bridge_version": "0.1.0", "api_level": 1 },
   "nvda_status_snapshot": {
     "secure_screen": false,
     "modal_blocking": false,

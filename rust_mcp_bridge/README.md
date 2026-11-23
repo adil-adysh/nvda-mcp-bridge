@@ -1,6 +1,6 @@
 # NVDA MCP Server
 
-![Version](https://img.shields.io/badge/version-0.11.0-blue)
+![Version](https://img.shields.io/badge/version-0.1.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-brightgreen)
 
 Model Context Protocol (MCP) server for NVDA automation, built in Rust. Allows AI assistants like Claude to control NVDA through a standardized interface.
@@ -73,7 +73,7 @@ AI Assistant (Claude/Cursor/etc)
         ├─ Stdin (JSON-RPC 2.0 Request)
         │
     ┌───▼───────────────────┐
-    │  NVDA MCP Server 0.11 │
+    │  NVDA MCP Server 0.1.0 │
     │    (Rust Binary)       │
     │                        │
     │ • Request ID Injection │
@@ -87,7 +87,7 @@ AI Assistant (Claude/Cursor/etc)
         │ X-NVDA-Bridge-Token
         ▼
 ┌────────────────────────────┐
-│  NVDA Bridge Add-on 0.11   │
+│  NVDA Bridge Add-on 0.1.0  │
 │   (Inside NVDA Process)    │
 │                            │
 │ • Tool Execution           │
@@ -159,7 +159,7 @@ For detailed protocol documentation, see [docs/BRIDGE_PROTOCOL.md](docs/BRIDGE_P
 
 **Root Cause**: Default multi-threaded Tokio runtime competed with NVDA's single-threaded event loop
 
-**Solution**: v1.0.0 uses single-worker-thread Tokio configuration to reduce contention
+**Solution**: The companion uses a single-worker-thread Tokio configuration to reduce contention.
 
 **Verification**: Look for startup log: `single-worker-thread Tokio runtime`
 
@@ -167,13 +167,13 @@ For detailed protocol documentation, see [docs/BRIDGE_PROTOCOL.md](docs/BRIDGE_P
 
 **Issue**: `Bridge returned 400: Missing 'request_id' field`
 
-**Solution**: v1.0.0 injects request IDs into bridge action payloads
+**Solution**: The companion injects request IDs into bridge action payloads.
 
 ### Output Schema Validation
 
 **Issue**: `Bridge output validation failed` for envelope-shaped schemas
 
-**Solution**: v1.0.0 validates envelope format before attempting data-only validation
+**Solution**: The companion validates envelope format before attempting data-only validation.
 
 ## 📝 Contributing
 
@@ -192,8 +192,8 @@ See [docs/CONVENTIONAL_COMMITS.md](docs/CONVENTIONAL_COMMITS.md) for detailed gu
 ### Building from Source
 
 ```bash
-git clone https://github.com/adilhodge/nvda-mcp-server.git
-cd nvda-mcp-server
+git clone https://github.com/adil-adysh/nvda-mcp-bridge.git
+cd nvda-mcp-bridge/rust_mcp_bridge
 cargo build --release --target x86_64-pc-windows-msvc
 ```
 
@@ -208,22 +208,22 @@ cargo test
 Releases use automated CI/CD:
 
 1. **Commit** with conventional commit messages
-2. **Tag** with semantic version (`v1.0.0`, `v1.1.0`, etc.)
+2. **Tag** with the next semantic version (the first public release is `v0.1.0`)
 3. **Push** tag to GitHub
 4. **CI/CD Pipeline** automatically builds, generates changelog, and creates release
 
 ```bash
-git tag -a v1.1.0 -m "Release v1.1.0"
-git push origin v1.1.0
+git tag -a v<version> -m "Release v<version>"
+git push origin v<version>
 ```
 
 ## 📊 Version History
 
-| Version | Date | Status |
-|---------|------|--------|
-| [1.0.0](https://github.com/adilhodge/nvda-mcp-server/releases/tag/v1.0.0) | 2026-02-21 | Stable |
+The companion is released as part of NVDA MCP Bridge. The first public
+combined release is `v0.1.0`; its release notes are maintained in
+[`docs/changelog.md`](../docs/changelog.md).
 
-See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
+See the canonical [project changelog](../docs/changelog.md) for release history.
 
 ## 🔐 Security
 
@@ -234,6 +234,6 @@ See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
 
 ## 🤝 Support
 
-- **Issues**: [GitHub Issues](https://github.com/adilhodge/nvda-mcp-server/issues)
+- **Issues**: [GitHub Issues](https://github.com/adil-adysh/nvda-mcp-bridge/issues)
 - **Documentation**: [docs/](docs/) folder
 - **Protocol Spec**: [docs/BRIDGE_PROTOCOL.md](docs/BRIDGE_PROTOCOL.md)

@@ -1,21 +1,20 @@
 # Deploying the bridge and companion
 
 This page records the version contract and the checks that prove a deployment
-is consistent. It exists because an installed API-4 companion next to an API-1
-bridge fails closed with no tools, which looks like a broken client.
+is consistent. The companion fails closed when its advertised API level is not
+supported by the bridge, instead of connecting with an incompatible catalog.
 
 ## Version line
 
 | Artifact | Current | Notes |
 |---|---|---|
-| Add-on | `0.12.0` | `api_level` 1 |
-| Companion | `0.12.0` | speaks API level 1 only |
+| Add-on | `0.1.0` | first public preview |
+| Companion | `0.1.0` | speaks API level 1 only |
 | Protocol | `1.0.0` | `nvda-bridge-protocol` |
 
-`0.10.0` was the first public API-1 contract. A `1.0.0` package advertising API
-level 4 predates the reset and is **not** an upgrade: do not install it over
-this line, and do not treat its backup as the current build. Keep at most one
-`1.0.0` archive, clearly labelled as stale, until the rollback window closes.
+Version `0.1.0` is the first public GitHub release. Earlier `0.10.0`–`0.12.0`
+numbers were internal development builds, not public releases. The package
+version is independent of protocol version `1.0.0` and API level `1`.
 
 ## Deployment checklist
 
@@ -38,8 +37,8 @@ python scripts/mcp_tool_catalog_probe.py
 
 The health response must report `bridge_version` equal to the package version
 and `api_level: 1` with `supported_api_levels: [1]`. The catalog probe must
-report the same tool count the bridge's `/tools` endpoint returns (33 for
-`0.12.0` without developer mode).
+report the same tool count the bridge's `/tools` endpoint returns (34 for
+`0.1.0` without developer mode).
 
 ## Companion environment
 
@@ -54,7 +53,7 @@ report the same tool count the bridge's `/tools` endpoint returns (33 for
 
 ## Catalog size
 
-The companion omits `outputSchema` by default. Measured on the 33-tool API-1
+The companion omits `outputSchema` by default. Measured on the 34-tool API-1
 catalog: `tools/list` fell from **77,046 B** with output schemas to **36,344 B**
 without them (53% smaller); `structuredContent` is still validated against the
 same schema. A client that needs the schema can
@@ -72,18 +71,13 @@ inside a modal dialog the relaunch can fail and leave no NVDA process; start
 `C:\Program Files\NVDA\nvda.exe` once, then re-check `/health`. Close settings
 dialogs before restarting when a hands-off restart matters.
 
-## Built artifacts
+## Release artifacts
 
-| Artifact | Size | SHA-256 |
-|---|---:|---|
-| `nvdaMcpBridge-0.12.0.nvda-addon` | 4,630,232 B | `88EA9932874576E0E0A9A766285114F3155A37DE1D9E52AA96E45B681370ED63` |
-| `AIAssistant-0.14.1.nvda-addon` | 24,899,770 B | `7116F9FA0DA4A162FBA8A22A677FAF1A7069740495DD20D92CC0479422D21E79` |
+The GitHub release publishes the NVDA add-on, bundled MCP companion executable,
+localization template, and SHA256SUMS.txt. Verify downloaded files against
+that checksum manifest before installing.
 
 ## Rollback
 
-A replaced add-on tree and companion are copied to
-`D:\nvda-addons\backups\` before deployment. Restore the tree into
-`%APPDATA%\nvda\addons\nvdaMcpBridge` and the companion into
-`%LOCALAPPDATA%\Programs\NVDA MCP Bridge\bin`, then restart NVDA. A backup of
-the stale API-4 line is named with a `STALE-1.0.0-API4` prefix so it cannot be
-mistaken for the current build.
+Before replacing an installation, preserve the installed add-on directory and
+companion binary. To roll back, restore both from that backup and restart NVDA.

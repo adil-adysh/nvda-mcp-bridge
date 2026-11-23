@@ -18,27 +18,23 @@ addon_info = AddonInfo(
 	# Add-on summary/title, usually the user visible name of the add-on
 	# Translators: Summary/title for this add-on
 	# to be shown on installation and add-on information found in add-on store
-	addon_summary=_("NVDA MCP Bridge"),
+	addon_summary=_("NVDA MCP Bridge (Preview)"),
 	# Add-on description
 	# Translators: Long description to be shown for this add-on on add-on information from add-on store
 	addon_description=_("""Enable external applications and AI tools to control NVDA through a simple HTTP interface.
 
-Speak text, read screen content, navigate UI elements, and access window information remotely.
-Perfect for building automated accessibility solutions, AI assistants, and integration tools.
+This early public preview lets compatible AI assistants inspect screen content, navigate accessible controls, perform input actions, and read diagnostic information. Optional speech observation captures NVDA announcements only after the user explicitly enables the speech-observation permission.
 
-The add-on runs in the background on localhost:8765 and safely queues all NVDA operations to the main thread
-to prevent crashes. Use it with any tool that can make HTTP requests—no special protocol required."""),
+The add-on runs inside NVDA and communicates with its bundled MCP companion over an authenticated loopback HTTP connection. Requires NVDA 2026.1 or later. APIs may change before version 1.0.0."""),
 	# version
-	addon_version="0.12.0",
+	addon_version="0.1.0",
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version to be shown in the add-on store
-	addon_changelog=_("""Version 0.12.0:
-- observe and health_snapshot report browse_mode, focus_in_foreground_window, focus_window_handle and foreground_window_handle; those fields work as expect postconditions
-- observe defaults to an 8192-byte budget and can project nodes with fields
-- press accepts an ordered sequence of gestures in one settle round
-- set_value supports update="append" as well as replace
-- wait_for_events returns event_kinds counts and can omit event objects with include_events=false
-- reading tools reject a window ref passed as within"""),
+	addon_changelog=_("""Version 0.1.0 — first public preview:
+- Inspect and navigate accessible controls using a bundled MCP server.
+- Perform input actions and inspect bridge diagnostics.
+- Optionally observe NVDA speech after explicitly enabling the permission in NVDA settings.
+- This is an early preview; APIs may change before version 1.0.0."""),
 	# Author(s)
 	addon_author="adil shaikh <ah.shaikh97@gmail.com>",
 	# URL for the add-on documentation support

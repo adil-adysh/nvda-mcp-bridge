@@ -7,10 +7,10 @@ A thread-safe NVDA add-on that exposes NVDA internals as an MCP-compatible inter
 
 ## What this enables
 
-* Execute Python inside a **live NVDA instance**
-* Inspect NVDA internals (focus, objects, config, addons)
-* Replace manual console probing with **MCP-driven inspection**
-* Validate APIs before implementing them in your add-on
+* Inspect and navigate accessible controls in a **live NVDA instance**
+* Use input actions and diagnostics through a bundled MCP companion
+* Optionally observe NVDA speech with a separate explicit permission
+* Develop accessible automations with a local, authenticated connection
 
 ---
 
@@ -22,9 +22,9 @@ A thread-safe NVDA add-on that exposes NVDA internals as an MCP-compatible inter
 
 ### 1. Install the Add-on in NVDA
 
-1. Download the release package:
+1. Download the add-on package from the [v0.1.0 GitHub release](https://github.com/adil-adysh/nvda-mcp-bridge/releases/tag/v0.1.0):
    ```
-   nvdaMcpBridge-0.12.0.nvda-addon
+   nvdaMcpBridge-0.1.0.nvda-addon
    ```
 2. Open the `.nvda-addon` file with NVDA to install it.
 3. Restart NVDA when prompted.
@@ -34,12 +34,11 @@ A thread-safe NVDA add-on that exposes NVDA internals as an MCP-compatible inter
 > using those processes disconnect and must reconnect; companions installed
 > elsewhere are left running.
 
-> **Version line:** `0.10.0` is the first public API-1 contract and `0.12.0`
-> is the current one. A `1.0.0` package that advertises API level 4 predates
-> the reset and is **not** an upgrade; installing it over this line breaks the
-> companion. Check the installed version in NVDA's Add-on Manager if a client
-> reports `Bridge API level ... does not support this companion's level`.
-> See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+> **First public preview:** `0.1.0` is the first GitHub release of this
+> project. Earlier `0.10.0`–`0.12.0` numbers were internal development builds,
+> not public releases. The bridge exposes API level 1; package versions and
+> protocol version `1.0.0` are separate. See [docs/changelog.md](docs/changelog.md)
+> and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ---
 
@@ -153,6 +152,7 @@ Restart the Codex app if it is running; it reads its configuration when it start
 
 By default, the bridge enforces a conservative, safe permission policy:
 * **Safe defaults enabled:** `read_only` (focus/object inspection, window titles) and `speech_output` (`speak_text`, `cancel_speech`).
+* **Speech observation:** `wait_for_speech` is off by default and requires the separate `speech_observation` permission. Speech history is unavailable on secure desktops and protected focus.
 * **Input control:** `press` requires granting the `input_control` capability.
 * **NVDA Lifecycle:** `restart_nvda` and `reload_plugins` require `nvda_lifecycle`.
 * **Developer Mode:** Arbitrary Python execution (`execute_python`) is disabled by default.
@@ -161,6 +161,7 @@ By default, the bridge enforces a conservative, safe permission policy:
 Open **NVDA Menu → Preferences → Settings (`NVDA+Control+G`) → NVDA MCP Bridge**:
 * Check/uncheck **Allow MCP Input Control**
 * Check/uncheck **Allow MCP Diagnostic Inspection**
+* Check/uncheck **Allow MCP Speech Observation (read NVDA announcements)**
 * Check/uncheck **Allow MCP NVDA Lifecycle actions**
 * Set **Elevation window** to choose how long an approval lasts: 1, 5, 10, 15 or 30 minutes. The value is saved, capped at 30 minutes so elevation can never become permanent, and applies to the next approval — an approval already in progress keeps the window it was granted with.
 * Click **Enable Developer Mode (…)…** to approve Python execution. A screen-reader confirmation dialog will appear explaining the security risk and stating the window you will actually get. Approving grants the developer capability atomically with an auto-expiration timer.
@@ -175,7 +176,7 @@ Open **NVDA Menu → Preferences → Settings (`NVDA+Control+G`) → NVDA MCP Br
 For contributors and developers building the add-on from source:
 
 #### Prerequisites
-* Python 3.11+
+* Python 3.12+
 * Rust 1.80+ with `x86_64-pc-windows-msvc` toolchain
 * SCons and Markdown (`pip install scons markdown`)
 * Gettext tools (optional, for localization)
@@ -430,7 +431,7 @@ identifier semantics and the retention limits.
 
 ### Contract invariants
 
-This is the first public contract (`api_level` 1, add-on `0.12.0`); there are no
+This is the first public contract (`api_level` 1, add-on `0.1.0`); there are no
 legacy aliases to carry.
 
 * Inputs are strict: unknown fields, wrong types and prose where a `ref` belongs

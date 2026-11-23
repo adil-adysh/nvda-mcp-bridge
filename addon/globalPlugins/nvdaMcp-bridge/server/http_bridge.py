@@ -902,6 +902,18 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			timeout_ms=timeout_ms,
 			trace_id=trace_id,
 		)
+		if action == "wait_for_speech" and envelope.get("success"):
+			try:
+				self.server.check_speech_page_access(envelope.get("output") or {})
+			except SpeechAccessDenied as error:
+				# Permission or focus may change after action tracing finishes.
+				# Recheck at the last boundary before speech text goes on the wire.
+				envelope = self._build_error_envelope(
+					request_id=request_id,
+					action=action,
+					code=4003,
+					message=str(error),
+				)
 		if envelope.get("success"):
 			status = 200
 		else:

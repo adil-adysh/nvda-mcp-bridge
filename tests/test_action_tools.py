@@ -204,6 +204,8 @@ sys.modules["api"] = types.SimpleNamespace(getFocusObject=lambda: "focus-object"
 handlers = importlib.import_module(f"{_PACKAGE_NAME}.tools.handlers")
 registry_module = importlib.import_module(f"{_PACKAGE_NAME}.tools.registry")
 output_types = importlib.import_module(f"{_PACKAGE_NAME}.validation.output_type_registry")
+dataclass_validator = importlib.import_module(f"{_PACKAGE_NAME}.validation.dataclass_validator")
+models = importlib.import_module(f"{_PACKAGE_NAME}.tools.models")
 core = importlib.import_module(f"{_PACKAGE_NAME}.core")
 settle_module = importlib.import_module(f"{_PACKAGE_NAME}.server.settle")
 
@@ -416,6 +418,25 @@ class HandlerTests(unittest.TestCase):
 		self.assertEqual(result["state_version"], 4)
 		self.assertIn(("observe", ["focus", "dialog"], 50), context.calls)
 
+	def test_observe_field_projection_keeps_required_role(self):
+		class ObserveContext:
+			def observe(self, _include, _max_text):
+				return {
+					"state_version": 4,
+					"revision": 9,
+					"refs": {"f": "focus"},
+					"focus": {"ref": "f", "role": "EDITABLETEXT", "name": "field"},
+				}
+
+		for fields in (["name"], ["ref"]):
+			with self.subTest(fields=fields):
+				result = handlers.observe(
+					include=["focus"], max_text=50, context=ObserveContext(), detail="full", fields=fields
+				)
+				validated = dataclass_validator.validate(result, models.ObserveResult)
+				registry_module.NVDA_TOOLS_REGISTRY.get("observe").get_output_schema().validate(validated)
+				self.assertEqual(result["focus"]["role"], "EDITABLETEXT")
+
 	def test_invoke_resolves_then_settles_and_reports_the_action(self):
 		context = FakeContext()
 		result = handlers.invoke(ref="f", action=None, expect={"focus.name": "b"}, context=context)
@@ -496,6 +517,58 @@ class HandlerTests(unittest.TestCase):
 		self.assertEqual(result["value"], "prefix-suffix")
 		self.assertEqual(result["previous"], "prefix-")
 		self.assertIn(("set_value", "prefix-suffix", False), ACTION_CALLS)
+
+	def test_set_value_append_aborts_when_initial_value_is_unavailable(self):
+		original_read_value = _FakeTargets.read_value
+
+		def unavailable(_obj):
+			raise RuntimeError("value could not be read")
+
+		context = FakeContext()
+		_FakeTargets.read_value = staticmethod(unavailable)
+		try:
+			with self.assertRaises(ValueError):
+				handlers.set_value(
+					ref="f", value="suffix", update="append", expect=None, context=context
+				)
+		finally:
+			_FakeTargets.read_value = staticmethod(original_read_value)
+
+		self.assertFalse(any(call[0] == "set_value" for call in ACTION_CALLS))
+		self.assertFalse(any(call[0] == "settle" for call in context.calls if isinstance(call, tuple)))
+
+	def test_press_sequence_validates_all_gestures_before_sending_any(self):
+		original_send_keyboard = _fake_bridge.send_keyboard
+		original_resolve_gesture = _fake_bridge.ui.resolve_gesture
+		sent = []
+
+		def resolve(gesture):
+			if gesture == "invalid":
+				raise ValueError("invalid gesture")
+			return gesture
+
+		def send_keyboard(gesture, **kwargs):
+			_fake_bridge.ui.resolve_gesture(gesture)
+			sent.append(gesture)
+			return original_send_keyboard(gesture, **kwargs)
+
+		_fake_bridge.send_keyboard = send_keyboard
+		_fake_bridge.ui.resolve_gesture = resolve
+		try:
+			with self.assertRaises(ValueError):
+				handlers.press(
+					keys=None,
+					sequence=["tab", "invalid"],
+					repeat=1,
+					delay_ms=0,
+					expect=None,
+					context=FakeContext(),
+				)
+		finally:
+			_fake_bridge.send_keyboard = original_send_keyboard
+			_fake_bridge.ui.resolve_gesture = original_resolve_gesture
+
+		self.assertEqual(sent, [])
 
 	def test_set_value_rejects_an_unknown_update_mode(self):
 		with self.assertRaises(ValueError):

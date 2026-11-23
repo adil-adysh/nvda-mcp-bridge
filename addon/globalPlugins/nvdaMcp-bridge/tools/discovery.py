@@ -8,6 +8,7 @@ a time.
 
 from __future__ import annotations
 
+import copy
 import re
 from typing import Any
 
@@ -216,6 +217,31 @@ def _resolve_tool(registry: Any, name: str, *, developer_mode: bool) -> Any:
 	raise ValueError(f"Unknown tool {requested!r}. Call find_tools with a query to list available tools.")
 
 
+def _companion_output_schema(data_schema: dict[str, Any]) -> dict[str, Any]:
+	"""Describe tool data and companion metadata as returned by MCP."""
+	schema = copy.deepcopy(data_schema)
+	properties = schema.get("properties")
+	if not isinstance(properties, dict):
+		properties = {}
+		schema["properties"] = properties
+	if "result" not in properties:
+		properties["result"] = {}
+	if "trace_id" not in properties:
+		properties["trace_id"] = {"type": "string"}
+	properties["_meta"] = {
+		"type": "object",
+		"properties": {"result": {}, "trace_id": {"type": "string"}},
+		"additionalProperties": False,
+	}
+	required = schema.get("required")
+	if not isinstance(required, list):
+		required = []
+		schema["required"] = required
+	if "_meta" not in required:
+		required.append("_meta")
+	return schema
+
+
 def get_tool_schema(
 	input_obj: GetToolSchemaInput,
 	context: ExecutionContext | None = None,
@@ -231,7 +257,9 @@ def get_tool_schema(
 	input_schema = registry.get_input_schema(meta.name, meta.version).to_json_schema()
 	output_schema = None
 	if input_obj.include_output_schema:
-		output_schema = registry.get_output_schema(meta.name, meta.version).to_json_schema()
+		output_schema = _companion_output_schema(
+			registry.get_output_schema(meta.name, meta.version).to_json_schema()
+		)
 	required = input_schema.get("required") if isinstance(input_schema, dict) else None
 	return GetToolSchemaResult(
 		name=meta.name,

@@ -182,6 +182,41 @@ class HttpBridgeTests(unittest.TestCase):
                 self.assertEqual(status, 403)
                 self.assertNotIn("must not escape", str(payload))
 
+    def test_wait_for_speech_rechecks_access_at_http_delivery(self):
+        bridge = types.SimpleNamespace(
+            execute_action=lambda **kwargs: {
+                "request_id": "req-1",
+                "action": "wait_for_speech",
+                "success": True,
+                "output": {"journal_id": "generation-1", "events": [{"text": "private speech"}]},
+            },
+            check_speech_page_access=mock.Mock(
+                side_effect=bridge_module.SpeechAccessDenied("permission was revoked")
+            ),
+            get_nvda_status_snapshot=lambda: {},
+        )
+        handler = object.__new__(NVDABridgeRequestHandler)
+        handler.server = bridge
+        responses = []
+        handler._build_error_envelope = lambda **kwargs: {
+            "request_id": kwargs["request_id"],
+            "success": False,
+            "action": kwargs["action"],
+            "error": {"code": kwargs["code"], "message": kwargs["message"]},
+        }
+        handler._send_json_response = lambda payload, status=200: responses.append((payload, status))
+
+        handler._handle_action("wait_for_speech", {}, "req-1")
+
+        self.assertEqual(len(responses), 1)
+        payload, status = responses[0]
+        self.assertEqual(status, 403)
+        self.assertEqual(payload["error"]["code"], 4003)
+        self.assertNotIn("private speech", str(payload))
+        bridge.check_speech_page_access.assert_called_once_with(
+            {"journal_id": "generation-1", "events": [{"text": "private speech"}]}
+        )
+
     def test_speech_tool_is_marked_as_explicit_opt_in_during_discovery(self):
         metadata = bridge_module.NVDA_TOOLS_REGISTRY.get("wait_for_speech").get_metadata()
         constraints = NVDAHTTPBridge._compute_tool_constraints(metadata)

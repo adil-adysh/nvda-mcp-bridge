@@ -122,17 +122,9 @@ jobs:
           version="${GITHUB_REF#refs/tags/}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - name: Install git-cliff binary
-        run: |
-          DOWNLOAD_URL=$(python3 -c "import json, sys, urllib.request; req = urllib.request.Request('https://api.github.com/repos/orhun/git-cliff/releases/latest', headers={'User-Agent': 'github-actions'}); release = json.loads(urllib.request.urlopen(req).read()); assets = [asset['browser_download_url'] for asset in release['assets'] if 'x86_64-unknown-linux-gnu.tar.gz' in asset['browser_download_url']]; print(assets[0] if assets else sys.exit('No x86_64 linux asset found'))")
-          echo "Installing git-cliff from ${DOWNLOAD_URL}"
-          curl -sSL "$DOWNLOAD_URL" | tar xz -C /tmp
-          sudo mv /tmp/git-cliff-*/git-cliff /usr/local/bin/git-cliff
-          sudo chmod +x /usr/local/bin/git-cliff
-
       - name: Generate release notes
         run: |
-          git-cliff --config cliff.toml --current --output RELEASE_NOTES.md
+          python3 scripts/extract_release_notes.py --version "${{ steps.version.outputs.version }}" --output RELEASE_NOTES.md
           printf '\n### SHA256 Checksums\n```\n' >> RELEASE_NOTES.md
           cat release_artifacts/SHA256SUMS.txt >> RELEASE_NOTES.md
           printf '```\n' >> RELEASE_NOTES.md

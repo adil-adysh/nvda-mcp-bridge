@@ -1,8 +1,9 @@
 # Reference and verification — API level 1
 
-Status: implementation audit for the reset first public contract. This document
-separates what the source currently guarantees, what the regression suite proves,
-and what remains an assumption that needs live NVDA evidence.
+Status: historical implementation audit for the internal API-1 development build.
+It predates the first public release and does not describe the v0.1.0 package.
+This document records what the source at that snapshot guaranteed, what its
+regression suite proved, and what remained an assumption needing live NVDA evidence.
 
 ## Baseline (Phase 0)
 

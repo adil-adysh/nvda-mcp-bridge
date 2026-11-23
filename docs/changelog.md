@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+The 0.1.0 entry is the first public release. The 0.10.0–0.12.0 entries
+below record internal development builds only; they were not published as
+GitHub releases.
+
+## [0.1.0] - 2026-11-23
+
+### Added
+
+- First public preview of NVDA MCP Bridge and its bundled Rust MCP companion.
+- Accessibility inspection, navigation, input actions, diagnostics, and compact
+  tool discovery over an authenticated loopback connection.
+- Optional speech observation, disabled by default and gated by an explicit
+  permission. Access is denied on secure desktops and protected focus.
+- Per-installation authentication token generation and MCP client configuration.
+
+### Fixed
+
+- Recheck speech-observation permission immediately before returning speech.
+- Preserve tool-owned result and trace_id fields in MCP structured output.
+- Preserve observation truncation details when the output is shaped repeatedly.
+- Prevent append after an unreadable value and prevalidate complete key sequences.
+- Validate normalized NVDA roles and retain required node roles in projections.
+- Paginate catalog probing and safely verify companion identity before stopping it.
+
 ## 0.12.0
 
 ### Added

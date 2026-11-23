@@ -23,8 +23,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import queue
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -76,9 +78,41 @@ def probe(exe: Path, timeout: float) -> dict:
         "output_schemas": 0,
         "server": None,
     }
-    deadline = time.time() + timeout
-    while time.time() < deadline and not result["tools"]:
-        line = process.stdout.readline() if process.stdout else ""
+    # A pipe's readline blocks, so reading it on the probe thread would make
+    # the advertised timeout ineffective when the server stops responding.
+    stdout_lines: queue.Queue[str | None] = queue.Queue()
+
+    def _read_stdout() -> None:
+        try:
+            if process.stdout is None:
+                return
+            while True:
+                line = process.stdout.readline()
+                stdout_lines.put(line or None)
+                if not line:
+                    return
+        finally:
+            stdout_lines.put(None)
+
+    reader = threading.Thread(target=_read_stdout, name="mcp-catalog-stdout", daemon=True)
+    reader.start()
+
+    all_tools: list[dict] = []
+    deadline = time.monotonic() + max(0.0, timeout)
+    request_id = 2
+    seen_cursors: set[str] = set()
+    finished = False
+    timed_out = False
+    while not finished:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            timed_out = True
+            break
+        try:
+            line = stdout_lines.get(timeout=remaining)
+        except queue.Empty:
+            timed_out = True
+            break
         if not line:
             break
         try:
@@ -90,19 +124,59 @@ def probe(exe: Path, timeout: float) -> dict:
             result["capabilities"] = handshake.get("capabilities")
             result["instructions"] = handshake.get("instructions")
             result["server"] = handshake.get("serverInfo")
-        elif message.get("id") == 2:
-            tools = message["result"]["tools"]
-            result["tools"] = [tool["name"] for tool in tools]
-            result["catalog_bytes"] = len(
-                json.dumps({"tools": tools}, separators=(",", ":")).encode("utf-8")
-            )
-            result["output_schemas"] = sum(1 for tool in tools if tool.get("outputSchema"))
+        elif message.get("id") == request_id:
+            page = message.get("result", {})
+            page_tools = page.get("tools", []) if isinstance(page, dict) else []
+            if isinstance(page_tools, list):
+                all_tools.extend(tool for tool in page_tools if isinstance(tool, dict))
+            cursor = page.get("nextCursor") if isinstance(page, dict) else None
+            if isinstance(cursor, str) and cursor:
+                if cursor in seen_cursors:
+                    finished = True
+                    continue
+                seen_cursors.add(cursor)
+                request_id += 1
+                assert process.stdin is not None
+                process.stdin.write(
+                    json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": request_id,
+                            "method": "tools/list",
+                            "params": {"cursor": cursor},
+                        }
+                    )
+                    + "\n"
+                )
+                process.stdin.flush()
+            else:
+                # A final empty tools/list page is a valid empty catalog. End
+                # here instead of waiting for another line from a live server.
+                finished = True
 
-    process.stdin.close()
+    result["tools"] = [tool["name"] for tool in all_tools if isinstance(tool.get("name"), str)]
+    result["catalog_bytes"] = len(
+        json.dumps({"tools": all_tools}, separators=(",", ":")).encode("utf-8")
+    )
+    result["output_schemas"] = sum(1 for tool in all_tools if tool.get("outputSchema"))
+
     try:
-        process.wait(timeout=5)
+        process.stdin.close()
+    except (AttributeError, OSError):
+        pass
+    try:
+        remaining = max(0.0, deadline - time.monotonic())
+        if timed_out or remaining == 0:
+            process.kill()
+            process.wait(timeout=0.25)
+        else:
+            process.wait(timeout=min(0.25, remaining))
     except subprocess.TimeoutExpired:
         process.kill()
+        try:
+            process.wait(timeout=0.25)
+        except subprocess.TimeoutExpired:
+            pass
 
     return result
 

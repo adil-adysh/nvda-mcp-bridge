@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-14
 **Evaluator:** an AI agent driving the tools through MCP over stdio, as a real client would.
-**Build evaluated:** bridge `0.10.0` (API 1), companion `0.10.0` (SHA-256 `6df47321…`), rebuilt with
+**Build evaluated:** internal development build bridge `0.10.0` (API 1), companion `0.10.0` (SHA-256 `6df47321…`), rebuilt with
 `scons` and installed into NVDA. 31 tools exposed (`execute_python` correctly hidden without
 developer mode).
 

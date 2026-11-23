@@ -5,7 +5,7 @@ levels or aliases.
 
 * Protocol: `nvda-bridge-protocol` `1.0.0`
 * API level: `1` (`supported_api_levels: [1]`)
-* Bridge / add-on: `0.10.0`
+* Bridge / add-on / companion: `0.1.0` (first public preview)
 * Transport: HTTP on `127.0.0.1:8765`
 * Tool list: `GET /tools`
 * Action: `POST /action`
@@ -20,7 +20,7 @@ reads it when `NVDA_BRIDGE_TOKEN` is unset.
 {
   "protocol": "nvda-bridge-protocol",
   "protocol_version": "1.0.0",
-  "bridge_version": "0.10.0",
+  "bridge_version": "0.1.0",
   "api_level": 1,
   "supported_api_levels": [1],
   "instance_id": "9f3c…",
@@ -44,9 +44,10 @@ reads it when `NVDA_BRIDGE_TOKEN` is unset.
 ```
 
 `inputSchema` and `outputSchema` are generated from the same dataclasses used
-for runtime validation. `outputSchema` describes the tool's `data` payload, and
-the MCP companion returns exactly that object as `structuredContent` (the text
-content keeps the envelope metadata).
+for runtime validation. The MCP companion keeps bridge data fields at the
+`structuredContent` root and places companion-owned metadata under `_meta`.
+Legacy top-level result and trace_id metadata fields are included only when
+the tool's data schema does not already own those names.
 
 ## Action envelope
 
@@ -58,7 +59,7 @@ content keeps the envelope metadata).
   "duration_ms": 18.2,
   "trace_id": "at-…",
   "bridge": {
-    "bridge_version": "0.10.0",
+    "bridge_version": "0.1.0",
     "api_level": 1,
     "instance_id": "9f3c…",
     "started_at": "2026-11-14T03:00:00+00:00"

@@ -77,6 +77,23 @@ class ObservationBoundTests(unittest.TestCase):
 		self.assertEqual(result["focus"]["ref"], "f")
 		self.assertEqual(result["refs"]["f"], "focus")
 
+	def test_reapplying_shape_does_not_erase_prior_truncation(self):
+		result = handlers.observe(
+			["focus", "children"],
+			120,
+			Context(_payload()),
+			detail="summary",
+			max_bytes=2500,
+		)
+		first_sections = list(result["truncated_sections"])
+		self.assertTrue(result["truncated"])
+
+		handlers.shape_observation(result, "summary", None, 2500)
+
+		self.assertTrue(result["truncated"])
+		self.assertTrue(first_sections)
+		self.assertTrue(set(first_sections).issubset(result["truncated_sections"]))
+
 	def test_a_bound_that_already_fits_reports_no_truncation(self):
 		result = handlers.observe(["focus"], 120, Context(_payload(count=0)), detail="summary", max_bytes=100000)
 		self.assertFalse(result["truncated"])
