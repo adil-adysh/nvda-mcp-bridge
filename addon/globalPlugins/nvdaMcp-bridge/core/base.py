@@ -88,11 +88,20 @@ class ExecutionContext:
 	wait_events: Callable[..., dict] | None = None
 	"""Block on the transition journal. Worker thread only."""
 
+	wait_speech: Callable[..., dict] | None = None
+	"""Block on the independent speech journal. Worker thread only."""
+
 	state_version: Callable[[], int] | None = None
 	"""Return the projector's current state version, for defaults such as ``since``."""
 
 	event_version: Callable[[], int] | None = None
 	"""Return the event journal's current head, used as the default event cursor."""
+
+	speech_version: Callable[[], int] | None = None
+	"""Return the speech journal's current head, used as the default speech cursor."""
+
+	speech_access: Callable[[], tuple[bool, str | None]] | None = None
+	"""Check the shared speech permission and protected-state gate before reading."""
 
 	result: ResultMeta | None = None
 	"""Per-request result metadata; the bridge serialises it into the envelope."""

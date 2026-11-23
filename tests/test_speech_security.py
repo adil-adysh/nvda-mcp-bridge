@@ -17,6 +17,11 @@ if "logHandler" not in sys.modules:
 		log=types.SimpleNamespace(debug=lambda *a, **k: None, info=lambda *a, **k: None,
 			warning=lambda *a, **k: None, error=lambda *a, **k: None)
 	)
+if "queueHandler" not in sys.modules:
+	_queue_handler = types.ModuleType("queueHandler")
+	_queue_handler.eventQueue = "dummy-queue"
+	_queue_handler.queueFunction = lambda queue, func, *args, **kwargs: func(*args, **kwargs)
+	sys.modules["queueHandler"] = _queue_handler
 _PACKAGE_NAME = "nvdaMcpBridge"
 if _PACKAGE_NAME not in sys.modules:
 	_package = types.ModuleType(_PACKAGE_NAME)
@@ -68,6 +73,20 @@ class SpeechPermissionTests(unittest.TestCase):
 		self.assertFalse(bridge.permission_policy.is_granted("speech_observation"))
 		self.assertNotEqual(bridge.speech_journal.journal_id, old_id)
 		self.assertEqual(bridge.speech_journal.snapshot()["events"], [])
+
+	def test_shared_access_predicate_requires_grant_and_safe_runtime_state(self):
+		bridge = self._bridge()
+		bridge.speech_monitor = types.SimpleNamespace(is_secure_desktop=False, is_protected_focus=False)
+		self.assertEqual(bridge.check_speech_access(), (True, None))
+		bridge.speech_monitor.is_secure_desktop = True
+		allowed, reason = bridge.check_speech_access()
+		self.assertFalse(allowed)
+		self.assertIn("secure desktop", reason)
+		bridge.speech_monitor.is_secure_desktop = False
+		bridge.speech_monitor.is_protected_focus = True
+		allowed, reason = bridge.check_speech_access()
+		self.assertFalse(allowed)
+		self.assertIn("protected focus", reason)
 
 
 if __name__ == "__main__":

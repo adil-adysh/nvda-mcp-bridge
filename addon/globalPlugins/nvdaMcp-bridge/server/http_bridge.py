@@ -334,6 +334,10 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				self._handle_events(route)
 				return
 
+			if route.path == "/speech":
+				self._handle_speech(route)
+				return
+
 			self._send_json_response({"error": "Not found"}, 404)
 		except Exception as e:
 			logHandler.log.error(f"Error in GET handler: {e}", exc_info=True)
@@ -405,6 +409,42 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			journal_id=journal_id,
 		)
 		self._send_json_response(payload)
+
+	def _handle_speech(self, route) -> None:
+		"""Serve speech history only after authentication and the shared safety gate."""
+		if not self._require_auth("speech"):
+			return
+		allowed, reason = self.server.check_speech_access()
+		if not allowed:
+			envelope = self._build_error_envelope(
+				request_id=_new_request_id(),
+				action="speech",
+				code=4003,
+				message=reason or "Speech observation is unavailable",
+			)
+			self._send_json_response(envelope, 403)
+			return
+
+		query = parse_qs(route.query)
+
+		def _int_param(name: str, default: int) -> int:
+			try:
+				return int(query.get(name, [default])[0])
+			except (TypeError, ValueError):
+				return default
+
+		since = max(0, _int_param("since", 0))
+		limit = max(1, min(256, _int_param("limit", 20)))
+		timeout_ms = max(0, min(30_000, _int_param("timeout_ms", 0)))
+		journal_id = (query.get("journal_id", [""])[0] or "").strip() or None
+		self._send_json_response(
+			self.server.speech_journal.wait(
+				since=since,
+				timeout_ms=timeout_ms,
+				limit=limit,
+				journal_id=journal_id,
+			)
+		)
 
 	def _handle_tools_discovery(self):
 		if not self._check_auth():
@@ -903,6 +943,7 @@ class NVDAHTTPBridge:
 		# Transcript text is retained independently from UI transitions and is
 		# cleared whenever its explicit observation capability is revoked.
 		self.speech_journal = SpeechJournal()
+		self.speech_monitor = None
 		# Current observation and its two counters. The projector reads NVDA
 		# objects, so every refresh goes through the main-thread executor.
 		self.projector = StateProjector(self._project)
@@ -975,6 +1016,22 @@ class NVDAHTTPBridge:
 			self.permission_policy.grant(PERMISSION_SPEECH_OBSERVATION)
 		else:
 			self.revoke_permission(PERMISSION_SPEECH_OBSERVATION)
+
+	def check_speech_access(self) -> tuple[bool, str | None]:
+		"""Shared authorization and runtime safety predicate for speech reads."""
+		if not self.permission_policy.is_granted(PERMISSION_SPEECH_OBSERVATION):
+			return False, "Speech observation permission is not granted"
+		monitor = self.speech_monitor
+		if monitor is None:
+			return False, "Speech observation safety state is unavailable"
+		try:
+			if monitor.is_secure_desktop:
+				return False, "Speech observation is denied on the secure desktop"
+			if monitor.is_protected_focus:
+				return False, "Speech observation is denied while protected focus is active"
+		except Exception:  # noqa: BLE001 — unknown runtime safety state fails closed
+			return False, "Speech observation safety state is unavailable"
+		return True, None
 
 	def reset_permissions(self) -> None:
 		self.permission_policy.reset()
@@ -1596,8 +1653,11 @@ class NVDAHTTPBridge:
 				register=self._register_ref,
 				observe=self._observe,
 				wait_events=self.event_journal.wait,
+				wait_speech=self.speech_journal.wait,
 				state_version=lambda: self.projector.state_version,
 				event_version=lambda: self.event_journal.version,
+				speech_version=lambda: self.speech_journal.version,
+				speech_access=self.check_speech_access,
 				result=result_meta,
 				trace_store=self.trace_store,
 				tool_registry=self.registry,

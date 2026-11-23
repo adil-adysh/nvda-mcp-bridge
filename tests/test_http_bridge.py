@@ -5,6 +5,9 @@ import os
 import sys
 import types
 import unittest
+from email.message import Message
+from urllib.parse import urlsplit
+from unittest import mock
 
 # Add addon directory to path for imports
 _ADDON_DIR = os.path.normpath(
@@ -40,7 +43,89 @@ API_LEVEL = bridge_module.API_LEVEL
 _is_nvda_menu_open = bridge_module._is_nvda_menu_open
 
 
+def _speech_bridge(*, enabled=True, secure=False, protected=False):
+	permissions = {"read_only", "speech_output"}
+	if enabled:
+		permissions.add("speech_observation")
+	bridge = NVDAHTTPBridge(
+		host="127.0.0.1",
+		port=0,
+		bridge_token="test-token",
+		permission_policy=bridge_module.PermissionPolicy(granted_permissions=permissions),
+	)
+	bridge.speech_monitor = types.SimpleNamespace(
+		is_secure_desktop=secure,
+		is_protected_focus=protected,
+	)
+	return bridge
+
+
+def _get_speech(bridge, url, token=None):
+	handler = object.__new__(NVDABridgeRequestHandler)
+	handler.server = bridge
+	handler.headers = Message()
+	if token is not None:
+		handler.headers[bridge_module.TOKEN_HEADER] = token
+	responses = []
+	handler._send_json_response = lambda payload, status=200, extra_headers=None: responses.append(
+		(payload, status, extra_headers)
+	)
+	handler._handle_speech(urlsplit(url))
+	return responses[-1]
+
+
 class HttpBridgeTests(unittest.TestCase):
+
+    def test_speech_endpoint_rejects_missing_or_invalid_token_without_reading(self):
+        bridge = _speech_bridge()
+        with mock.patch.object(bridge.speech_journal, "wait", wraps=bridge.speech_journal.wait) as wait:
+            self.assertEqual(_get_speech(bridge, "/speech")[1], 401)
+            self.assertEqual(_get_speech(bridge, "/speech", token="invalid")[1], 401)
+        wait.assert_not_called()
+
+    def test_speech_endpoint_requires_speech_observation_without_returning_text(self):
+        bridge = _speech_bridge(enabled=False)
+        bridge.speech_journal.record_speech("should not leak", "queued")
+        payload, status, _ = _get_speech(bridge, "/speech", token="test-token")
+        self.assertEqual(status, 403)
+        self.assertNotIn("should not leak", str(payload))
+
+    def test_speech_endpoint_denies_secure_desktop_and_protected_focus(self):
+        for state in ({"secure": True}, {"protected": True}):
+            bridge = _speech_bridge(**state)
+            bridge.speech_journal.record_speech("private", "queued")
+            payload, status, _ = _get_speech(bridge, "/speech", token="test-token")
+            self.assertEqual(status, 403)
+            self.assertNotIn("private", str(payload))
+
+    def test_speech_endpoint_clamps_query_values_and_preserves_typed_cursor(self):
+        bridge = _speech_bridge()
+        bridge.speech_journal.record_speech("announcement", "about_to_synthesize")
+        journal_id = bridge.speech_journal.journal_id
+        with mock.patch.object(bridge.speech_journal, "wait", wraps=bridge.speech_journal.wait) as wait:
+            payload, status, _ = _get_speech(
+                bridge,
+                f"/speech?since=0&journal_id={journal_id}&timeout_ms=999999&limit=999999",
+                token="test-token",
+            )
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["journal_id"], journal_id)
+        self.assertEqual(payload["events"][0]["text"], "announcement")
+        self.assertEqual(wait.call_args.kwargs["timeout_ms"], 30_000)
+        self.assertEqual(wait.call_args.kwargs["limit"], 256)
+        self.assertEqual(wait.call_args.kwargs["since"], 0)
+        self.assertEqual(wait.call_args.kwargs["journal_id"], journal_id)
+
+    def test_speech_endpoint_invalid_query_values_use_bounded_defaults(self):
+        bridge = _speech_bridge()
+        with mock.patch.object(bridge.speech_journal, "wait", wraps=bridge.speech_journal.wait) as wait:
+            payload, status, _ = _get_speech(
+                bridge, "/speech?since=bad&timeout_ms=bad&limit=bad", token="test-token"
+            )
+        self.assertEqual(status, 200)
+        self.assertEqual(wait.call_args.kwargs["since"], 0)
+        self.assertEqual(wait.call_args.kwargs["timeout_ms"], 0)
+        self.assertEqual(wait.call_args.kwargs["limit"], 20)
     def test_cached_nvda_menu_identity_does_not_block_after_menu_closes(self):
         # NVDA caches the identified menu popup after it closes. A normal app
         # window in the foreground proves the menu is no longer active.

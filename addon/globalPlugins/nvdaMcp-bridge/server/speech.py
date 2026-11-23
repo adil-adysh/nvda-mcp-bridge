@@ -238,6 +238,11 @@ class SpeechMonitor:
 		with self._lock:
 			return self._protected_focus
 
+	@property
+	def is_secure_desktop(self) -> bool:
+		with self._lock:
+			return self._secure_desktop
+
 	def set_protected_focus(self, obj: Any) -> None:
 		"""Cache only protected state on NVDA's main thread, never during speech."""
 		try:

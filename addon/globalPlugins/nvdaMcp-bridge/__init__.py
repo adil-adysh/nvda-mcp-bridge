@@ -189,6 +189,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			monitor.set_protected_focus(focus_obj)
 			if monitor.start():
 				self._speech_monitor = monitor
+				bridge.speech_monitor = monitor
 		except Exception as error:  # noqa: BLE001 — optional observation must not prevent NVDA startup
 			logHandler.log.debug(f"Speech observation hooks unavailable: {error}")
 
@@ -292,6 +293,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				try:
 					self._speech_monitor.stop()
 					self._speech_monitor = None
+					if self._bridge is not None:
+						self._bridge.speech_monitor = None
 				except Exception as e:
 					logHandler.log.error(f"Error stopping speech observation hooks: {e}", exc_info=True)
 
