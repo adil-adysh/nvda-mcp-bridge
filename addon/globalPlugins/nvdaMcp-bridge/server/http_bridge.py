@@ -58,6 +58,7 @@ from .protocol import (
 	build_tools_payload,
 )
 from .events import EventJournal, EventRecorder
+from .speech import SpeechJournal
 from .action_trace import (
 	ActionTraceRecorder,
 	ActionTraceStore,
@@ -72,6 +73,7 @@ from .state import StateProjector
 from .security import (
 	DeveloperModeManager,
 	PermissionPolicy,
+	PERMISSION_SPEECH_OBSERVATION,
 	check_action_permissions,
 	constant_time_compare,
 	get_or_create_bridge_token,
@@ -898,6 +900,9 @@ class NVDAHTTPBridge:
 		# is a debugging aid (`/events?raw=1`); the default surface is coalesced
 		# transitions, because one user action produces many events.
 		self.event_journal = EventJournal()
+		# Transcript text is retained independently from UI transitions and is
+		# cleared whenever its explicit observation capability is revoked.
+		self.speech_journal = SpeechJournal()
 		# Current observation and its two counters. The projector reads NVDA
 		# objects, so every refresh goes through the main-thread executor.
 		self.projector = StateProjector(self._project)
@@ -961,9 +966,19 @@ class NVDAHTTPBridge:
 
 	def revoke_permission(self, permission: str) -> None:
 		self.permission_policy.revoke(permission)
+		if permission.strip().lower() == PERMISSION_SPEECH_OBSERVATION:
+			self.speech_journal.reset("permission_revoked")
+
+	def set_speech_observation_enabled(self, enabled: bool) -> None:
+		"""Set the explicit speech-observation grant, clearing history on revoke."""
+		if enabled:
+			self.permission_policy.grant(PERMISSION_SPEECH_OBSERVATION)
+		else:
+			self.revoke_permission(PERMISSION_SPEECH_OBSERVATION)
 
 	def reset_permissions(self) -> None:
 		self.permission_policy.reset()
+		self.speech_journal.reset("permissions_reset")
 
 	@staticmethod
 	def _compute_tool_constraints(meta: Any) -> Dict[str, Any]:

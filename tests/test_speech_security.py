@@ -1,0 +1,74 @@
+# pyright: reportMissingImports=false, reportUnusedCallResult=false
+"""Opt-in speech permission, persistence clearing, and history reset contracts."""
+
+import importlib
+import os
+import sys
+import types
+import unittest
+
+_ADDON_DIR = os.path.normpath(
+	os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "addon", "globalPlugins", "nvdaMcp-bridge")
+)
+if _ADDON_DIR not in sys.path:
+	sys.path.insert(0, _ADDON_DIR)
+if "logHandler" not in sys.modules:
+	sys.modules["logHandler"] = types.SimpleNamespace(
+		log=types.SimpleNamespace(debug=lambda *a, **k: None, info=lambda *a, **k: None,
+			warning=lambda *a, **k: None, error=lambda *a, **k: None)
+	)
+_PACKAGE_NAME = "nvdaMcpBridge"
+if _PACKAGE_NAME not in sys.modules:
+	_package = types.ModuleType(_PACKAGE_NAME)
+	_package.__path__ = [_ADDON_DIR]
+	sys.modules[_PACKAGE_NAME] = _package
+
+security = importlib.import_module(f"{_PACKAGE_NAME}.server.security")
+http_bridge = importlib.import_module(f"{_PACKAGE_NAME}.server.http_bridge")
+
+
+class SpeechPermissionTests(unittest.TestCase):
+	def _bridge(self):
+		policy = security.PermissionPolicy(granted_permissions={"read_only", "speech_output", "speech_observation"})
+		return http_bridge.NVDAHTTPBridge(bridge_token="test-token", permission_policy=policy)
+
+	def test_speech_observation_is_not_granted_by_default_or_reset(self):
+		policy = security.PermissionPolicy(granted_permissions={"read_only", "speech_output"})
+		self.assertFalse(policy.is_granted("speech_observation"))
+		policy.grant("speech_observation")
+		policy.reset()
+		self.assertFalse(policy.is_granted("speech_observation"))
+
+	def test_revoking_observation_clears_history_and_rotates_generation(self):
+		bridge = self._bridge()
+		bridge.speech_journal.record_speech("retained announcement", "queued")
+		old_id = bridge.speech_journal.journal_id
+		bridge.revoke_permission("speech_observation")
+		self.assertFalse(bridge.permission_policy.is_granted("speech_observation"))
+		self.assertEqual(bridge.speech_journal.version, 0)
+		self.assertNotEqual(bridge.speech_journal.journal_id, old_id)
+		self.assertEqual(bridge.speech_journal.snapshot()["events"], [])
+
+	def test_reset_permissions_clears_history_and_observation_grant(self):
+		bridge = self._bridge()
+		bridge.speech_journal.record_speech("retained announcement", "queued")
+		old_id = bridge.speech_journal.journal_id
+		bridge.reset_permissions()
+		self.assertFalse(bridge.permission_policy.is_granted("speech_observation"))
+		self.assertEqual(bridge.speech_journal.version, 0)
+		self.assertNotEqual(bridge.speech_journal.journal_id, old_id)
+
+	def test_observation_setting_grants_and_revocation_clears_history(self):
+		bridge = self._bridge()
+		bridge.set_speech_observation_enabled(True)
+		self.assertTrue(bridge.permission_policy.is_granted("speech_observation"))
+		bridge.speech_journal.record_speech("announcement", "queued")
+		old_id = bridge.speech_journal.journal_id
+		bridge.set_speech_observation_enabled(False)
+		self.assertFalse(bridge.permission_policy.is_granted("speech_observation"))
+		self.assertNotEqual(bridge.speech_journal.journal_id, old_id)
+		self.assertEqual(bridge.speech_journal.snapshot()["events"], [])
+
+
+if __name__ == "__main__":
+	unittest.main()

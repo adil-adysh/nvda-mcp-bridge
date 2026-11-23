@@ -35,6 +35,7 @@ from .server.security import (
 	PERMISSION_INPUT_CONTROL,
 	PERMISSION_NVDA_LIFECYCLE,
 	PERMISSION_READ_ONLY,
+	PERMISSION_SPEECH_OBSERVATION,
 	PERMISSION_SPEECH_OUTPUT,
 	clamp_developer_ttl,
 	load_developer_ttl_seconds,
@@ -578,6 +579,8 @@ if _GUI_AVAILABLE:
 					self.lifecycleCheckbox.SetValue(policy.is_granted(PERMISSION_NVDA_LIFECYCLE))
 				if hasattr(self, "dialogControlCheckbox"):
 					self.dialogControlCheckbox.SetValue(policy.is_granted(PERMISSION_DIALOG_CONTROL))
+				if hasattr(self, "speechObservationCheckbox"):
+					self.speechObservationCheckbox.SetValue(policy.is_granted(PERMISSION_SPEECH_OBSERVATION))
 			if hasattr(self, "devTtlChoice"):
 				configured = getattr(
 					getattr(self._bridge, "developer_mode_manager", None),
@@ -641,6 +644,14 @@ if _GUI_AVAILABLE:
 			if policy:
 				self.dialogControlCheckbox.SetValue(policy.is_granted(PERMISSION_DIALOG_CONTROL))
 			permSizer.Add(self.dialogControlCheckbox, 0, wx.ALL, 5)
+
+			self.speechObservationCheckbox = wx.CheckBox(
+				permGroup,
+				label="Allow MCP Speech Observation (read NVDA announcements)",
+			)
+			if policy:
+				self.speechObservationCheckbox.SetValue(policy.is_granted(PERMISSION_SPEECH_OBSERVATION))
+			permSizer.Add(self.speechObservationCheckbox, 0, wx.ALL, 5)
 
 			settingsSizer.Add(permSizer, 0, wx.EXPAND | wx.ALL, 5)
 
@@ -730,11 +741,17 @@ if _GUI_AVAILABLE:
 		def onResetPermissions(self, event):
 			policy = getattr(self._bridge, "permission_policy", None)
 			if policy:
-				policy.reset()
+				reset_permissions = getattr(self._bridge, "reset_permissions", None)
+				if callable(reset_permissions):
+					reset_permissions()
+				else:
+					policy.reset()
 				self.inputControlCheckbox.SetValue(policy.is_granted(PERMISSION_INPUT_CONTROL))
 				self.diagnosticsCheckbox.SetValue(policy.is_granted(PERMISSION_DIAGNOSTICS))
 				self.lifecycleCheckbox.SetValue(policy.is_granted(PERMISSION_NVDA_LIFECYCLE))
 				self.dialogControlCheckbox.SetValue(policy.is_granted(PERMISSION_DIALOG_CONTROL))
+				if hasattr(self, "speechObservationCheckbox"):
+					self.speechObservationCheckbox.SetValue(policy.is_granted(PERMISSION_SPEECH_OBSERVATION))
 				# Persist the reset too, otherwise the old grants come back on restart.
 				save_persisted_permissions(policy.get_granted())
 			self._refresh_status()
@@ -798,6 +815,16 @@ if _GUI_AVAILABLE:
 				policy.grant(PERMISSION_DIALOG_CONTROL)
 			else:
 				policy.revoke(PERMISSION_DIALOG_CONTROL)
+
+			if hasattr(self, "speechObservationCheckbox"):
+				enabled = self.speechObservationCheckbox.IsChecked()
+				set_enabled = getattr(self._bridge, "set_speech_observation_enabled", None)
+				if callable(set_enabled):
+					set_enabled(enabled)
+				elif enabled:
+					policy.grant(PERMISSION_SPEECH_OBSERVATION)
+				else:
+					policy.revoke(PERMISSION_SPEECH_OBSERVATION)
 
 			# Store the choice so it survives NVDA restarts and plugin reloads.
 			save_persisted_permissions(policy.get_granted())
