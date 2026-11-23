@@ -99,6 +99,17 @@ class SpeechJournalTests(unittest.TestCase):
 		self.assertEqual(page["events"], [])
 		self.assertEqual(journal.version, 0)
 
+	def test_future_cursor_requests_resync_to_current_head(self):
+		journal = speech.SpeechJournal()
+		journal.record_speech("current", "queued")
+		page = journal.snapshot(since=999999)
+		self.assertEqual(page["cursor_status"], "future_cursor")
+		self.assertTrue(page["resync_required"])
+		self.assertEqual(page["resync_reason"], "future_cursor")
+		self.assertEqual(page["resync_from"], {"journal_id": journal.journal_id, "version": 1})
+		self.assertEqual(page["to_version"], 1)
+		self.assertEqual(page["events"], [])
+
 	def test_typed_and_untyped_waiters_wake_on_concurrent_reset(self):
 		for typed_cursor in (False, True):
 			with self.subTest(typed_cursor=typed_cursor):

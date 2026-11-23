@@ -18,6 +18,12 @@ WAIT_RECHECK_SECONDS = 0.25
 
 class SpeechAccessDenied(PermissionError):
 	"""A speech page became unavailable before it could be released."""
+	protocol_code = 4003
+
+
+class SpeechJournalChanged(RuntimeError):
+	"""The bounded speech journal reset while a page was being delivered."""
+	protocol_code = 4205
 
 
 def is_secure_desktop_at_startup(focus_obj: Any, secure_desktop_check: Callable[[], Any]) -> bool:
@@ -162,8 +168,8 @@ class SpeechJournal:
 
 			expired = bool(oldest and requested_since + 1 < oldest)
 			if requested_since > current:
-				cursor_status = "future_cursor"
-			elif expired:
+				return self._future_page(requested_since, current_id, current, oldest, dropped)
+			if expired:
 				cursor_status = "stale"
 			else:
 				cursor_status = "ok"
@@ -192,6 +198,12 @@ class SpeechJournal:
 			if reset_reason is not None:
 				payload["reset_reason"] = reset_reason
 			return payload
+
+	@staticmethod
+	def _future_page(since: int, journal_id: str, current: int, oldest: int, dropped: int) -> dict[str, Any]:
+		page = SpeechJournal._mismatch_page(since, journal_id, current, oldest, dropped)
+		page.update({"to_version": current, "resync_reason": "future_cursor", "cursor_status": "future_cursor"})
+		return page
 
 	@staticmethod
 	def _mismatch_page(since: int, journal_id: str, current: int, oldest: int, dropped: int) -> dict[str, Any]:
@@ -282,7 +294,7 @@ def guarded_speech_wait(
 	if not allowed:
 		raise SpeechAccessDenied(reason or "Speech observation is unavailable")
 	if journal.journal_id != start_generation or page.get("journal_id") != start_generation:
-		raise SpeechAccessDenied("Speech history changed while waiting; retry from the current cursor")
+		raise SpeechJournalChanged("Speech journal changed while waiting; retry from the current cursor")
 	return page
 
 

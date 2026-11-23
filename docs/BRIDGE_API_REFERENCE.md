@@ -128,6 +128,11 @@ checked again before a page is returned. A speech record means NVDA prepared
 text for synthesis; it does not prove playback completed or that an action
 caused the announcement.
 
+If the journal resets between tool execution and HTTP delivery, the bridge
+returns a `4205` target-unavailable response (`409 Conflict`) rather than a
+permission denial. Retry from the current cursor. A future cursor returns
+`resync_required: true` and a `resync_from` cursor at the journal head.
+
 ## References and state
 
 `observe` returns `refs` and `top_window`:

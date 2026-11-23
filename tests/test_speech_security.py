@@ -166,7 +166,7 @@ class SpeechPermissionTests(unittest.TestCase):
 						params={"since": 0, "journal_id": journal_id, "timeout_ms": 0},
 					)
 				self.assertFalse(denied["success"])
-				self.assertEqual(denied["error"]["code"], 4003)
+				self.assertEqual(denied["error"]["code"], 4205 if transition == "revoke_regrant" else 4003)
 				self.assertNotIn("must not escape", str(denied))
 
 	def test_stop_resets_speech_journal_and_wakes_pending_waiter(self):

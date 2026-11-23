@@ -58,7 +58,7 @@ from .protocol import (
 	build_tools_payload,
 )
 from .events import EventJournal, EventRecorder
-from .speech import SpeechAccessDenied, SpeechJournal, guarded_speech_wait
+from .speech import SpeechAccessDenied, SpeechJournal, SpeechJournalChanged, guarded_speech_wait
 from .action_trace import (
 	ActionTraceRecorder,
 	ActionTraceStore,
@@ -436,6 +436,15 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				cancellation_event=None,
 			)
 			self.server.check_speech_page_access(page)
+		except SpeechJournalChanged as error:
+			envelope = self._build_error_envelope(
+				request_id=_new_request_id(),
+				action="speech",
+				code=4205,
+				message=str(error),
+			)
+			self._send_json_response(envelope, 409)
+			return
 		except SpeechAccessDenied as error:
 			envelope = self._build_error_envelope(
 				request_id=_new_request_id(),
@@ -904,7 +913,11 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 		)
 		if action == "wait_for_speech" and envelope.get("success"):
 			try:
-				self.server.check_speech_page_access(envelope.get("output") or {})
+				self.server.check_speech_page_access(envelope.get("data") or {})
+			except SpeechJournalChanged as error:
+				envelope = self._build_error_envelope(
+					request_id=request_id, action=action, code=4205, message=str(error)
+				)
 			except SpeechAccessDenied as error:
 				# Permission or focus may change after action tracing finishes.
 				# Recheck at the last boundary before speech text goes on the wire.
@@ -1071,7 +1084,7 @@ class NVDAHTTPBridge:
 		if not allowed:
 			raise SpeechAccessDenied(reason or "Speech observation is unavailable")
 		if page.get("journal_id") != self.speech_journal.journal_id:
-			raise SpeechAccessDenied("Speech history changed before it could be delivered")
+			raise SpeechJournalChanged("Speech journal changed before delivery; retry from the current cursor")
 
 	def reset_permissions(self) -> None:
 		self.permission_policy.reset()

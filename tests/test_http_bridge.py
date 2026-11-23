@@ -179,7 +179,7 @@ class HttpBridgeTests(unittest.TestCase):
                     payload, status, _ = _get_speech(
                         bridge, "/speech?since=0", token="test-token"
                     )
-                self.assertEqual(status, 403)
+                self.assertEqual(status, 409 if transition == "revoke_regrant" else 403)
                 self.assertNotIn("must not escape", str(payload))
 
     def test_wait_for_speech_rechecks_access_at_http_delivery(self):
@@ -188,10 +188,10 @@ class HttpBridgeTests(unittest.TestCase):
                 "request_id": "req-1",
                 "action": "wait_for_speech",
                 "success": True,
-                "output": {"journal_id": "generation-1", "events": [{"text": "private speech"}]},
+                "data": {"journal_id": "generation-1", "events": [{"text": "private speech"}]},
             },
             check_speech_page_access=mock.Mock(
-                side_effect=bridge_module.SpeechAccessDenied("permission was revoked")
+                side_effect=bridge_module.SpeechJournalChanged("journal changed")
             ),
             get_nvda_status_snapshot=lambda: {},
         )
@@ -210,8 +210,8 @@ class HttpBridgeTests(unittest.TestCase):
 
         self.assertEqual(len(responses), 1)
         payload, status = responses[0]
-        self.assertEqual(status, 403)
-        self.assertEqual(payload["error"]["code"], 4003)
+        self.assertEqual(status, 409)
+        self.assertEqual(payload["error"]["code"], 4205)
         self.assertNotIn("private speech", str(payload))
         bridge.check_speech_page_access.assert_called_once_with(
             {"journal_id": "generation-1", "events": [{"text": "private speech"}]}
