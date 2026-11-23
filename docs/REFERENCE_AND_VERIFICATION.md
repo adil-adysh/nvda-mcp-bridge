@@ -4,6 +4,10 @@ Status: implementation audit for the reset first public contract. This document
 separates what the source currently guarantees, what the regression suite proves,
 and what remains an assumption that needs live NVDA evidence.
 
+> **Baseline note:** the measurements below were recorded against the `0.10.0`
+> baseline. The current release is `0.12.0`; the contract findings still apply,
+> while the test counts have grown since the baseline.
+
 ## Baseline (Phase 0)
 
 | Item | Value |

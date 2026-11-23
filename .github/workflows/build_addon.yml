@@ -12,16 +12,32 @@ on:
       - master
   workflow_dispatch:
 
+# Read-only by default; only the release job is allowed to write.
+permissions:
+  contents: read
+
+# Never let two runs race on the same ref. Pull requests may supersede each
+# other, but a tag build is a release and must never be cancelled mid-publish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
+    name: Build add-on
     runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      CARGO_INCREMENTAL: "0"
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: "pip"
@@ -31,123 +47,172 @@ jobs:
         with:
           inherit-toolchain: true
           profile: minimal
+          cache-target: release
 
-      - name: Install dependencies
+      - name: Install Python build dependencies
         run: |
           python -m pip install --upgrade pip wheel
-          pip install pre-commit scons markdown pytest pydantic jsonschema
+          python -m pip install pre-commit scons markdown pytest pydantic jsonschema
+
+      - name: Determine and verify version
+        id: version
+        run: |
+          $addonName = python -c "import buildVars; print(buildVars.addon_info['addon_name'])"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read addon_name from buildVars.py' }
+          $addonVersion = python -c "import buildVars; print(buildVars.addon_info['addon_version'])"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read addon_version from buildVars.py' }
+          $cargoVersion = python -c "import pathlib, build_companion; print(build_companion.crate_version(pathlib.Path('rust_mcp_bridge/Cargo.toml').read_text(encoding='utf-8')))"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read the crate version from rust_mcp_bridge/Cargo.toml' }
+          $projectVersion = python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read the project version from pyproject.toml' }
+          $protocolVersion = python -c "import json; print(json.load(open('docs/protocol/protocol-constants.json', encoding='utf-8'))['protocol']['bridge_version'])"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read bridge_version from docs/protocol/protocol-constants.json' }
+          $schemaVersion = python -c "import json; print(json.load(open('schema.json', encoding='utf-8'))['bridge_version'])"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read bridge_version from schema.json' }
+
+          $declared = [ordered]@{
+            'buildVars.py' = $addonVersion
+            'pyproject.toml' = $projectVersion
+            'rust_mcp_bridge/Cargo.toml' = $cargoVersion
+            'docs/protocol/protocol-constants.json' = $protocolVersion
+            'schema.json' = $schemaVersion
+          }
+          $mismatches = $declared.GetEnumerator() | Where-Object { $_.Value -ne $addonVersion }
+          if ($mismatches) {
+            $details = ($mismatches | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', '
+            throw "Version mismatch: buildVars.py=$addonVersion, $details"
+          }
+
+          if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $tag = $env:GITHUB_REF -replace '^refs/tags/', ''
+            $tagVersion = $tag -replace '^v', ''
+            if ($tagVersion -ne $addonVersion) {
+              throw "Tag '$tag' does not match the add-on version '$addonVersion'. Bump every version source before tagging."
+            }
+          }
+
+          $addonFile = "$addonName-$addonVersion.nvda-addon"
+          "version=$addonVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "addon=$addonFile" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Building $addonName $addonVersion ($addonFile)"
 
       - name: Verify canonical protocol consistency
-        run: |
-          python scripts/generate_protocol.py --check
+        run: python scripts/generate_protocol.py --check
 
       - name: Run Python unit tests
-        run: |
-          pytest -v
+        run: python -m pytest -q
 
       - name: Run Rust unit tests
-        run: |
-          cargo test --manifest-path rust_mcp_bridge/Cargo.toml
-
-      - name: Build Rust MCP release binary
-        run: |
-          cargo build --release --manifest-path rust_mcp_bridge/Cargo.toml
-
-      - name: Package bundled companion binary
-        run: |
-          python scripts/package_companion.py
-
-      - name: Install gettext tools
-        run: |
-          choco install gettext -y
-          $gettextBin = 'C:\Program Files\gettext-iconv\bin'
-          "${gettextBin}" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        run: cargo test --manifest-path rust_mcp_bridge/Cargo.toml
 
       - name: Run code checks
         env:
           SKIP: no-commit-to-branch
-        run: |
-          pre-commit run --all-files
+        run: pre-commit run --all-files
 
-      - name: Build addon
+      - name: Install gettext tools
         run: |
-          scons
-          scons pot
+          choco install gettext -y --no-progress
+          $gettextBin = 'C:\Program Files\gettext-iconv\bin'
+          if (-not (Test-Path -LiteralPath $gettextBin)) {
+            throw "gettext was not installed at $gettextBin"
+          }
+          $gettextBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Validate packaged addon archive
+      # scons owns the whole release: it builds the Rust companion, stages it
+      # with a checksum manifest, and only then packages the add-on.
+      - name: Build add-on
         run: |
-          python scripts/validate_addon_package.py
+          scons "version=${{ steps.version.outputs.version }}"
+          scons "version=${{ steps.version.outputs.version }}" pot
 
-      - name: Stage release artifacts & generate SHA-256 checksums
+      - name: Validate packaged add-on archive
+        run: python scripts/validate_addon_package.py
+
+      - name: Stage release artifacts and checksums
+        id: dist
         run: |
+          $addon = "${{ steps.version.outputs.addon }}"
+          if (-not (Test-Path -LiteralPath $addon)) {
+            throw "Expected add-on archive '$addon' was not produced"
+          }
+          $pot = Get-ChildItem -Path . -Filter *.pot -File | Select-Object -First 1
+          if (-not $pot) { throw 'No .pot translation template was produced' }
+          $exe = python -c "import build_companion; print(build_companion.find_release_binary())"
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $exe)) {
+            throw 'The Rust companion release binary was not found'
+          }
+
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item -Path "*.nvda-addon" -Destination dist\
-          Copy-Item -Path "*.pot" -Destination dist\
-          $exe = Get-ChildItem -Path rust_mcp_bridge/target -Recurse -Filter "nvda-mcp-server.exe" | Where-Object { $_.DirectoryName -like "*release*" } | Select-Object -First 1
-          if (-not $exe) { throw 'nvda-mcp-server.exe release binary not found' }
-          Copy-Item -Path $exe.FullName -Destination dist\
-          $files = Get-ChildItem -Path dist\* -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' }
-          $hashes = $files | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" }
-          $hashes | Out-File -FilePath dist\SHA256SUMS.txt -Encoding ascii
+          Copy-Item -LiteralPath $addon -Destination dist
+          Copy-Item -LiteralPath $pot.FullName -Destination dist
+          Copy-Item -LiteralPath $exe -Destination dist
+
+          $files = Get-ChildItem -Path dist -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' }
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash.ToLower()
+            "$hash  $($file.Name)"
+          }
+          # Write LF line endings so `sha256sum -c` on Linux accepts the file.
+          Set-Content -LiteralPath dist\SHA256SUMS.txt -Encoding ascii -NoNewline -Value (($lines -join "`n") + "`n")
           Get-Content dist\SHA256SUMS.txt
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload packaged add-on
+        uses: actions/upload-artifact@v7
         with:
           name: packaged_addon
           path: dist/*
+          if-no-files-found: error
+          retention-days: 7
 
   release:
+    name: Publish GitHub release
     runs-on: ubuntu-latest
     needs: build
     if: github.ref_type == 'tag'
+    timeout-minutes: 15
     permissions:
       contents: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
+      - name: Download packaged add-on
+        uses: actions/download-artifact@v8
         with:
           name: packaged_addon
           path: release_artifacts
 
-      - name: Extract version
-        id: version
-        run: |
-          version="${GITHUB_REF#refs/tags/}"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - name: Install git-cliff binary
-        run: |
-          DOWNLOAD_URL=$(python3 -c "import json, sys, urllib.request; req = urllib.request.Request('https://api.github.com/repos/orhun/git-cliff/releases/latest', headers={'User-Agent': 'github-actions'}); release = json.loads(urllib.request.urlopen(req).read()); assets = [asset['browser_download_url'] for asset in release['assets'] if 'x86_64-unknown-linux-gnu.tar.gz' in asset['browser_download_url']]; print(assets[0] if assets else sys.exit('No x86_64 linux asset found'))")
-          echo "Installing git-cliff from ${DOWNLOAD_URL}"
-          curl -sSL "$DOWNLOAD_URL" | tar xz -C /tmp
-          sudo mv /tmp/git-cliff-*/git-cliff /usr/local/bin/git-cliff
-          sudo chmod +x /usr/local/bin/git-cliff
-
       - name: Generate release notes
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --current
+        env:
+          OUTPUT: RELEASE_NOTES.md
+
+      - name: Append checksums to release notes
         run: |
-          git-cliff --config cliff.toml --current --output RELEASE_NOTES.md
-          printf '\n### SHA256 Checksums\n```\n' >> RELEASE_NOTES.md
-          cat release_artifacts/SHA256SUMS.txt >> RELEASE_NOTES.md
-          printf '```\n' >> RELEASE_NOTES.md
+          {
+            printf '\n### SHA256 Checksums\n\n```\n'
+            cat release_artifacts/SHA256SUMS.txt
+            printf '```\n'
+          } >> RELEASE_NOTES.md
+          cat RELEASE_NOTES.md
 
-      - name: Debug release notes
-        run: cat RELEASE_NOTES.md
-
-      - name: Create GitHub Release
+      - name: Create GitHub release
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ github.ref_name }}
+          name: NVDA MCP Bridge ${{ needs.build.outputs.version }}
+          body_path: RELEASE_NOTES.md
           files: |
             release_artifacts/*.nvda-addon
             release_artifacts/*.pot
             release_artifacts/nvda-mcp-server.exe
             release_artifacts/SHA256SUMS.txt
-          body_path: RELEASE_NOTES.md
           fail_on_unmatched_files: true
-          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          generate_release_notes: false

@@ -74,10 +74,13 @@ dialogs before restarting when a hands-off restart matters.
 
 ## Built artifacts
 
-| Artifact | Size | SHA-256 |
-|---|---:|---|
-| `nvdaMcpBridge-0.12.0.nvda-addon` | 4,630,232 B | `88EA9932874576E0E0A9A766285114F3155A37DE1D9E52AA96E45B681370ED63` |
-| `AIAssistant-0.14.1.nvda-addon` | 24,899,770 B | `7116F9FA0DA4A162FBA8A22A677FAF1A7069740495DD20D92CC0479422D21E79` |
+Sizes and hashes change with every build, so the release publishes a
+`SHA256SUMS.txt` beside the `.nvda-addon`. Verify a download against that file
+instead of a hash copied into documentation:
+
+```powershell
+Get-ChildItem .\nvdaMcpBridge-*.nvda-addon | Get-FileHash -Algorithm SHA256
+```
 
 ## Rollback
 

@@ -1,563 +1,407 @@
-
 # NVDA MCP Bridge
 
-A thread-safe NVDA add-on that exposes NVDA internals as an MCP-compatible interface, enabling direct execution and inspection of NVDA APIs from VS Code.
+**Give AI assistants and other MCP clients safe, structured access to a running NVDA screen reader.**
 
----
+NVDA MCP Bridge connects the [Model Context Protocol](https://modelcontextprotocol.io/) to NVDA. It has two parts:
 
-## What this enables
+- **NVDA add-on** — a local, authenticated HTTP bridge inside NVDA, listening on `127.0.0.1:8765`.
+- **Bundled MCP server** — `nvda-mcp-server.exe`, a Rust companion that speaks MCP over stdio and translates tool calls into bridge requests.
 
-* Execute Python inside a **live NVDA instance**
-* Inspect NVDA internals (focus, objects, config, addons)
-* Replace manual console probing with **MCP-driven inspection**
-* Validate APIs before implementing them in your add-on
+The add-on queues every NVDA call on NVDA's main thread, so tools behave like key presses and scripts NVDA itself runs. The companion is checksum-verified and installed with the add-on; no separate download is needed.
 
----
+| | |
+|---|---|
+| Add-on version | `0.12.0` |
+| Bridge API level | `1` |
+| Bridge protocol | `nvda-bridge-protocol` `1.0.0` |
+| Minimum NVDA | `2026.1.0` |
+| Platform | Windows 10/11, x64 |
+| License | GPL v2 |
 
-## Quick Start (Single-Package Experience)
+## What you can do
 
-**Goal:** Install the bridge, deploy the bundled MCP companion, and connect an MCP client (VS Code, Claude Desktop, Cursor) without manual binary builds or copying authentication tokens.
+- **Observe** the focused control, dialog, foreground window and their references.
+- **Read** a line, selection, document or object subtree, including Word, PDF and browser documents.
+- **Act** on controls by reference: invoke, focus, set values, press keys, scroll, click and dismiss dialogs.
+- **Navigate** documents with headings, links, landmarks, form fields and tables.
+- **Inspect** NVDA objects, app modules, loaded add-ons, bridge health and action traces.
+- **Search logs** with structured, paginated queries and bounded summaries.
+- **Speak** text and show messages through NVDA.
+- **Control NVDA** with restart and plug-in reload actions when explicitly permitted.
+- **Run Python** in NVDA's process only when developer mode is enabled.
 
----
+## Requirements
 
-### 1. Install the Add-on in NVDA
+- Windows 10 or Windows 11, 64-bit.
+- NVDA `2026.1` or later.
+- An MCP client: Visual Studio Code, Claude Desktop, Claude Code, Codex, Cursor, Google Antigravity, Roo Code, or any client that launches a stdio MCP server.
 
-1. Download the release package:
-   ```
-   nvdaMcpBridge-0.12.0.nvda-addon
-   ```
-2. Open the `.nvda-addon` file with NVDA to install it.
+## Install
+
+### 1. Install the add-on
+
+1. Download `nvdaMcpBridge-0.12.0.nvda-addon` from [Releases](https://github.com/adil-adysh/nvda-mcp-bridge/releases).
+2. Open the file with NVDA, or use **NVDA Menu → Tools → Add-on Store → Install from file**.
 3. Restart NVDA when prompted.
 
-> **Companion updates:** Install or Repair stops every companion process
-> started from its own install folder before replacing the binary. Clients
-> using those processes disconnect and must reconnect; companions installed
-> elsewhere are left running.
+### 2. Install the bundled MCP companion
 
-> **Version line:** `0.10.0` is the first public API-1 contract and `0.12.0`
-> is the current one. A `1.0.0` package that advertises API level 4 predates
-> the reset and is **not** an upgrade; installing it over this line breaks the
-> companion. Check the installed version in NVDA's Add-on Manager if a client
-> reports `Bridge API level ... does not support this companion's level`.
-> See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
-
----
-
-### 2. Install the Bundled MCP Companion
-
-1. In NVDA, open **NVDA Menu (`NVDA+N`) → Tools → NVDA MCP Bridge → Install or Repair MCP Companion...** (or via NVDA Settings).
-2. When prompted, select **Yes**.
-3. The add-on safely extracts and verifies the bundled companion binary to:
+1. In NVDA, open **NVDA Menu → Tools → NVDA MCP Bridge → Install or Repair MCP Companion...**.
+2. Confirm the prompt. The add-on verifies the bundled binary and installs it to:
    ```
    %LOCALAPPDATA%\Programs\NVDA MCP Bridge\bin\nvda-mcp-server.exe
    ```
-   *(Per-user installation — no administrator privileges required).*
+3. No administrator rights are required.
 
----
+Installing or repairing stops companion processes started from that install folder so the new binary can replace the old one. Clients connected to those processes must reconnect. Companions installed in another folder are left alone.
 
-### 3. Configure Your MCP Client Automatically
+### 3. Connect your MCP client
 
-1. Open **NVDA Menu (`NVDA+N`) → Tools → NVDA MCP Bridge → Configure MCP Clients...**.
-2. The configurator automatically detects supported clients (Visual Studio Code, Claude Desktop, Claude Code, Codex, Cursor, Antigravity) and safely merges the `nvda` server entry.
-3. Existing settings and other MCP servers are completely preserved, and a timestamped backup (`.bak.<timestamp>`) is created before modifying any configuration.
-4. `python scripts/client_config_acceptance.py` checks the result against the clients themselves: it has each vendor's own command write an entry into a throwaway home directory and compares that with ours, then asks Claude Code to connect through the real file.
+The recommended path is automatic:
 
----
+1. Open **NVDA Menu → Tools → NVDA MCP Bridge → Configure MCP Clients...**.
+2. Select the clients you want, review the preview, and choose **Configure Selected**.
+3. The configurator merges an `nvda` server entry into each client's own configuration format. It preserves existing settings and other servers, and writes a timestamped `.bak` backup before changing a file.
+4. Restart the selected clients so they pick up the new server.
 
-### 4. Manual MCP Client Configuration (Alternative)
+If you prefer to configure a client by hand, see [Manual client configuration](#manual-client-configuration).
 
-If configuring an MCP client manually, add the following to your client's MCP configuration:
+> **Version note:** `0.12.0` is the first public GitHub release of the current API-1 line. An older `1.0.0` package advertised API level 4 and predates the reset. It is **not** an upgrade, so do not install it over this line. Use the release asset that matches this README.
 
-#### Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`)
+## Manual client configuration
+
+Use the full path to the installed companion. Replace `<you>` with your Windows user name.
+
+```text
+C:\Users\<you>\AppData\Local\Programs\NVDA MCP Bridge\bin\nvda-mcp-server.exe
+```
+
+You do **not** need to copy the bridge token into client configuration. The companion discovers it from `%APPDATA%\nvda\nvda-mcp-bridge\token.key` using the current Windows user's ACLs.
+
+### Claude Desktop
+
+Edit `%APPDATA%\Claude\claude_desktop_config.json`:
+
 ```json
 {
   "mcpServers": {
     "nvda": {
-      "command": "%LOCALAPPDATA%\\Programs\\NVDA MCP Bridge\\bin\\nvda-mcp-server.exe",
+      "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\NVDA MCP Bridge\\bin\\nvda-mcp-server.exe",
       "args": []
     }
   }
 }
 ```
 
-#### Visual Studio Code (`%APPDATA%\Code\User\mcp.json` or `.vscode/mcp.json`)
+### Visual Studio Code
+
+Edit `%APPDATA%\Code\User\mcp.json`, or a workspace `.vscode/mcp.json`:
+
 ```json
 {
   "servers": {
     "nvda": {
       "type": "stdio",
-      "command": "%LOCALAPPDATA%\\Programs\\NVDA MCP Bridge\\bin\\nvda-mcp-server.exe",
+      "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\NVDA MCP Bridge\\bin\\nvda-mcp-server.exe",
       "args": []
     }
   }
 }
 ```
 
-#### Cursor (`%USERPROFILE%\.cursor\mcp.json`)
+### Cursor
+
+Edit `%USERPROFILE%\.cursor\mcp.json`:
+
 ```json
 {
   "mcpServers": {
     "nvda": {
-      "command": "%LOCALAPPDATA%\\Programs\\NVDA MCP Bridge\\bin\\nvda-mcp-server.exe",
+      "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\NVDA MCP Bridge\\bin\\nvda-mcp-server.exe",
       "args": []
     }
   }
 }
 ```
 
-#### Claude Code (CLI)
+### Claude Code
 
-Claude Code writes the entry itself when you run:
-
-```powershell
-claude mcp add -s user nvda -- "%LOCALAPPDATA%\Programs\NVDA MCP Bridge\bin\nvda-mcp-server.exe"
-```
-
-It records the server in the user-scope `mcpServers` object of `%USERPROFILE%\.claude.json`, alongside the account and history state that file already holds:
-
-```json
-{
-  "mcpServers": {
-    "nvda": {
-      "type": "stdio",
-      "command": "%LOCALAPPDATA%\\Programs\\NVDA MCP Bridge\\bin\\nvda-mcp-server.exe",
-      "args": [],
-      "env": {}
-    }
-  }
-}
-```
-
-#### Codex (desktop app and CLI)
-
-The app and the CLI read the same `%USERPROFILE%\.codex\config.toml`, so one entry serves both. The equivalent one-liner is:
+Claude Code can write the user-scope entry itself:
 
 ```powershell
-codex mcp add nvda -- "%LOCALAPPDATA%\Programs\NVDA MCP Bridge\bin\nvda-mcp-server.exe"
+claude mcp add -s user nvda -- "$env:LOCALAPPDATA\Programs\NVDA MCP Bridge\bin\nvda-mcp-server.exe"
 ```
 
-which adds this table to `%USERPROFILE%\.codex\config.toml`. Codex keeps its model, trust and plugin settings in that same file, so add the table rather than replacing the file:
+### Codex
+
+The desktop app and CLI read the same `%USERPROFILE%\.codex\config.toml`:
+
+```powershell
+codex mcp add nvda -- "$env:LOCALAPPDATA\Programs\NVDA MCP Bridge\bin\nvda-mcp-server.exe"
+```
+
+The equivalent table is:
 
 ```toml
 [mcp_servers.nvda]
-command = 'the full path to nvda-mcp-server.exe'
+command = 'C:\Users\<you>\AppData\Local\Programs\NVDA MCP Bridge\bin\nvda-mcp-server.exe'
 ```
 
-Restart the Codex app if it is running; it reads its configuration when it starts.
+Restart the Codex app if it is already running.
 
-> **Note on Authentication:** You do **not** need to copy or paste authentication tokens into client configurations. The companion binary automatically discovers the bridge credential generated in `%APPDATA%\nvda\nvda-mcp-bridge\token.key` using Windows user security controls.
+## Verify the installation
 
----
+### Check the bridge
 
-### 5. Permission Controls and Developer Mode
+With NVDA running and the add-on enabled:
 
-By default, the bridge enforces a conservative, safe permission policy:
-* **Safe defaults enabled:** `read_only` (focus/object inspection, window titles) and `speech_output` (`speak_text`, `cancel_speech`).
-* **Input control:** `press` requires granting the `input_control` capability.
-* **NVDA Lifecycle:** `restart_nvda` and `reload_plugins` require `nvda_lifecycle`.
-* **Developer Mode:** Arbitrary Python execution (`execute_python`) is disabled by default.
+```powershell
+Invoke-RestMethod http://127.0.0.1:8765/health | ConvertTo-Json -Depth 6
+```
 
-#### Managing Permissions in NVDA
-Open **NVDA Menu → Preferences → Settings (`NVDA+Control+G`) → NVDA MCP Bridge**:
-* Check/uncheck **Allow MCP Input Control**
-* Check/uncheck **Allow MCP Diagnostic Inspection**
-* Check/uncheck **Allow MCP NVDA Lifecycle actions**
-* Set **Elevation window** to choose how long an approval lasts: 1, 5, 10, 15 or 30 minutes. The value is saved, capped at 30 minutes so elevation can never become permanent, and applies to the next approval — an approval already in progress keeps the window it was granted with.
-* Click **Enable Developer Mode (…)…** to approve Python execution. A screen-reader confirmation dialog will appear explaining the security risk and stating the window you will actually get. Approving grants the developer capability atomically with an auto-expiration timer.
-* Click **Disable Developer Mode** to immediately revoke execution rights.
-* Click **Reset Permissions to Safe Defaults** to revoke all elevated permissions.
-* Developer operations are strictly blocked on the Windows secure desktop under all circumstances.
+The response should report:
 
----
+- `bridge_version`: `0.12.0`
+- `api_level`: `1`
+- `supported_api_levels`: `[1]`
 
-### 6. Development Guide (Building from Source)
+`/health` is unauthenticated. `/tools`, `/state`, `/events` and `/action` require the bridge token.
 
-For contributors and developers building the add-on from source:
+### Ask your client for one safe action
 
-#### Prerequisites
-* Python 3.11+
-* Rust 1.80+ with `x86_64-pc-windows-msvc` toolchain
-* SCons and Markdown (`pip install scons markdown`)
-* Gettext tools (optional, for localization)
+Start with observation, which needs only the default `read_only` permission:
 
-#### Build Steps
+```text
+Use the nvda tool `observe` with no arguments and tell me what has focus.
+```
 
-`SConstruct` owns the whole release. One command compiles the companion, stages
-it inside the add-on with a manifest whose checksum and API level come from the
-crate itself, and assembles the `.nvda-addon`:
+Then try speech, which is also enabled by default:
+
+```text
+Use the nvda tool `speak_text` to say "NVDA MCP Bridge is connected".
+```
+
+If the client lists the `nvda` tools and `observe` returns a focus object and references, the whole path is working:
+
+```text
+MCP client → nvda-mcp-server.exe → 127.0.0.1:8765 → NVDA main thread
+```
+
+## Permissions and security
+
+The bridge binds to loopback only and authenticates every protected request with `X-NVDA-Bridge-Token`. The token is generated per installation, stored under `%APPDATA%\nvda\nvda-mcp-bridge\token.key`, and protected with a current-user-only ACL.
+
+Defaults are intentionally conservative:
+
+| Capability | Default | Unlocks |
+|---|---|---|
+| `read_only` | **Enabled** | `observe`, `read`, `locate`, `wait_for_events`, `list_reading_targets`, `find_tools`, `get_tool_schema` |
+| `speech_output` | **Enabled** | `speak_text`, `show_message` |
+| `input_control` | Off | `press`, `invoke`, `set_value`, `focus`, `activate_window`, `navigate`, `navigate_reading`, `scroll`, `click_at`, `start_browse_mode` |
+| `diagnostics` | Off | `health_snapshot`, `inspect_object`, `inspect_app_module`, `walk_object_tree`, `get_focus_lineage`, `list_loaded_addons`, `get_logs`, `search_logs`, `get_log_context`, `summarize_logs`, `get_action_trace` |
+| `nvda_lifecycle` | Off | `restart_nvda`, `reload_plugins` |
+| `dialog_control` | Off | `dismiss` |
+| `developer` | Off, time-limited | `execute_python` |
+
+Manage capabilities in **NVDA Menu → Preferences → Settings → NVDA MCP Bridge**:
+
+- Enable input, diagnostics, lifecycle and dialog control individually.
+- Choose the elevation window: 1, 5, 10, 15 or 30 minutes. It is capped at 30 minutes and applies to newly granted capabilities.
+- Enable developer mode through a confirmation dialog that explains the risk and the time limit. Developer mode expires automatically.
+- **Reset Permissions to Safe Defaults** revokes every elevated capability immediately.
+
+Developer execution is blocked on the Windows secure desktop. No tool can enable developer mode on its own: it requires a local confirmation with a separate approval token.
+
+Anyone who can run code as your Windows user can read the token and control NVDA through the bridge. Treat the token file as a credential, and grant elevated capabilities only while a client actually needs them.
+
+## Tool catalog
+
+The authoritative list is always the bridge's `/tools` endpoint; the MCP companion exposes the same catalog. The registry contains 34 tools. Discovery returns 33 by default because `execute_python` is developer-only.
+
+| Category | Tools | Use |
+|---|---|---|
+| Observation | `observe`, `read`, `locate`, `wait_for_events`, `list_reading_targets` | Inspect the screen and documents without changing them |
+| Action | `activate_window`, `click_at`, `dismiss`, `focus`, `invoke`, `navigate`, `navigate_reading`, `scroll`, `set_value`, `start_browse_mode` | Move through and operate the UI |
+| Input | `press` | Send one gesture or an ordered sequence |
+| Discovery | `find_tools`, `get_tool_schema` | Search the catalog and fetch one schema on demand |
+| Diagnostics | `get_action_trace`, `get_focus_lineage`, `get_log_context`, `get_logs`, `health_snapshot`, `inspect_app_module`, `inspect_object`, `list_loaded_addons`, `search_logs`, `summarize_logs`, `walk_object_tree` | Inspect NVDA objects, add-ons, logs and action traces |
+| Speech | `speak_text` | Speak through NVDA |
+| UI | `show_message` | Show a message to the user |
+| System | `reload_plugins`, `restart_nvda` | Reload add-ons or restart NVDA |
+| Developer | `execute_python` | Run Python in NVDA's process when explicitly authorized |
+
+### References and verification
+
+Observation tools return short references such as `f3` or `w1`. Pass a reference to an action tool; it stays valid until its identity, window, TTL or bridge instance changes.
+
+Every action result carries `state_version`, `scope`, `changed`, `delta` and `settled_ms`. An `expect` object adds a verification result, so a client can distinguish "the call returned" from "the UI reached the expected state".
+
+Every action also carries a `trace_id`. Pass it to `get_action_trace` for lifecycle stages, the exception and traceback, the event window, projection deltas and native log matches.
+
+### Example prompts
+
+```text
+Observe the current window and describe what has focus.
+```
+
+```text
+Read the document from the beginning and list its headings.
+```
+
+```text
+Press control+s, then verify that the document title no longer contains an asterisk.
+```
+
+```text
+Summarize NVDA's log for errors in the last five minutes, then show the context around the first one.
+```
+
+```text
+Use the nvda tool `get_action_trace` for the last action and explain why it was not confirmed.
+```
+
+## How it works
+
+```text
+MCP client (VS Code, Claude, Cursor, Codex, ...)
+        │  MCP over stdio (JSON-RPC 2.0)
+        ▼
+nvda-mcp-server.exe
+        │  HTTP on 127.0.0.1:8765
+        │  X-NVDA-Bridge-Token
+        ▼
+NVDA MCP Bridge add-on
+        │  main-thread executor
+        ▼
+NVDA APIs and accessibility objects
+```
+
+The companion discovers the tool catalog from `/tools` at startup, retries while NVDA is unavailable, and validates `structuredContent` against the bridge's output schemas. `outputSchema` is omitted from `tools/list` by default to keep the catalog small; `get_tool_schema(name, include_output_schema=true)` returns it on demand.
+
+## Companion configuration
+
+The companion reads these environment variables. They can be set in the MCP client's server entry if needed.
+
+| Variable | Default | Effect |
+|---|---|---|
+| `NVDA_BRIDGE_URL` | `http://127.0.0.1:8765` | Bridge address |
+| `NVDA_BRIDGE_TOKEN` | Auto-discovered token file | Explicit token, for a different user or container |
+| `NVDA_BRIDGE_TIMEOUT_SECS` | `15` | HTTP timeout in seconds |
+| `NVDA_BRIDGE_CATEGORIES` | all | Comma-separated category allow-list; the only option that removes tools from the catalog |
+| `NVDA_BRIDGE_OUTPUT_SCHEMAS` | `0` | Set to `1` to advertise every `outputSchema` in `tools/list` |
+| `NVDA_BRIDGE_TOOLS_PAGE_SIZE` | `100` | Maximum tools per `tools/list` page (1–1000) |
+| `LOG_LEVEL` | `INFO` | Companion log level: `TRACE`, `DEBUG`, `INFO`, `WARN` or `ERROR` |
+
+## Development
+
+### Prerequisites
+
+- Python 3.12 or later.
+- Rust 1.95 (the exact channel is pinned in `rust-toolchain.toml`).
+- SCons and Markdown: `python -m pip install scons markdown`.
+- Gettext tools for translated documentation (optional).
+- NVDA source is not required for the unit tests.
+
+### Build
+
+`SConstruct` owns the release. One command builds the Rust companion, stages it inside the add-on with a checksum and API-level manifest, generates translated documentation, and assembles the `.nvda-addon`:
 
 ```powershell
 scons
 ```
 
-That is the only step. It is also the step that cannot be half-done: the archive
-waits for the staged binary and manifest, so a release cannot ship a companion
-that disagrees with what the add-on says about it. Rebuilds are incremental —
-`cargo` runs only when a Rust source, `Cargo.toml` or `Cargo.lock` changed.
-
 Useful variations:
 
 ```powershell
-scons companion=0            # build the add-on without touching Rust (no toolchain, CI, translators)
-scons pot                    # translation template only; does not build the companion
-scons -c                     # clean the archive and generated docs
-python scripts/package_companion.py            # same companion step, standalone
-python scripts/package_companion.py --no-build # restage a binary cargo already built
-python scripts/validate_addon_package.py       # check the archive's contents
+scons companion=0            # Python add-on only; no Rust toolchain needed
+scons pot                    # regenerate the translation template
+scons -c                     # clean generated archives and docs
+python scripts/package_companion.py            # companion step on its own
+python scripts/package_companion.py --no-build # stage an existing cargo release build
+python scripts/validate_addon_package.py       # verify archive contents and checksums
 ```
 
-Prerequisites for the companion step are Rust and `cargo` on `PATH`. Without
-them `scons` stops with a message that names both options — install Rust, or
-build with `companion=0` — rather than producing an add-on whose bundled
-companion is stale. That failure mode is real: the add-on once shipped a
-companion speaking the wrong api_level next to a bridge, and the companion
-refused the catalog and offered no tools at all. The companion now accepts a
-bridge that lists its level in `supported_api_levels`, and refuses one that does
-not — with a message naming both, instead of silence.
+The archive waits for the staged companion and manifest, so a release cannot ship a companion that disagrees with the bridge's API level.
 
----
-
-## Verify Speech and Focus Inspection (First Win)
-
-In the **VS Code chat interface with MCP enabled**, invoke:
-
-Use the NVDA MCP tool `speak_text` to say: "Hello from NVDA MCP Bridge".
-
-Or test tone generation interactively:
-Use the tool `press` with `keys="windows+d"` to toggle the desktop.
-
----
-
-### ✅ Expected result
-
-* You hear three tones:
-
-  * medium pitch
-  * higher pitch
-  * highest pitch (longer)
-
-This confirms:
-
-> VS Code chat → MCP → Bridge → NVDA execution is working
-
----
-
-## Inspect NVDA (example)
-
-Once execution works, inspect runtime state.
-
-Use the NVDA MCP tool `execute_python` to run:
-
-import addonHandler
-
-addons = addonHandler.getRunningAddons()
-[result.name for result in addons]
-
----
-
-### ✅ Expected result
-
-* A list of currently loaded add-ons returned in VS Code
-
----
-
-## Exploring NVDA APIs interactively
-
-Use Python introspection to understand NVDA internals:
-
-Use the NVDA MCP tool `execute_python` to run:
-
-import tones
-
-tones.beep(100, 100)
-tones.beep(200, 100)
-tones.beep(400, 100)
-
-help(tones.beep)
-
----
-
-### What this gives you
-
-* Immediate feedback from NVDA
-* Function signatures via `help(...)`
-* Faster understanding of internal APIs
-
----
-
-## Core workflow
-
-1. Use `execute_python` to probe NVDA internals
-2. Inspect behavior and outputs
-3. Validate APIs and patterns
-4. Implement the same logic in your add-on
-
----
-
-## Available endpoints
-
-The bridge runs locally:
-
-```
-http://127.0.0.1:8765
-```
-
-### Endpoints
-
-* `GET /health` — bridge status
-* `GET /tools` — discover available tools
-* `POST /action` — execute tool actions
-
----
-
-## Example (direct HTTP)
+### Tests and checks
 
 ```powershell
-$token = (Get-Content "$env:APPDATA\nvda\nvda-mcp-bridge\token.key").Trim()
-$headers = @{ 'X-NVDA-Bridge-Token' = $token }
-
-$body = '{
-  "request_id": "demo-1",
-  "action": "speak_text",
-  "params": { "text": "Hello from the bridge" }
-}'
-
-Invoke-WebRequest `
-  -Uri http://127.0.0.1:8765/action `
-  -Method POST `
-  -Headers $headers `
-  -Body $body `
-  -ContentType 'application/json'
+python -m pytest -q
+cargo test --manifest-path rust_mcp_bridge/Cargo.toml
+python scripts/generate_protocol.py --check
+pre-commit run --all-files
 ```
 
----
+`python scripts/generate_protocol.py` regenerates the Python and Rust protocol modules and the JSON schemas after a contract change. Do not edit generated protocol files by hand.
 
-## Available tools
+### Version sources
 
-Use `GET /tools` for the authoritative list, including per-tool `outputSchema`
-and a `schema_hash` that changes whenever the contract does.
+The release version must agree in every file that declares it:
 
-### Observation (start here)
+- `buildVars.py`
+- `pyproject.toml`
+- `rust_mcp_bridge/Cargo.toml`
+- `docs/protocol/protocol-constants.json`
+- `schema.json`
 
-* `observe` — focus, dialog and the top-level window by default, each with a
-  `ref`; `refs` maps each reference to its kind and `top_window` names the scope.
-  Ancestors, children and selection are opt-in, and `detail="summary"` (the
-  default) omits states
-* `read` — text by scope (`line`, `selection`, `document`, `subtree`); a
-  WebView document that returns only object-replacement characters falls back to
-  the accessibility tree and reports `source: "tree"`
-* `wait_for_events` — block until the next coalesced UI transition; `since`
-  defaults to the current `state_version`, so history is never replayed by
-  accident
+The build workflow verifies these values and rejects a `v*` tag that does not match.
 
-### Reading a document (browsers, Word, PDFs)
+### Releasing
 
-* `start_browse_mode` — build the document model NVDA+space would build, for
-  documents read in focus mode (Word, some PDF readers). An action of its own
-  because it changes the session; `created: false` when one already existed
-* `list_reading_targets` — headings, links, landmarks, form fields and tables in
-  reading order, without moving, with heading levels
-* `navigate_reading` — move the reading position like the quick nav key, with
-  `steps`, and report where it landed
+The GitHub workflow builds and validates the add-on on every push and pull request. Pushing a tag in the form `v0.12.0` publishes a release with:
 
-Both reading calls take `timeout_ms` (default 1000) because they run on NVDA's
-main thread, where a big document is otherwise the only limit. They answer with
-`stopped` — `end`, `limit`, `steps`, `stalled` or `timeout` — so a partial
-answer is never presented as a complete one.
+- the `.nvda-addon`
+- the translation template
+- the standalone `nvda-mcp-server.exe`
+- `SHA256SUMS.txt`
+- release notes generated with `git-cliff`
 
-### Action (by `ref`, settled)
+## Troubleshooting
 
-* `invoke` — press an object's default or named action
-* `set_value` — platform value pattern when available, keyboard otherwise
-* `focus`, `navigate`, `scroll`
-* `press` — keyboard keys; aliases such as `ctrl`, `down` and `return` are
-  normalized, and the result reports both `requested` and `normalized_keys`
-* `click_at` — absolute pointer click, last resort
-* `dismiss` — leave a dialog (needs the `dialog_control` capability)
+### The client shows no `nvda` tools
 
-Every action result carries `state_version` and `scope` (the top-level window)
-alongside `changed`, `delta` and `settled_ms`, so "the call ran" is
-distinguishable from "the UI did what was meant".
+1. Confirm NVDA is running and the add-on is enabled in NVDA's Add-on Manager.
+2. Open `/health` and check that it returns `api_level: 1`.
+3. Reinstall the companion from **NVDA Menu → Tools → NVDA MCP Bridge → Install or Repair MCP Companion...**.
+4. Restart the MCP client. The companion reads the catalog at startup.
+5. If the client runs as a different user, set `NVDA_BRIDGE_TOKEN` explicitly.
 
-### Inspection and diagnostics
+### A client reports a bridge API level mismatch
 
-* `inspect_object`, `inspect_app_module`, `get_focus_lineage`
-* `walk_object_tree`, `list_loaded_addons`, `health_snapshot`, `get_logs`
-* `health_snapshot` — status, focus/window and error counts by default; add-on
-  names and logs are opt-in (`include_addons`, `include_logs`)
-* `search_logs` — structured, paginated search over logical native-log records
-  (multiline tracebacks stay one record; unknown levels are preserved)
-* `get_log_context` — expand a result's `entry_id` into the surrounding
-  chronological evidence, across threads
-* `summarize_logs` — bounded, deterministic severity/source/pattern/exception
-  statistics, warning groups, time buckets, COM/UIA noise share and anomaly
-  candidates
-* `get_action_trace` — read back the diagnostic timeline of one action
-* `speak_text`, `show_message`
+The add-on and companion must be from the same release line. Reinstall the companion from the `0.12.0` add-on. Do not install the legacy `1.0.0` API-4 package over this line.
 
-The three log tools use NVDA's canonical active log, the existing bridge token
-and the `diagnostics` permission. They are read-only, stream the file, never
-accept a path, and never change NVDA's logging level.
+### A tool returns `permission_denied`
 
-Start an investigation with `summarize_logs` when the source is unknown, then
-`search_logs`, then `get_log_context`. For a known action, start with
-`get_action_trace` and use `search_logs(trace_id=...)` to find the native
-records that explicitly carry the id. See
-[docs/LOG_DIAGNOSTICS.md](docs/LOG_DIAGNOSTICS.md) for schemas, severity and
-source semantics, pagination/cursor rules, date limitations, redaction limits
-and worked examples.
+Enable the required capability in the add-on settings. Start with `read_only` and `speech_output`, then grant input or diagnostics only for the task at hand.
 
-### Diagnosing an action
+### Developer mode is unavailable
 
-Every action response carries `trace_id` and a compact `trace` summary
-(`outcome`, `duration_ms`, exception type/stage, event range, projection change,
-expectation status, observation completeness). Pass that id to
-`get_action_trace` for the diagnostic record: lifecycle milestones, the structured
-exception and its traceback, the event window it spanned, the baseline and final
-projection, the expected-postcondition result, best-effort native log matches,
-and the list of things the record cannot prove. The default read is a summary
-(outcome, stage, timeline, counts and statuses); `detail="full"` adds the event
-list, projection delta and log-line lists.
+`execute_python` requires a local confirmation in NVDA and expires automatically. A remote MCP request cannot enable it.
 
-`result.changed` is a projection diff, not a statement about the whole screen,
-and an `expect` that does not match is reported separately from a handler
-failure. See [docs/ACTION_TRACE.md](docs/ACTION_TRACE.md) for the schema, the
-identifier semantics and the retention limits.
+### The bridge port is already in use
 
-### Development
+Stop the process listening on `127.0.0.1:8765`, then restart NVDA. Only one bridge instance can own the port.
 
-* `execute_python`
+## Project layout
 
-### Contract invariants
-
-This is the first public contract (`api_level` 1, add-on `0.12.0`); there are no
-legacy aliases to carry.
-
-* Inputs are strict: unknown fields, wrong types and prose where a `ref` belongs
-  are validation errors, not coercions.
-* References match `^[a-z][a-z0-9]*$` and carry a kind. A stale reference is
-  `4206` and carries a `recovery` hint; it is never auto-retried. A window ref
-  is rejected as `within` for a document tool.
-* JSON is snake_case at every layer. `location` is always
-  `{left, top, width, height}`.
-* Observations expose `browse_mode`, `focus_in_foreground_window`,
-  `focus_window_handle` and `foreground_window_handle`; the same paths work in
-  `expect`, alongside `focus_window_handle` for “focus is inside this window”.
-* `observe.max_bytes` defaults to 8192; `fields` projects each node onto named
-  fields. `press` accepts a `sequence`, and `set_value.update` is
-  `replace`/`append`.
-* Payloads are bounded by default: health, logs, locate and observations return
-  summaries unless detail is requested.
-* Every tool has a published `inputSchema`; `structuredContent` is validated
-  against the bridge's `outputSchema`, which is advertised only when
-  `NVDA_BRIDGE_OUTPUT_SCHEMAS=1` (it is roughly half of the catalog bytes).
-  Ask the bridge for a tool's output schema with
-  `get_tool_schema(name, include_output_schema=true)`.
-
-See [docs/TOOL_CONTRACT.md](docs/TOOL_CONTRACT.md) for the generated matrix and
-[docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md) for canonical workflows.
-
----
-
-## Architecture overview
-
-The bridge implements a layered design:
-
-1. **HTTP transport**
-
-   * Local server on `127.0.0.1:8765`
-   * Handles `/health`, `/tools`, `/action`
-
-2. **Tool registry**
-
-   * Manifest-driven tool definitions
-   * JSON schema validation
-
-3. **Main thread execution**
-
-   * All NVDA calls routed through a `MainThreadExecutor`
-   * Prevents unsafe threading access
-
-4. **NVDA add-on runtime**
-
-   * Runs as a global plugin inside NVDA
-
----
-
-## Configuration
-
-* Localhost-only access (`127.0.0.1`)
-* Auth via `X-NVDA-Bridge-Token`
-* Configure the same token in:
-
-  * MCP server
-  * VS Code environment
-
----
-
-## Prerequisites
-
-* Windows 10/11
-* NVDA with add-on support
-* Python ≥ 3.12
-* `scons` (`pip install scons`)
-* `markdown` (`pip install markdown`)
-* `cargo` + `rustup` (for MCP server)
-* `gettext` (optional, for docs build)
-
----
-
-## Development notes
-
-* Python ≥ 3.12
-* Strict typing (`pyright`)
-* Linting via `ruff`
-* Add-on code:
-
-  ```
-  addon/globalPlugins/nvdaMcp-bridge/
-  ```
-* Tool definitions are manifest-driven
-* Protocol schemas:
-
-  ```
-  docs/protocol/
-  ```
-
----
-
-## Companion MCP server
-
-Located in:
-
+```text
+addon/                               NVDA add-on and global plug-in
+  globalPlugins/nvdaMcp-bridge/      bridge, tools, settings and bundled companion
+docs/                                protocol, tool contract, deployment and diagnostics
+rust_mcp_bridge/                     Rust MCP server
+scripts/                             protocol generation, packaging and acceptance probes
+tests/                               Python unit and integration tests
+buildVars.py                         add-on metadata and version
+sconstruct                           release build
 ```
-rust_mcp_bridge/
-```
-
-Responsibilities:
-
-* Discover tools from the bridge
-* Expose them via MCP (stdio)
-* Enable VS Code integration
-
----
 
 ## Contributing
 
-Follow Conventional Commits:
-
-* `feat:` new features
-* `fix:` bug fixes
-* `docs:` documentation
-* `chore:` maintenance
-
-Ensure:
-
-* Tool changes are reflected in the manifest
-* Behavior matches runtime discovery
-
----
+- Use [Conventional Commits](https://www.conventionalcommits.org/).
+- Run the Python and Rust test suites, the protocol check, and pre-commit before opening a pull request.
+- Regenerate protocol files with `python scripts/generate_protocol.py` after changing the contract.
+- Keep every version source in sync; the build workflow enforces it.
 
 ## License
 
-See `LICENSE`.
+GPL v2. See [COPYING.txt](COPYING.txt) and [LICENSE](LICENSE).

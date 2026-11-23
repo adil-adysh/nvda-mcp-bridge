@@ -12,11 +12,11 @@
 
 ```text
 ┌─────────────────┐
-│   VS Code       │
-│  (MCP Client)   │
+│   MCP client    │
+│ (VS Code, etc.) │
 └────────┬────────┘
-         │ MCP protocol
-         │ (127.0.0.1:8000)
+         │ MCP over stdio
+         │ (JSON-RPC 2.0)
          ↓
 ┌─────────────────────────────────┐
 │  nvda-mcp-server (Standalone)   │
@@ -71,7 +71,7 @@ No runtime tool discovery, subclass scanning, or dynamic tool registration occur
 ```json
 {
   "request_id": "f6ee084a-c16d-4178-b16c-2f6ea3c55edf",
-  "action": "get_current_focus",
+  "action": "observe",
   "params": {}
 }
 ```
@@ -84,9 +84,9 @@ No runtime tool discovery, subclass scanning, or dynamic tool registration occur
 {
   "request_id": "f6ee084a-c16d-4178-b16c-2f6ea3c55edf",
   "success": true,
-  "action": "get_current_focus",
+  "action": "observe",
   "duration_ms": 7.12,
-  "bridge": { "bridge_version": "1.0.0", "api_level": 1 },
+  "bridge": { "bridge_version": "0.12.0", "api_level": 1 },
   "nvda_status_snapshot": {
     "secure_screen": false,
     "modal_blocking": false,

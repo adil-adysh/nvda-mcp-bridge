@@ -21,24 +21,23 @@ addon_info = AddonInfo(
 	addon_summary=_("NVDA MCP Bridge"),
 	# Add-on description
 	# Translators: Long description to be shown for this add-on on add-on information from add-on store
-	addon_description=_("""Enable external applications and AI tools to control NVDA through a simple HTTP interface.
+	addon_description=_("""Connect NVDA to AI assistants and other MCP clients through a local, authenticated bridge.
 
-Speak text, read screen content, navigate UI elements, and access window information remotely.
-Perfect for building automated accessibility solutions, AI assistants, and integration tools.
+The add-on exposes NVDA's focus, documents, UI controls, speech and diagnostic logs as a typed tool catalog. A bundled Rust MCP server lets clients such as Visual Studio Code, Claude Desktop, Claude Code, Codex and Cursor inspect and control the running NVDA session.
 
-The add-on runs in the background on localhost:8765 and safely queues all NVDA operations to the main thread
-to prevent crashes. Use it with any tool that can make HTTP requests—no special protocol required."""),
+Everything stays on 127.0.0.1. Input control, diagnostics, NVDA lifecycle actions and Python execution are off by default and must be granted explicitly. Every NVDA call is queued on the main thread, so tool calls behave like NVDA's own commands instead of crashing the screen reader."""),
 	# version
 	addon_version="0.12.0",
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version to be shown in the add-on store
-	addon_changelog=_("""Version 0.12.0:
-- observe and health_snapshot report browse_mode, focus_in_foreground_window, focus_window_handle and foreground_window_handle; those fields work as expect postconditions
-- observe defaults to an 8192-byte budget and can project nodes with fields
-- press accepts an ordered sequence of gestures in one settle round
-- set_value supports update="append" as well as replace
-- wait_for_events returns event_kinds counts and can omit event objects with include_events=false
-- reading tools reject a window ref passed as within"""),
+	addon_changelog=_("""Version 0.12.0 (first public release):
+- A typed API-1 tool catalog for observation, reading, actions, inspection, logs, speech and system control
+- A bundled, checksum-verified Rust MCP server with automatic client configuration
+- Safe defaults: input, diagnostics, NVDA lifecycle and Python execution require explicit permission
+- observe and health_snapshot report browse mode and foreground/focus window identity, and those fields work as expect postconditions
+- observe is bounded to 8192 bytes by default and can project nodes onto selected fields
+- press accepts an ordered gesture sequence, set_value supports append, and wait_for_events reports event kind counts
+- Reading tools reject a window reference passed as within"""),
 	# Author(s)
 	addon_author="adil shaikh <ah.shaikh97@gmail.com>",
 	# URL for the add-on documentation support

@@ -1,7 +1,7 @@
 # NVDA Bridge Protocol Specification
 
 - Protocol: `nvda-bridge-protocol`
-- Version: `1.0.0` (bridge/add-on `0.10.0`, API level `1`)
+- Version: `1.0.0` (bridge/add-on `0.12.0`, API level `1`)
 - Status: Stable (v1 bridge release)
 
 This document standardizes communication between:
