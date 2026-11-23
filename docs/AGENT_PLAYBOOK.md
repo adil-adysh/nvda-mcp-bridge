@@ -119,6 +119,25 @@ press(sequence=["f6", "f6", "f6"], expect={"browse_mode": true})
 `foreground_window_handle` is the OS foreground window. When they differ, do not
 act on the focus object until you have raised its window.
 
+An action with an explicit expectation keeps observing until it matches, the
+action budget expires, or the action is cancelled. The action is dispatched
+once. If the budget expires, inspect the last observation and its mismatch
+evidence before deciding what to do next.
+
+For a native file picker, record the browser's foreground window handle before
+invoking the upload control. Expect the picker title (which can be localized)
+and coherent focus, then locate the filename field in the new window.
+
+```text
+invoke(ref="<upload control>", expect={"window.title": "Open", "focus_in_foreground_window": true})
+press(keys="enter", expect={"foreground_window_handle": 123, "focus_in_foreground_window": true})
+```
+
+Use the recorded browser handle in the second call. Resolve fresh references
+after each handoff. Returning to the browser confirms the window transition.
+Check the selected filename in the browser to confirm file selection, and
+check the saved attachment after submitting the form to confirm persistence.
+
 Through MCP, `verification`, `evidence`, `state_version` and `scope` live in
 `result` **inside `structuredContent`**, next to the tool's `data` fields. The
 text block is the same object as compact JSON, so either path carries them.

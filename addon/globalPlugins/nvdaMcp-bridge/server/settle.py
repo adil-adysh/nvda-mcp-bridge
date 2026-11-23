@@ -55,6 +55,9 @@ NO_EVENT_GRACE_MS = 120
 #: Two rounds is enough: the second only exists for changes still in flight.
 MAX_ROUNDS = 2
 
+#: Re-read unmet expectations even when the UI emits no accessibility events.
+EXPECT_POLL_MS = 100
+
 #: How many transitions one settle round keeps for its diagnostic record. The
 #: window's completeness is reported separately, so a truncated list is never
 #: mistaken for a quiet UI.
@@ -407,7 +410,8 @@ class Settler:
 				verification=VERIFICATION_UNAVAILABLE,
 			)
 
-		saw_activity = self._projector.wait_for_revision(revision, min(FIRST_ACTIVITY_MS, budget))
+		initial_wait_ms = max(0, min(FIRST_ACTIVITY_MS, (deadline - self._clock()) * 1000.0))
+		saw_activity = self._projector.wait_for_revision(revision, initial_wait_ms)
 		if not saw_activity:
 			self._pause(start, NO_EVENT_GRACE_MS, budget, cancellation_event)
 
@@ -421,50 +425,71 @@ class Settler:
 		# still arriving leaves the final state unknown.
 		quiet_observed = False
 
-		for round_index in range(MAX_ROUNDS):
+		round_index = 0
+		cancelled = False
+		while expect or round_index < MAX_ROUNDS:
+			activity = True
+			remaining_ms = (deadline - self._clock()) * 1000.0
 			if round_index > 0:
-				# A second round only makes sense while something is still moving.
+				if remaining_ms <= 0:
+					break
 				revision = self._projector.revision
-				if not self._projector.wait_for_revision(revision, min(FIRST_ACTIVITY_MS, budget)):
+				wait_ms = min(EXPECT_POLL_MS if expect else FIRST_ACTIVITY_MS, remaining_ms)
+				activity = self._projector.wait_for_revision(revision, wait_ms)
+				if not activity and not expect:
 					break
 
-			# Debounce on the revision counter only: cheap, thread-safe, and it
-			# says "something happened", not "the observation changed".
-			while True:
-				remaining_ms = (deadline - self._clock()) * 1000.0
-				if remaining_ms <= 0:
-					quiet_observed = False
-					break
-				current = self._projector.revision
-				quiet = not self._projector.wait_for_revision(
-					current,
-					int(max(self._poll_floor_ms, min(self._quiet_ms, remaining_ms))),
-				)
-				if quiet:
-					quiet_observed = True
-					break
+			# Debounce on the revision counter only. A silent poll already
+			# observed a quiet interval, so it can refresh immediately.
+			if activity:
+				# Continuous accessibility events must not starve an explicit
+				# expectation of observations for the entire action budget.
+				quiet_deadline = deadline
+				if expect:
+					quiet_deadline = min(deadline, self._clock() + EXPECT_POLL_MS / 1000.0)
+				while True:
+					if cancellation_event is not None and cancellation_event.is_set():
+						break
+					remaining_ms = (quiet_deadline - self._clock()) * 1000.0
+					if remaining_ms <= 0:
+						quiet_observed = False
+						break
+					current = self._projector.revision
+					wait_ms = min(max(self._poll_floor_ms, self._quiet_ms), remaining_ms)
+					quiet_observed = not self._projector.wait_for_revision(current, wait_ms)
+					if quiet_observed:
+						break
+
+			cancelled = cancellation_event is not None and cancellation_event.is_set()
+			if cancelled:
+				break
 
 			projection, _reported_changes, version_now = self._dispatch(self._projector.refresh)
-			# Diff against the *baseline* rather than trusting the projector's own
-			# delta: another caller may have refreshed in between, in which case the
-			# projector's delta describes a different pair of observations.
+			# Diff against the baseline even if another caller refreshed in between.
 			changes = diff(baseline, projection)
 			changed = bool(changes)
-			if changed:
-				break
-			# A satisfied postcondition is the other reason to stop. This round has
-			# already waited for the burst to go quiet, so the observation is as
-			# settled as the budget can make it; spending the next round would only
-			# delay an answer that is already correct.
-			if expect and evaluate_expect(projection, expect).satisfied:
+			round_index += 1
+			if expect:
+				if projection is not None and evaluate_expect(projection, expect).satisfied:
+					break
+			elif changed:
 				break
 			if self._clock() >= deadline:
 				break
 
 		settled_ms = round((self._clock() - start) * 1000.0, 1)
+		if cancelled and round_index == 0:
+			projection = None
 		expectation = evaluate_expect(projection, expect)
-		budget_expired = self._clock() >= deadline and not quiet_observed
-		if projection is None:
+		completed = projection is not None and expectation.satisfied if expect else None
+		budget_expired = (
+			not cancelled
+			and self._clock() >= deadline
+			and (completed is False or (completed is None and not quiet_observed))
+		)
+		if cancelled:
+			settling_status = "cancelled"
+		elif projection is None:
 			settling_status = "unavailable"
 		elif budget_expired:
 			settling_status = "budget_expired"
@@ -475,9 +500,7 @@ class Settler:
 		# No expectation or no projection means `unavailable`: truthful, and not
 		# the same thing as "uncertain", which stays about the action's outcome.
 		if expect and projection is not None:
-			verification = (
-				VERIFICATION_CONFIRMED if expectation.satisfied else VERIFICATION_CONTRADICTED
-			)
+			verification = VERIFICATION_CONFIRMED if expectation.satisfied else VERIFICATION_CONTRADICTED
 			evidence = build_expectation_evidence(projection, expect, version_now)
 		else:
 			verification = VERIFICATION_UNAVAILABLE
@@ -488,8 +511,8 @@ class Settler:
 			state_version=version_now,
 			settled_ms=settled_ms,
 			delta=changes,
-			uncertain=uncertain,
-			completed=expectation.satisfied if expect else None,
+			uncertain=uncertain or cancelled,
+			completed=completed,
 			expect_mismatch=expectation.mismatch,
 			projection=projection,
 			expect=dict(expect) if expect else None,
@@ -500,6 +523,7 @@ class Settler:
 			settling_status=settling_status,
 			budget_ms=budget,
 			budget_expired=budget_expired,
+			cancelled=cancelled,
 			verification=verification,
 			evidence=evidence,
 			observed=projection is not None,
@@ -525,7 +549,9 @@ class Settler:
 		outcome.events_complete = complete
 		outcome.events_truncated = not complete
 
-	def _record_settling_start(self, journal_id: Optional[str], from_version: Optional[int], budget_ms: int) -> None:
+	def _record_settling_start(
+		self, journal_id: Optional[str], from_version: Optional[int], budget_ms: int
+	) -> None:
 		trace = self._trace
 		if trace is None:
 			return

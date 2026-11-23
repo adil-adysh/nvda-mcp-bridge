@@ -262,7 +262,7 @@ class StateProjector:
 		with self._condition:
 			return self._projection, self._state_version, self._revision
 
-	def wait_for_revision(self, since: int, timeout_ms: int) -> bool:
+	def wait_for_revision(self, since: int, timeout_ms: float) -> bool:
 		"""Block until ``revision`` advances past ``since``, or the timeout expires."""
 		deadline = self._clock() + max(0, timeout_ms) / 1000.0
 		with self._condition:

@@ -163,6 +163,66 @@ class SettleTests(unittest.TestCase):
 		# observe the late name change, and report it long after the answer was true.
 		self.assertEqual(projector.refreshes, 2)
 
+	def test_expected_handoff_waits_for_focus_to_follow_foreground(self):
+		for source, destination, title in ((1, 2, "Open"), (2, 1, "Edge")):
+			with self.subTest(title=title):
+				baseline = dict(focus(), foreground_window_handle=source, focus_in_foreground_window=True)
+				stale = dict(baseline, foreground_window_handle=destination, focus_in_foreground_window=False)
+				ready = dict(stale, focus_in_foreground_window=True)
+				settler, _ = self.make([baseline, stale, ready])
+				dispatched = []
+				outcome = settler.run(
+					lambda: dispatched.append(True),
+					expect={"foreground_window_handle": destination, "focus_in_foreground_window": True},
+				)
+				self.assertEqual(dispatched, [True])
+				self.assertTrue(outcome.completed)
+				self.assertEqual(outcome.verification, "confirmed")
+
+	def test_picker_dismissal_confirms_only_the_return_to_browser(self):
+		picker = dict(focus(name="File name"), foreground_window_handle=2, focus_in_foreground_window=True)
+		browser = dict(
+			focus(name="Others: No file chosen"),
+			foreground_window_handle=1,
+			focus_in_foreground_window=True,
+		)
+		settler, _ = self.make([picker, browser])
+		outcome = settler.run(
+			lambda: None,
+			expect={"foreground_window_handle": 1, "focus_in_foreground_window": True},
+		)
+		self.assertTrue(outcome.completed)
+		self.assertEqual(outcome.projection["focus"]["name"], "Others: No file chosen")
+
+	def test_expected_handoff_polls_without_accessibility_events(self):
+		settler, projector = self.make([focus(), focus(name="Save"), focus(name="My Profile")])
+
+		def wait_without_events(since, timeout_ms):
+			projector.clock.advance(timeout_ms / 1000)
+			return False
+
+		projector.wait_for_revision = wait_without_events
+		outcome = settler.run(lambda: None, expect={"focus.name": "My Profile"})
+		self.assertTrue(outcome.completed)
+
+	def test_unmet_expectation_expires_with_last_observation(self):
+		settler, _ = self.make([focus(), focus(name="Upload")])
+		outcome = settler.run(lambda: None, expect={"focus.name": "selected.pdf"}, budget_ms=400)
+		self.assertTrue(outcome.changed)
+		self.assertFalse(outcome.completed)
+		self.assertTrue(outcome.budget_expired)
+		self.assertEqual(outcome.settling_status, "budget_expired")
+		self.assertEqual(outcome.expect_mismatch["focus.name"]["actual"], "Upload")
+
+	def test_expected_handoff_can_be_cancelled_while_waiting(self):
+		settler, projector = self.make([focus(), focus(name="Open")])
+		cancel = types.SimpleNamespace(is_set=lambda: projector.refreshes >= 2)
+		outcome = settler.run(lambda: None, expect={"focus.name": "File name"}, cancellation_event=cancel)
+		self.assertTrue(outcome.cancelled)
+		self.assertTrue(outcome.uncertain)
+		self.assertFalse(outcome.completed)
+		self.assertEqual(outcome.settling_status, "cancelled")
+
 	def test_no_expect_means_completed_is_absent(self):
 		settler, _ = self.make([focus()])
 		payload = settler.run(lambda: None).as_dict()
@@ -195,7 +255,9 @@ class LookupTests(unittest.TestCase):
 
 	def test_list_expectation_is_order_sensitive(self):
 		projection = {"focus": {"states": ["FOCUSABLE", "FOCUSED"]}}
-		self.assertTrue(settle.evaluate_expect(projection, {"focus.states": ["FOCUSABLE", "FOCUSED"]}).satisfied)
+		self.assertTrue(
+			settle.evaluate_expect(projection, {"focus.states": ["FOCUSABLE", "FOCUSED"]}).satisfied
+		)
 		self.assertFalse(settle.evaluate_expect(projection, {"focus.states": ["FOCUSED"]}).satisfied)
 
 	def test_coherence_fields_are_ordinary_expectation_paths(self):
@@ -205,13 +267,9 @@ class LookupTests(unittest.TestCase):
 			"foreground_window_handle": 99,
 			"browse_mode": True,
 		}
-		self.assertFalse(
-			settle.evaluate_expect(projection, {"focus_in_foreground_window": True}).satisfied
-		)
+		self.assertFalse(settle.evaluate_expect(projection, {"focus_in_foreground_window": True}).satisfied)
 		self.assertTrue(settle.evaluate_expect(projection, {"focus_window_handle": 12}).satisfied)
-		self.assertFalse(
-			settle.evaluate_expect(projection, {"focus_window_handle": 99}).satisfied
-		)
+		self.assertFalse(settle.evaluate_expect(projection, {"focus_window_handle": 99}).satisfied)
 		self.assertTrue(settle.evaluate_expect(projection, {"browse_mode": True}).satisfied)
 
 
