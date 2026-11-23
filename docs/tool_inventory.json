@@ -1,6 +1,6 @@
 {
   "api_level": 1,
-  "count": 34,
+  "count": 35,
   "tools": [
     {
       "category": "action",
@@ -5731,6 +5731,176 @@
         "truncation_reported": false
       },
       "purpose": "Block until the next coalesced UI transition (or timeout) and return the transition kinds. Use for idle waits instead of polling observe. 'event_kinds' counts what arrived; set include_events=false to omit event objects.",
+      "read_only": true,
+      "reference_inputs": [],
+      "required": [],
+      "verification": {
+        "evidence_sources": [],
+        "expectation_field": null,
+        "supported": false
+      },
+      "version": "1.0.0"
+    },
+    {
+      "category": "observation",
+      "defaults": {
+        "journal_id": null,
+        "limit": 20,
+        "since": null,
+        "timeout_ms": 1000
+      },
+      "error_codes": [
+        4103
+      ],
+      "event_dependencies": [],
+      "input_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Wait for or page explicitly authorized NVDA speech observations.",
+        "properties": {
+          "journal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Speech journal generation that issued `since`."
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum number of items to return.",
+            "maximum": 256,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Event version to resume after; pair it with journal_id for a foreign journal.",
+            "minimum": 0
+          },
+          "timeout_ms": {
+            "default": 1000,
+            "description": "Maximum milliseconds to wait; 0 returns immediately when supported.",
+            "maximum": 30000,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "mutating": false,
+      "name": "wait_for_speech",
+      "output_schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "description": "Speech records plus explicit cursor and bounded-history metadata.",
+        "properties": {
+          "cancelled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "cursor_status": {
+            "default": "ok",
+            "type": "string"
+          },
+          "dropped": {
+            "default": 0,
+            "type": "integer"
+          },
+          "earliest_available_version": {
+            "default": 0,
+            "type": "integer"
+          },
+          "events": {
+            "default": [],
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "expired": {
+            "default": false,
+            "type": "boolean"
+          },
+          "from_version": {
+            "type": "integer"
+          },
+          "has_more": {
+            "default": false,
+            "type": "boolean"
+          },
+          "history_complete": {
+            "default": true,
+            "type": "boolean"
+          },
+          "journal_id": {
+            "description": "Journal generation that issued `since`; omit to use the current journal.",
+            "type": "string"
+          },
+          "resync_from": {
+            "anyOf": [
+              {
+                "additionalProperties": {},
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "resync_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "resync_required": {
+            "default": false,
+            "type": "boolean"
+          },
+          "timed_out": {
+            "default": false,
+            "type": "boolean"
+          },
+          "to_version": {
+            "type": "integer"
+          },
+          "truncated": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "journal_id",
+          "from_version",
+          "to_version"
+        ],
+        "type": "object"
+      },
+      "output_size_limits": {
+        "input_bounded": true,
+        "truncation_reported": false
+      },
+      "purpose": "Wait for or page explicitly authorized NVDA speech observations. Each text record is prepared for synthesis, not proof of completed playback or action causality. Omitting the cursor starts at the current speech journal head.",
       "read_only": true,
       "reference_inputs": [],
       "required": [],

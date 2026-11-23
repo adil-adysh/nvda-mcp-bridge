@@ -30,6 +30,7 @@ if _PACKAGE_NAME not in sys.modules:
 
 security = importlib.import_module(f"{_PACKAGE_NAME}.server.security")
 http_bridge = importlib.import_module(f"{_PACKAGE_NAME}.server.http_bridge")
+speech = importlib.import_module(f"{_PACKAGE_NAME}.server.speech")
 
 
 class SpeechPermissionTests(unittest.TestCase):
@@ -87,6 +88,50 @@ class SpeechPermissionTests(unittest.TestCase):
 		allowed, reason = bridge.check_speech_access()
 		self.assertFalse(allowed)
 		self.assertIn("protected focus", reason)
+
+	def test_wait_for_speech_returns_only_authorized_retained_speech(self):
+		bridge = self._bridge()
+		bridge._native_log_enabled = False
+		bridge.speech_monitor = types.SimpleNamespace(is_secure_desktop=False, is_protected_focus=False)
+		initial_ui_version = bridge.event_journal.version
+		text, truncated = speech.extract_speech_text(["Save", object(), " complete"])
+		bridge.speech_journal.record_speech(text, "about_to_synthesize", truncated)
+		bridge.speech_journal.record_control("speech_canceled")
+		journal_id = bridge.speech_journal.journal_id
+
+		observed = bridge.execute_action(
+			request_id="speech-1",
+			action_name="wait_for_speech",
+			params={"since": 0, "journal_id": journal_id, "timeout_ms": 0, "limit": 20},
+		)
+
+		self.assertTrue(observed["success"], observed.get("error"))
+		self.assertEqual(
+			[(event["kind"], event.get("text")) for event in observed["data"]["events"]],
+			[("speech", "Save complete"), ("speech_canceled", None)],
+		)
+		self.assertEqual(observed["data"]["events"][0]["phase"], "about_to_synthesize")
+		self.assertFalse(observed["data"]["events"][0]["text_truncated"])
+		self.assertEqual(observed["data"]["journal_id"], journal_id)
+		self.assertEqual(observed["data"]["from_version"], 0)
+		self.assertEqual(observed["data"]["to_version"], 2)
+		self.assertEqual(observed["data"]["cursor_status"], "ok")
+		self.assertFalse(observed["data"]["has_more"])
+		self.assertTrue(observed["data"]["history_complete"])
+		self.assertFalse(observed["data"]["timed_out"])
+		self.assertFalse(observed["data"]["cancelled"])
+		self.assertEqual(bridge.event_journal.version, initial_ui_version)
+
+		bridge.revoke_permission("speech_observation")
+		denied = bridge.execute_action(
+			request_id="speech-2",
+			action_name="wait_for_speech",
+			params={"since": 0, "journal_id": journal_id, "timeout_ms": 0, "limit": 20},
+		)
+		self.assertFalse(denied["success"])
+		self.assertEqual(denied["error"]["code"], 4003)
+		self.assertNotIn("Save complete", str(denied))
+		self.assertEqual(bridge.speech_journal.snapshot()["events"], [])
 
 
 if __name__ == "__main__":
