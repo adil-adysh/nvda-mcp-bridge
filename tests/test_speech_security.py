@@ -4,8 +4,11 @@
 import importlib
 import os
 import sys
+import threading
+import time
 import types
 import unittest
+from unittest import mock
 
 _ADDON_DIR = os.path.normpath(
 	os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "addon", "globalPlugins", "nvdaMcp-bridge")
@@ -132,6 +135,77 @@ class SpeechPermissionTests(unittest.TestCase):
 		self.assertEqual(denied["error"]["code"], 4003)
 		self.assertNotIn("Save complete", str(denied))
 		self.assertEqual(bridge.speech_journal.snapshot()["events"], [])
+
+	def test_registered_wait_rechecks_access_after_wait(self):
+		for transition in ("secure", "protected", "revoke", "revoke_regrant"):
+			with self.subTest(transition=transition):
+				bridge = self._bridge()
+				bridge._native_log_enabled = False
+				bridge.speech_monitor = types.SimpleNamespace(is_secure_desktop=False, is_protected_focus=False)
+				bridge.speech_journal.record_speech("must not escape", "queued")
+				journal_id = bridge.speech_journal.journal_id
+				original_wait = bridge.speech_journal.wait
+
+				def wait_then_transition(**kwargs):
+					page = original_wait(**kwargs)
+					if transition == "secure":
+						bridge.speech_monitor.is_secure_desktop = True
+					elif transition == "protected":
+						bridge.speech_monitor.is_protected_focus = True
+					elif transition == "revoke":
+						bridge.revoke_permission("speech_observation")
+					else:
+						bridge.revoke_permission("speech_observation")
+						bridge.grant_permission("speech_observation")
+					return page
+
+				with mock.patch.object(bridge.speech_journal, "wait", side_effect=wait_then_transition):
+					denied = bridge.execute_action(
+						request_id="speech-race",
+						action_name="wait_for_speech",
+						params={"since": 0, "journal_id": journal_id, "timeout_ms": 0},
+					)
+				self.assertFalse(denied["success"])
+				self.assertEqual(denied["error"]["code"], 4003)
+				self.assertNotIn("must not escape", str(denied))
+
+	def test_stop_resets_speech_journal_and_wakes_pending_waiter(self):
+		bridge = self._bridge()
+		bridge.speech_journal.record_speech("shutdown transcript", "queued")
+		journal_id = bridge.speech_journal.journal_id
+		entered_wait = threading.Event()
+		finished_wait = threading.Event()
+		original_condition_wait = bridge.speech_journal._condition.wait
+
+		def signal_wait(timeout=None):
+			entered_wait.set()
+			return original_condition_wait(timeout)
+
+		bridge.speech_journal._condition.wait = signal_wait
+		result = {}
+
+		def wait_for_change():
+			result.update(
+				bridge.speech_journal.wait(
+					since=1, timeout_ms=5000, journal_id=journal_id
+				)
+			)
+			finished_wait.set()
+
+		waiter = threading.Thread(target=wait_for_change, daemon=True)
+		waiter.start()
+		self.assertTrue(entered_wait.wait(1))
+		bridge.stop()
+		try:
+			self.assertTrue(finished_wait.wait(0.5))
+			self.assertTrue(result["resync_required"])
+			self.assertEqual(result["cursor_status"], "journal_mismatch")
+			self.assertEqual(result["events"], [])
+			self.assertNotEqual(result["journal_id"], journal_id)
+			self.assertEqual(bridge.speech_journal.snapshot()["events"], [])
+		finally:
+			bridge.speech_journal.reset("test_cleanup")
+			waiter.join(timeout=1)
 
 
 if __name__ == "__main__":

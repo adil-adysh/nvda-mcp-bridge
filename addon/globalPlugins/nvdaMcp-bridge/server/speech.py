@@ -7,13 +7,32 @@ import importlib
 import secrets
 import threading
 import time
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 MAX_SPEECH_TEXT_CHARS = 1024
 MAX_SPEECH_EVENTS = 256
 MAX_PAGE_LIMIT = 256
 MAX_WAIT_MS = 30_000
 WAIT_RECHECK_SECONDS = 0.25
+
+
+class SpeechAccessDenied(PermissionError):
+	"""A speech page became unavailable before it could be released."""
+
+
+def is_secure_desktop_at_startup(focus_obj: Any, secure_desktop_check: Callable[[], Any]) -> bool:
+	"""Combine NVDA's desktop predicate with its user-instance sleep sentinel.
+
+	Unknown desktop state is unsafe: speech observation remains unavailable until
+	NVDA can establish that its process is on the ordinary desktop.
+	"""
+	try:
+		actual_secure = bool(secure_desktop_check())
+		full_sleep = getattr(type(focus_obj), "SLEEP_FULL", None)
+		focus_secure = full_sleep is not None and getattr(focus_obj, "sleepMode", None) == full_sleep
+		return actual_secure or focus_secure
+	except Exception:  # noqa: BLE001 — uncertain desktop state fails closed
+		return True
 
 
 def extract_speech_text(sequence: Iterable[Any], limit: int = MAX_SPEECH_TEXT_CHARS) -> tuple[str, bool]:
@@ -65,8 +84,10 @@ class SpeechJournal:
 		with self._condition:
 			return self._journal_id
 
-	def _append(self, event: dict[str, Any]) -> int:
+	def _append(self, event: dict[str, Any], expected_journal_id: str | None = None) -> int | None:
 		with self._condition:
+			if expected_journal_id is not None and expected_journal_id != self._journal_id:
+				return None
 			self._version += 1
 			at_ms = int(time.monotonic() * 1000)
 			# Keep timestamps strictly ordered even when two events land in one ms.
@@ -79,7 +100,14 @@ class SpeechJournal:
 			self._condition.notify_all()
 			return self._version
 
-	def record_speech(self, text: str, phase: str, text_truncated: bool = False) -> int | None:
+	def record_speech(
+		self,
+		text: str,
+		phase: str,
+		text_truncated: bool = False,
+		*,
+		expected_journal_id: str | None = None,
+	) -> int | None:
 		"""Record non-empty text only; returns its speech-journal version."""
 		if not isinstance(text, str) or not text:
 			return None
@@ -92,14 +120,20 @@ class SpeechJournal:
 			"phase": str(phase),
 			"text": bounded_text,
 			"text_truncated": truncated,
-		})
+		}, expected_journal_id)
 
-	def record_control(self, kind: str, paused: bool | None = None) -> int:
+	def record_control(
+		self,
+		kind: str,
+		paused: bool | None = None,
+		*,
+		expected_journal_id: str | None = None,
+	) -> int | None:
 		"""Record a speech lifecycle control without retaining transcript text."""
 		event: dict[str, Any] = {"kind": str(kind)}
 		if paused is not None:
 			event["paused"] = bool(paused)
-		return self._append(event)
+		return self._append(event, expected_journal_id)
 
 	def reset(self, reason: str = "reset") -> str:
 		"""Clear retained speech and begin a new cursor generation."""
@@ -215,6 +249,43 @@ class SpeechJournal:
 		return payload
 
 
+def guarded_speech_wait(
+	journal: SpeechJournal,
+	access_check: Callable[[], tuple[bool, str | None]],
+	*,
+	since: int,
+	timeout_ms: int,
+	limit: int,
+	journal_id: str | None = None,
+	cancellation_event: Any = None,
+) -> dict[str, Any]:
+	"""Wait for speech and refuse pages whose authorization or generation changed."""
+	try:
+		allowed, reason = access_check()
+	except Exception:  # noqa: BLE001 — a broken access check fails closed
+		allowed, reason = False, "Speech observation safety state is unavailable"
+	if not allowed:
+		raise SpeechAccessDenied(reason or "Speech observation is unavailable")
+
+	start_generation = journal.journal_id
+	page = journal.wait(
+		since=since,
+		timeout_ms=timeout_ms,
+		limit=limit,
+		journal_id=journal_id if journal_id is not None else start_generation,
+		cancellation_event=cancellation_event,
+	)
+	try:
+		allowed, reason = access_check()
+	except Exception:  # noqa: BLE001 — a broken access check fails closed
+		allowed, reason = False, "Speech observation safety state is unavailable"
+	if not allowed:
+		raise SpeechAccessDenied(reason or "Speech observation is unavailable")
+	if journal.journal_id != start_generation or page.get("journal_id") != start_generation:
+		raise SpeechAccessDenied("Speech history changed while waiting; retry from the current cursor")
+	return page
+
+
 class SpeechMonitor:
 	"""Register NVDA speech hooks and append only authorized, safe observations."""
 
@@ -261,11 +332,18 @@ class SpeechMonitor:
 		except Exception:  # noqa: BLE001 — uncertain focus state suppresses capture
 			protected = True
 		with self._lock:
+			became_protected = protected and not self._protected_focus
 			self._protected_focus = protected
+		if became_protected:
+			self._journal.reset("protected_focus")
 
 	def set_secure_desktop(self, is_secure: bool) -> None:
 		with self._lock:
-			self._secure_desktop = bool(is_secure)
+			secure = bool(is_secure)
+			became_secure = secure and not self._secure_desktop
+			self._secure_desktop = secure
+		if became_secure:
+			self._journal.reset("secure_desktop")
 
 	@staticmethod
 	def _load_module(name: str) -> Any:
@@ -311,14 +389,15 @@ class SpeechMonitor:
 				extensions = self._load_module("speech.extensions")
 
 			secure_module = self._load_module("winAPI.secureDesktop")
+			secure_point = getattr(secure_module, "post_secureDesktopStateChange", None) if secure_module else None
+			if secure_point is None:
+				# Capture cannot be safe when desktop transitions cannot be observed.
+				return False
 			points = [
 				(text_point, self._on_speech),
 				(getattr(extensions, "speechCanceled", None) if extensions else None, self._on_speech_cancelled),
 				(getattr(extensions, "post_speechPaused", None) if extensions else None, self._on_speech_paused),
-				(
-					getattr(secure_module, "post_secureDesktopStateChange", None) if secure_module else None,
-					self._on_secure_desktop_change,
-				),
+				(secure_point, self._on_secure_desktop_change),
 			]
 			try:
 				for point, callback in points:
@@ -345,23 +424,35 @@ class SpeechMonitor:
 			return not self._secure_desktop and not self._protected_focus
 
 	def _on_speech(self, speechSequence=(), **kwargs) -> None:
+		journal_id = self._journal.journal_id
 		if not self._capture_allowed():
 			return
 		try:
 			text, truncated = extract_speech_text(speechSequence or ())
 			if text:
-				self._journal.record_speech(text, self._text_phase or "queued", truncated)
+				self._journal.record_speech(
+					text,
+					self._text_phase or "queued",
+					truncated,
+					expected_journal_id=journal_id,
+				)
 		except Exception:  # noqa: BLE001 — speech hooks must not disturb synthesis
 			return
 
 	def _on_speech_cancelled(self, *args, **kwargs) -> None:
+		journal_id = self._journal.journal_id
 		if self._capture_allowed():
-			self._journal.record_control("speech_canceled")
+			self._journal.record_control("speech_canceled", expected_journal_id=journal_id)
 
 	def _on_speech_paused(self, switch=False, **kwargs) -> None:
+		journal_id = self._journal.journal_id
 		if self._capture_allowed():
 			paused = bool(switch)
-			self._journal.record_control("speech_paused" if paused else "speech_resumed", paused=paused)
+			self._journal.record_control(
+				"speech_paused" if paused else "speech_resumed",
+				paused=paused,
+				expected_journal_id=journal_id,
+			)
 
 	def _on_secure_desktop_change(self, isSecureDesktop=False, **kwargs) -> None:
 		self.set_secure_desktop(bool(isSecureDesktop))

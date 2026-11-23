@@ -99,6 +99,41 @@ class SpeechJournalTests(unittest.TestCase):
 		self.assertEqual(page["events"], [])
 		self.assertEqual(journal.version, 0)
 
+	def test_typed_and_untyped_waiters_wake_on_concurrent_reset(self):
+		for typed_cursor in (False, True):
+			with self.subTest(typed_cursor=typed_cursor):
+				journal = speech.SpeechJournal()
+				journal.record_speech("must not cross reset", "queued")
+				old_id = journal.journal_id
+				entered_wait = threading.Event()
+				original_wait = journal._condition.wait
+
+				def signal_wait(timeout=None):
+					entered_wait.set()
+					return original_wait(timeout)
+
+				journal._condition.wait = signal_wait
+				result = {}
+				waiter = threading.Thread(
+					target=lambda: result.update(
+						journal.wait(
+							since=1,
+							timeout_ms=5000,
+							journal_id=old_id if typed_cursor else None,
+						)
+					),
+					daemon=True,
+				)
+				waiter.start()
+				self.assertTrue(entered_wait.wait(1))
+				journal.reset("permission_revoked")
+				waiter.join(timeout=1)
+				self.assertFalse(waiter.is_alive())
+				self.assertEqual(result["cursor_status"], "journal_mismatch")
+				self.assertTrue(result["resync_required"])
+				self.assertFalse(result["history_complete"])
+				self.assertEqual(result["events"], [])
+
 	def test_speech_journal_wait_handles_timeout_event_and_cancellation(self):
 		journal = speech.SpeechJournal()
 		timeout_page = journal.wait(timeout_ms=5)

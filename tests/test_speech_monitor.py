@@ -120,6 +120,56 @@ class SpeechMonitorTests(unittest.TestCase):
 			modern.callbacks[0](speechSequence=["Password"])
 		self.assertEqual(journal.version, 0)
 
+	def test_monitor_fails_closed_without_secure_desktop_transition_hook(self):
+		monitor, journal, modules, modern, *_ = self._monitor()
+		modules["winAPI.secureDesktop"] = types.SimpleNamespace()
+		with patch.object(speech.importlib, "import_module", side_effect=lambda name: modules[name]):
+			self.assertFalse(monitor.start())
+			self.assertFalse(monitor.is_started)
+			self.assertEqual(journal.version, 0)
+			self.assertEqual(modern.callbacks, [])
+
+	def test_secure_or_protected_transition_clears_existing_speech(self):
+		for transition in ("secure", "protected"):
+			with self.subTest(transition=transition):
+				monitor = speech.SpeechMonitor(speech.SpeechJournal(), lambda: True)
+				monitor._journal.record_speech("sensitive text", "queued")
+				old_id = monitor._journal.journal_id
+				if transition == "secure":
+					monitor.set_secure_desktop(True)
+				else:
+					monitor.set_protected_focus(types.SimpleNamespace(isProtected=True))
+				self.assertNotEqual(monitor._journal.journal_id, old_id)
+				self.assertEqual(monitor._journal.snapshot()["events"], [])
+
+	def test_capture_started_before_journal_reset_cannot_repopulate_it(self):
+		monitor, journal, modules, modern, *_ = self._monitor()
+		original_extract = speech.extract_speech_text
+
+		def reset_then_extract(sequence):
+			journal.reset("permission_revoked")
+			return original_extract(sequence)
+
+		with patch.object(speech.importlib, "import_module", side_effect=lambda name: modules[name]):
+			self.assertTrue(monitor.start())
+			with patch.object(speech, "extract_speech_text", side_effect=reset_then_extract):
+				modern.callbacks[0](speechSequence=["late private text"])
+		self.assertEqual(journal.snapshot()["events"], [])
+
+	def test_startup_security_uses_actual_desktop_and_fails_closed(self):
+		class Focus:
+			SLEEP_FULL = 2
+
+			def __init__(self, sleep_mode=0):
+				self.sleepMode = sleep_mode
+
+		self.assertTrue(speech.is_secure_desktop_at_startup(Focus(), lambda: True))
+		self.assertTrue(speech.is_secure_desktop_at_startup(Focus(2), lambda: False))
+		self.assertFalse(speech.is_secure_desktop_at_startup(Focus(), lambda: False))
+		self.assertTrue(
+			speech.is_secure_desktop_at_startup(Focus(), lambda: (_ for _ in ()).throw(RuntimeError("unknown")))
+		)
+
 	def test_monitor_records_cancel_pause_and_resume_without_text(self):
 		monitor, journal, modules, _, _, cancel, pause, _ = self._monitor()
 		with patch.object(speech.importlib, "import_module", side_effect=lambda name: modules[name]):

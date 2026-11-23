@@ -307,6 +307,8 @@ struct BridgeClient {
     client: Client,
     base_url: String,
     auth_token: String,
+    /// Configured per-request deadline, extended only for bounded speech waits.
+    request_timeout: Duration,
     /// Category allow-list for the catalog, from `NVDA_BRIDGE_CATEGORIES`.
     ///
     /// The catalog is context: every tool's schema is paid for by the agent on
@@ -346,8 +348,9 @@ impl BridgeClient {
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(15);
 
+        let request_timeout = Duration::from_secs(timeout_secs);
         let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(timeout_secs))
+            .timeout(request_timeout)
             .build()
             .context("Failed to build HTTP client")?;
 
@@ -393,6 +396,7 @@ impl BridgeClient {
             client,
             base_url,
             auth_token,
+            request_timeout,
             categories,
             include_output_schemas,
         })
@@ -587,6 +591,7 @@ impl BridgeClient {
     }
 
     async fn execute_action(&self, action: &str, params: Map<String, Value>) -> Result<BridgeActionEnvelope> {
+        let action_timeout = Self::request_timeout_for_tool(action, &params, self.request_timeout);
         let request_id = Self::next_request_id();
         let payload = json!({
             "request_id": request_id,
@@ -595,17 +600,38 @@ impl BridgeClient {
         });
 
         let url = format!("{}/action", self.base_url);
-        let response = self
+        let mut request = self
             .client
             .post(&url)
             .header(TOKEN_HEADER, &self.auth_token)
-            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .header(reqwest::header::CONTENT_TYPE, "application/json");
+        if let Some(timeout) = action_timeout {
+            request = request.timeout(timeout);
+        }
+        let response = request
             .json(&payload)
             .send()
             .await
             .with_context(|| format!("Failed to connect to bridge for action: {action}"))?;
 
         Self::parse_action_response(action, response).await
+    }
+
+    fn request_timeout_for_tool(
+        action: &str,
+        params: &Map<String, Value>,
+        configured_timeout: Duration,
+    ) -> Option<Duration> {
+        if action != "wait_for_speech" {
+            return None;
+        }
+        let wait_ms = params
+            .get("timeout_ms")
+            .and_then(Value::as_u64)
+            .unwrap_or(1_000)
+            .min(30_000);
+        let speech_deadline = Duration::from_millis(wait_ms.saturating_add(5_000));
+        Some(configured_timeout.max(speech_deadline))
     }
 
     async fn parse_action_response(action: &str, response: Response) -> Result<BridgeActionEnvelope> {
@@ -2155,6 +2181,32 @@ mod tests {
         let data = result.data.expect("Expected data in action response");
         assert_eq!(data.get("title").and_then(Value::as_str).unwrap_or(""), "MockWindow");
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn wait_for_speech_request_allows_its_full_bridge_wait() -> Result<()> {
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        let action_mock = server.mock(|when, then| {
+            when.method(POST).path("/action");
+            then.status(200)
+                .header("content-type", "application/json")
+                .delay(Duration::from_millis(200))
+                .body(r#"{"success":true,"data":{"timed_out":true}}"#);
+        });
+        let mut bridge_client = BridgeClient::new(server.url(""), "test-token".to_string())?;
+        bridge_client.client = Client::builder()
+            .timeout(Duration::from_millis(50))
+            .build()?;
+        let params: Map<String, Value> = serde_json::from_value(json!({"timeout_ms": 30000}))?;
+
+        let response = bridge_client.execute_action("wait_for_speech", params).await?;
+
+        assert!(response.success);
+        assert_eq!(response.data.unwrap().get("timed_out"), Some(&json!(true)));
+        action_mock.assert();
         Ok(())
     }
 

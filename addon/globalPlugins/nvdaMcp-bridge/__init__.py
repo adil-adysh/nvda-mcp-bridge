@@ -175,7 +175,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return
 		try:
 			import api
-			from .server.speech import SpeechMonitor
+			from utils.security import isRunningOnSecureDesktop
+			from .server.speech import SpeechMonitor, is_secure_desktop_at_startup
 
 			focus_obj = api.getFocusObject()
 			monitor = SpeechMonitor(
@@ -184,7 +185,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 					self._bridge is bridge
 					and bridge.permission_policy.is_granted("speech_observation")
 				),
-				initially_secure=self._is_secure_desktop_focus(focus_obj),
+				initially_secure=is_secure_desktop_at_startup(focus_obj, isRunningOnSecureDesktop),
 			)
 			monitor.set_protected_focus(focus_obj)
 			if monitor.start():
@@ -192,15 +193,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				bridge.speech_monitor = monitor
 		except Exception as error:  # noqa: BLE001 — optional observation must not prevent NVDA startup
 			logHandler.log.debug(f"Speech observation hooks unavailable: {error}")
-
-	@staticmethod
-	def _is_secure_desktop_focus(obj):
-		"""NVDA uses a full-sleep focus object while its user instance is on secure desktop."""
-		try:
-			full_sleep = getattr(type(obj), "SLEEP_FULL", None)
-			return full_sleep is not None and getattr(obj, "sleepMode", None) == full_sleep
-		except Exception:  # noqa: BLE001 — unknown initial state must remain safe
-			return True
 
 	def _updateSpeechFocus(self, obj):
 		monitor = getattr(self, "_speech_monitor", None)

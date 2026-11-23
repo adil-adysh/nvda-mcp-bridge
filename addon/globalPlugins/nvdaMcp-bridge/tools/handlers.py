@@ -1225,6 +1225,9 @@ def wait_for_speech(
 	journal_id: str | None = None,
 ) -> dict[str, Any]:
 	"""Wait for explicitly authorized speech records from their own journal."""
+	from ..core import ErrorCode, ToolExecutionError
+	from ..server.speech import SpeechAccessDenied
+
 	if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool) or timeout_ms < 0 or timeout_ms > 30000:
 		raise ValueError("'timeout_ms' must be an integer between 0 and 30000")
 	if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1 or limit > 256:
@@ -1240,8 +1243,6 @@ def wait_for_speech(
 	except Exception:  # noqa: BLE001 — broken safety state fails closed
 		allowed, reason = False, "Speech observation safety state is unavailable"
 	if not allowed:
-		from ..core import ErrorCode, ToolExecutionError
-
 		raise ToolExecutionError(
 			error_code=ErrorCode.HANDLER_EXECUTION_FAILED,
 			tool_name="wait_for_speech",
@@ -1256,13 +1257,22 @@ def wait_for_speech(
 	wait_speech = getattr(context, "wait_speech", None)
 	if not callable(wait_speech):
 		raise RuntimeError("Speech journal wait service is unavailable")
-	result = wait_speech(
-		since=since,
-		timeout_ms=timeout_ms,
-		limit=limit,
-		journal_id=journal_id,
-		cancellation_event=getattr(context, "cancellation_event", None),
-	)
+	try:
+		result = wait_speech(
+			since=since,
+			timeout_ms=timeout_ms,
+			limit=limit,
+			journal_id=journal_id,
+			cancellation_event=getattr(context, "cancellation_event", None),
+		)
+	except SpeechAccessDenied as error:
+		raise ToolExecutionError(
+			error_code=ErrorCode.HANDLER_EXECUTION_FAILED,
+			tool_name="wait_for_speech",
+			version="1.0.0",
+			message=str(error) or "Speech observation is unavailable",
+			protocol_code=4003,
+		) from error
 	to_version = int(result.get("to_version", since))
 	cancelled = bool(result.get("cancelled", False))
 	resync_required = bool(result.get("resync_required", False))
