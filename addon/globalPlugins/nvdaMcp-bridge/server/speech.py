@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections
+import importlib
 import secrets
 import threading
 import time
@@ -212,3 +213,150 @@ class SpeechJournal:
 		payload["cancelled"] = cancelled
 		payload["timed_out"] = not cancelled and not reset and current <= requested_since and not payload["resync_required"]
 		return payload
+
+
+class SpeechMonitor:
+	"""Register NVDA speech hooks and append only authorized, safe observations."""
+
+	def __init__(self, journal: SpeechJournal, is_enabled, initially_secure: bool = False) -> None:
+		self._journal = journal
+		self._is_enabled = is_enabled
+		self._lock = threading.RLock()
+		self._secure_desktop = bool(initially_secure)
+		self._protected_focus = False
+		self._registered: list[tuple[Any, Any]] = []
+		self._started = False
+		self._text_phase: str | None = None
+
+	@property
+	def is_started(self) -> bool:
+		with self._lock:
+			return self._started
+
+	@property
+	def is_protected_focus(self) -> bool:
+		with self._lock:
+			return self._protected_focus
+
+	def set_protected_focus(self, obj: Any) -> None:
+		"""Cache only protected state on NVDA's main thread, never during speech."""
+		try:
+			if obj is None:
+				protected = True
+			else:
+				try:
+					protected = bool(obj.isProtected)
+				except AttributeError:
+					states = getattr(obj, "states", None)
+					if states is None:
+						protected = False
+					else:
+						import controlTypes
+						protected = controlTypes.State.PROTECTED in states
+		except Exception:  # noqa: BLE001 — uncertain focus state suppresses capture
+			protected = True
+		with self._lock:
+			self._protected_focus = protected
+
+	def set_secure_desktop(self, is_secure: bool) -> None:
+		with self._lock:
+			self._secure_desktop = bool(is_secure)
+
+	@staticmethod
+	def _load_module(name: str) -> Any:
+		try:
+			return importlib.import_module(name)
+		except Exception:  # noqa: BLE001 — NVDA API may vary by supported version
+			return None
+
+	def _register(self, point: Any, callback: Any) -> bool:
+		register = getattr(point, "register", None)
+		if not callable(register):
+			return False
+		# Track before calling: an extension point may add the callback and then
+		# raise, in which case start() still has to unregister it.
+		self._registered.append((point, callback))
+		register(callback)
+		return True
+
+	def _unregister_all(self) -> None:
+		for point, callback in reversed(self._registered):
+			try:
+				point.unregister(callback)
+			except Exception:  # noqa: BLE001 — cleanup must continue for all hooks
+				pass
+		self._registered.clear()
+
+	def start(self) -> bool:
+		"""Register one text hook and available control/security hooks."""
+		with self._lock:
+			if self._started:
+				return True
+			self._unregister_all()
+			synth_module = self._load_module("synthDriverHandler")
+			text_point = getattr(synth_module, "pre_synthSpeak", None) if synth_module else None
+			self._text_phase = "about_to_synthesize"
+			if text_point is None:
+				extensions = self._load_module("speech.extensions")
+				text_point = getattr(extensions, "pre_speechQueued", None) if extensions else None
+				self._text_phase = "queued"
+				if text_point is None:
+					return False
+			else:
+				extensions = self._load_module("speech.extensions")
+
+			secure_module = self._load_module("winAPI.secureDesktop")
+			points = [
+				(text_point, self._on_speech),
+				(getattr(extensions, "speechCanceled", None) if extensions else None, self._on_speech_cancelled),
+				(getattr(extensions, "post_speechPaused", None) if extensions else None, self._on_speech_paused),
+				(
+					getattr(secure_module, "post_secureDesktopStateChange", None) if secure_module else None,
+					self._on_secure_desktop_change,
+				),
+			]
+			try:
+				for point, callback in points:
+					if point is not None and not self._register(point, callback):
+						raise RuntimeError("NVDA extension point does not support registration")
+			except Exception:  # noqa: BLE001 — never leave a partial set of hooks behind
+				self._unregister_all()
+				return False
+			self._started = True
+			return True
+
+	def stop(self) -> None:
+		with self._lock:
+			self._unregister_all()
+			self._started = False
+
+	def _capture_allowed(self) -> bool:
+		try:
+			if not self._is_enabled():
+				return False
+		except Exception:  # noqa: BLE001 — permission lookup failure is fail-closed
+			return False
+		with self._lock:
+			return not self._secure_desktop and not self._protected_focus
+
+	def _on_speech(self, speechSequence=(), **kwargs) -> None:
+		if not self._capture_allowed():
+			return
+		try:
+			text, truncated = extract_speech_text(speechSequence or ())
+			if text:
+				self._journal.record_speech(text, self._text_phase or "queued", truncated)
+		except Exception:  # noqa: BLE001 — speech hooks must not disturb synthesis
+			return
+
+	def _on_speech_cancelled(self, *args, **kwargs) -> None:
+		if self._capture_allowed():
+			self._journal.record_control("speech_canceled")
+
+	def _on_speech_paused(self, switch=False, **kwargs) -> None:
+		if self._capture_allowed():
+			paused = bool(switch)
+			self._journal.record_control("speech_paused" if paused else "speech_resumed", paused=paused)
+
+	def _on_secure_desktop_change(self, isSecureDesktop=False, **kwargs) -> None:
+		self.set_secure_desktop(bool(isSecureDesktop))

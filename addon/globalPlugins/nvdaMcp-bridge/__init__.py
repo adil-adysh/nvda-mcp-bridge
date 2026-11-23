@@ -46,6 +46,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		super(GlobalPlugin, self).__init__()
 		self._bridge = None
 		self._bridge_thread = None
+		self._speech_monitor = None
 		self._shutdown_event = threading.Event()
 
 		try:
@@ -61,6 +62,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			self._bridge = nvda_http_bridge.NVDAHTTPBridge(
 				host="127.0.0.1", port=8765, shutdown_event=self._shutdown_event
 			)
+			self._start_speech_monitor()
 
 			# Start bridge in background thread
 			self._bridge_thread = threading.Thread(
@@ -165,10 +167,50 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		except Exception:  # noqa: BLE001 — never break NVDA's event chain
 			pass
 
+	def _start_speech_monitor(self):
+		"""Start the optional monitor after the bridge has created its journal."""
+		bridge = getattr(self, "_bridge", None)
+		journal = getattr(bridge, "speech_journal", None) if bridge is not None else None
+		if journal is None:
+			return
+		try:
+			import api
+			from .server.speech import SpeechMonitor
+
+			focus_obj = api.getFocusObject()
+			monitor = SpeechMonitor(
+				journal,
+				lambda: (
+					self._bridge is bridge
+					and bridge.permission_policy.is_granted("speech_observation")
+				),
+				initially_secure=self._is_secure_desktop_focus(focus_obj),
+			)
+			monitor.set_protected_focus(focus_obj)
+			if monitor.start():
+				self._speech_monitor = monitor
+		except Exception as error:  # noqa: BLE001 — optional observation must not prevent NVDA startup
+			logHandler.log.debug(f"Speech observation hooks unavailable: {error}")
+
+	@staticmethod
+	def _is_secure_desktop_focus(obj):
+		"""NVDA uses a full-sleep focus object while its user instance is on secure desktop."""
+		try:
+			full_sleep = getattr(type(obj), "SLEEP_FULL", None)
+			return full_sleep is not None and getattr(obj, "sleepMode", None) == full_sleep
+		except Exception:  # noqa: BLE001 — unknown initial state must remain safe
+			return True
+
+	def _updateSpeechFocus(self, obj):
+		monitor = getattr(self, "_speech_monitor", None)
+		if monitor is not None:
+			monitor.set_protected_focus(obj)
+
 	# The eighteen kinds in docs/IMPLEMENTATION_PLAN.md §3.5. `show`/`hide` are
 	# deliberately absent: NVDA drops them except for notification bars, tooltips
 	# and IME candidates, so they are a trap as a "UI appeared" signal.
 	def event_gainFocus(self, obj, nextHandler, **kwargs):
+		self._updateSpeechFocus(obj)
 		self._recordEvent("gainFocus", obj)
 		nextHandler()
 
@@ -244,6 +286,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		"""Clean shutdown of HTTP bridge with comprehensive error handling"""
 		try:
 			logHandler.log.info("Terminating NVDA MCP Bridge addon...")
+
+			# Unregister speech callbacks before stopping their owning bridge.
+			if self._speech_monitor:
+				try:
+					self._speech_monitor.stop()
+					self._speech_monitor = None
+				except Exception as e:
+					logHandler.log.error(f"Error stopping speech observation hooks: {e}", exc_info=True)
 
 			# Step 1: Signal shutdown to stop accepting new requests
 			if self._shutdown_event:
