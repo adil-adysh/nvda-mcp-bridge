@@ -22,9 +22,12 @@ version `1.0.0` and API level `1`.
    changed).
 2. Install `nvdaMcpBridge-<version>.nvda-addon` with NVDA's Add-on Manager.
 3. Install or repair the companion from **NVDA Menu → Tools → NVDA MCP Bridge
-   → Install or Repair MCP Companion**. This stops every companion process
-   started from that install folder; their MCP clients must reconnect. A
-   companion installed in another folder is left running.
+   → Install or Repair MCP Companion**. On success, this refreshes the bridge
+   token and stops companion processes started from that install folder. Restart
+   MCP clients so their companions read the new token. A companion installed in
+   another folder is left running and must also be restarted before it can
+   authenticate again. If `NVDA_BRIDGE_TOKEN` is explicitly set, rotation is
+   unavailable and install/repair stops before changing the companion files.
 4. Restart NVDA.
 5. Verify the bridge and the companion independently:
 

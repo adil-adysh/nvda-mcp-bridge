@@ -80,6 +80,51 @@ def _get_speech(bridge, url, token=None):
 
 class HttpBridgeTests(unittest.TestCase):
 
+    def test_token_rotation_updates_live_http_server_authentication(self):
+        bridge = NVDAHTTPBridge(host="127.0.0.1", port=0, bridge_token="old-token")
+        bridge.server = types.SimpleNamespace(bridge_token="old-token")
+
+        with mock.patch.object(bridge_module, "rotate_installation_token", return_value="new-token"):
+            rotated = bridge.rotate_bridge_token()
+
+        self.assertEqual(rotated, "new-token")
+        self.assertEqual(bridge.bridge_token, "new-token")
+        self.assertEqual(bridge.server.bridge_token, "new-token")
+
+    def _validate_python_action(self, request_data):
+        handler = object.__new__(NVDABridgeRequestHandler)
+        responses = []
+        handler._send_json_response = lambda payload, status=200: responses.append((payload, status))
+        handler._build_error_envelope = lambda **kwargs: kwargs
+        result = handler._validate_action_request(request_data, "req-test")
+        return result, responses
+
+    def test_execute_python_action_validates_and_uses_configured_call_deadline(self):
+        with mock.patch.object(bridge_module, "load_python_execution_max_timeout_ms", return_value=900_000):
+            result, responses = self._validate_python_action({
+                "action": "execute_python",
+                "params": {"code": "1 + 1", "timeout_ms": 900_000},
+            })
+        self.assertFalse(responses)
+        self.assertEqual(result[3], 900_000)
+
+    def test_execute_python_rejects_a_mismatched_or_over_limit_action_deadline(self):
+        with mock.patch.object(bridge_module, "load_python_execution_max_timeout_ms", return_value=900_000):
+            result, responses = self._validate_python_action({
+                "action": "execute_python",
+                "params": {"code": "1 + 1", "timeout_ms": 900_000},
+                "timeout_ms": 899_999,
+            })
+        self.assertIsNone(result[0])
+        self.assertIn("must match", responses[0][0]["message"])
+
+        result, responses = self._validate_python_action({
+            "action": "execute_python",
+            "params": {"code": "1 + 1", "timeout_ms": 900_001},
+        })
+        self.assertIsNone(result[0])
+        self.assertIn("params.timeout_ms", responses[0][0]["message"])
+
     def test_speech_endpoint_rejects_missing_or_invalid_token_without_reading(self):
         bridge = _speech_bridge()
         with mock.patch.object(bridge.speech_journal, "wait", wraps=bridge.speech_journal.wait) as wait:

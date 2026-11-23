@@ -620,11 +620,13 @@ impl BridgeClient {
 
     async fn execute_action(&self, action: &str, params: Map<String, Value>) -> Result<BridgeActionEnvelope> {
         let action_timeout = Self::request_timeout_for_tool(action, &params, self.request_timeout);
+        let action_timeout_ms = Self::action_timeout_ms(action, &params);
         let request_id = Self::next_request_id();
         let payload = json!({
             "request_id": request_id,
             "action": action,
             "params": params,
+            "timeout_ms": action_timeout_ms,
         });
 
         let url = format!("{}/action", self.base_url);
@@ -650,6 +652,14 @@ impl BridgeClient {
         params: &Map<String, Value>,
         configured_timeout: Duration,
     ) -> Option<Duration> {
+        if action == "execute_python" {
+            let wait_ms = params
+                .get("timeout_ms")
+                .and_then(Value::as_u64)
+                .unwrap_or(60_000)
+                .clamp(1_000, 900_000);
+            return Some(configured_timeout.max(Duration::from_millis(wait_ms.saturating_add(10_000))));
+        }
         if action != "wait_for_speech" {
             return None;
         }
@@ -660,6 +670,20 @@ impl BridgeClient {
             .min(30_000);
         let speech_deadline = Duration::from_millis(wait_ms.saturating_add(5_000));
         Some(configured_timeout.max(speech_deadline))
+    }
+
+    fn action_timeout_ms(action: &str, params: &Map<String, Value>) -> Option<u64> {
+        if action == "execute_python" {
+            Some(
+                params
+                    .get("timeout_ms")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(60_000)
+                    .clamp(1_000, 900_000),
+            )
+        } else {
+            None
+        }
     }
 
     async fn parse_action_response(action: &str, response: Response) -> Result<BridgeActionEnvelope> {
@@ -2245,6 +2269,44 @@ mod tests {
         assert_eq!(response.data.unwrap().get("timed_out"), Some(&json!(true)));
         action_mock.assert();
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn execute_python_request_uses_its_requested_http_deadline() -> Result<()> {
+        use httpmock::prelude::*;
+
+        let server = MockServer::start();
+        let action_mock = server.mock(|when, then| {
+            when.method(POST).path("/action");
+            then.status(200)
+                .header("content-type", "application/json")
+                .delay(Duration::from_millis(200))
+                .body(r#"{"success":true,"data":{"result":"2"}}"#);
+        });
+        let mut bridge_client = BridgeClient::new(server.url(""), "test-token".to_string())?;
+        bridge_client.client = Client::builder()
+            .timeout(Duration::from_millis(50))
+            .build()?;
+        let params: Map<String, Value> = serde_json::from_value(json!({"code": "1 + 1", "timeout_ms": 1000}))?;
+
+        let response = bridge_client.execute_action("execute_python", params).await?;
+
+        assert!(response.success);
+        assert_eq!(response.data.unwrap().get("result"), Some(&json!("2")));
+        action_mock.assert();
+        Ok(())
+    }
+
+    #[test]
+    fn execute_python_timeout_is_forwarded_and_extends_http_deadline() {
+        let params: Map<String, Value> = serde_json::from_value(json!({"timeout_ms": 900_000})).unwrap();
+        assert_eq!(BridgeClient::action_timeout_ms("execute_python", &params), Some(900_000));
+        assert_eq!(
+            BridgeClient::request_timeout_for_tool("execute_python", &params, Duration::from_secs(15)),
+            Some(Duration::from_millis(910_000))
+        );
+        let empty = Map::new();
+        assert_eq!(BridgeClient::action_timeout_ms("execute_python", &empty), Some(60_000));
     }
 
     #[test]

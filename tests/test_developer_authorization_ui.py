@@ -110,6 +110,7 @@ class TestDeveloperAuthorizationUI(unittest.TestCase):
 
         self.bridge.reset_permissions()
         self.assertFalse(self.policy.is_granted(PERMISSION_INPUT_CONTROL))
+        self.assertFalse(self.bridge.is_developer_mode_enabled)
 
     def test_status_summary_contains_key_elements(self):
         """Verify get_bridge_status_summary contains bridge status and developer mode info."""

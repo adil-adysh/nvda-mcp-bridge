@@ -146,6 +146,41 @@ class TestCompanionManager(unittest.TestCase):
         self.assertTrue(self.mgr.installed_exe_path.is_file())
         self.assertEqual(calculate_sha256(self.mgr.installed_exe_path), self.binary_sha)
 
+    def test_install_refreshes_token_only_after_verified_activation(self):
+        refresh_token = mock.Mock(return_value="rotated-token")
+        with mock.patch.dict(os.environ, {"NVDA_BRIDGE_TOKEN": ""}):
+            success, msg = self.mgr.install_or_repair(refresh_token=refresh_token)
+        self.assertTrue(success, msg)
+        refresh_token.assert_called_once_with()
+        self.assertIn("authentication token refreshed", msg.lower())
+
+    def test_token_refresh_failure_rolls_back_the_previous_companion(self):
+        self.mgr.install_or_repair()
+        original_binary = self.mgr.installed_exe_path.read_bytes()
+        original_manifest = self.mgr.installed_manifest_path.read_bytes()
+
+        def fail_refresh():
+            raise RuntimeError("token refresh failed")
+
+        with mock.patch.dict(os.environ, {"NVDA_BRIDGE_TOKEN": ""}):
+            success, msg = self.mgr.install_or_repair(force=True, refresh_token=fail_refresh)
+        self.assertFalse(success)
+        self.assertIn("token refresh failed", msg.lower())
+        self.assertEqual(self.mgr.installed_exe_path.read_bytes(), original_binary)
+        self.assertEqual(self.mgr.installed_manifest_path.read_bytes(), original_manifest)
+
+    def test_environment_managed_token_aborts_before_stopping_or_replacing_companion(self):
+        refresh_token = mock.Mock(return_value="rotated-token")
+        self.mgr.stop_running_companions = mock.Mock(return_value=([123], []))
+        with mock.patch.dict(os.environ, {"NVDA_BRIDGE_TOKEN": "managed-outside-addon"}):
+            success, msg = self.mgr.install_or_repair(force=True, refresh_token=refresh_token)
+
+        self.assertFalse(success)
+        self.assertIn("NVDA_BRIDGE_TOKEN", msg)
+        self.assertFalse(self.mgr.installed_exe_path.exists())
+        self.mgr.stop_running_companions.assert_not_called()
+        refresh_token.assert_not_called()
+
     def test_repeated_installation_up_to_date(self):
         """Verify repeated installation reports already up to date without redundant work."""
         self.mgr.install_or_repair()

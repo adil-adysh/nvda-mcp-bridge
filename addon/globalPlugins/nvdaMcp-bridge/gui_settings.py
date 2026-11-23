@@ -29,6 +29,7 @@ from .client_config import (
 from .companion_manager import CompanionManager
 from .server.security import (
 	DEVELOPER_TTL_CHOICES_MINUTES,
+	PYTHON_TIMEOUT_CHOICES_MINUTES,
 	PERMISSION_DEVELOPER,
 	PERMISSION_DIALOG_CONTROL,
 	PERMISSION_DIAGNOSTICS,
@@ -39,7 +40,9 @@ from .server.security import (
 	PERMISSION_SPEECH_OUTPUT,
 	clamp_developer_ttl,
 	load_developer_ttl_seconds,
+	load_python_execution_max_timeout_ms,
 	save_developer_ttl_seconds,
+	save_python_execution_max_timeout_ms,
 	save_persisted_permissions,
 )
 
@@ -95,6 +98,9 @@ def get_bridge_status_summary(bridge: Any) -> str:
 def _format_duration(seconds: int) -> str:
 	"""Render an elevation window for speech and labels."""
 	minutes = max(1, round(seconds / 60))
+	if minutes % 1440 == 0:
+		days = minutes // 1440
+		return f"{days} day" if days == 1 else f"{days} days"
 	if minutes % 60 == 0:
 		hours = minutes // 60
 		return f"{hours} hour" if hours == 1 else f"{hours} hours"
@@ -125,7 +131,8 @@ def enable_developer_mode_interactive(bridge: Any, parent: Any = None) -> bool:
 			"Enabling Developer Mode allows connected MCP clients to execute arbitrary Python code "
 			"with the full process privileges of NVDA.\n\n"
 			"Only enable this if you are actively debugging or writing tools with a trusted AI assistant.\n\n"
-			f"Developer mode will automatically expire and revoke execution privileges after {duration_text}.\n\n"
+			f"Developer Mode stays enabled across NVDA restarts and expires after {duration_text}, "
+			"unless you disable it sooner.\n\n"
 			"Do you want to enable Developer Mode now?"
 		)
 		resp = gui.messageBox(
@@ -174,6 +181,7 @@ def disable_developer_mode_interactive(bridge: Any) -> bool:
 def install_companion_interactive(
 	parent: Any = None,
 	on_done: Optional[Callable[[bool, str], None]] = None,
+	bridge: Any = None,
 ) -> Tuple[bool, str]:
 	"""Prompt and install or repair the bundled companion executable off the GUI thread.
 
@@ -181,6 +189,9 @@ def install_companion_interactive(
 	the NVDA GUI loop, marshaling completion dialogs and speech back safely.
 	"""
 	comp_mgr = CompanionManager()
+	if bridge is None and MCPBridgeSettingsPanel is not None:
+		bridge = MCPBridgeSettingsPanel._find_bridge()
+	refresh_token = getattr(bridge, "rotate_bridge_token", None)
 	status = comp_mgr.inspect_installed(verify_hash=False)
 	try:
 		running_count = len(comp_mgr.find_running_companion_pids())
@@ -194,6 +205,8 @@ def install_companion_interactive(
 			f"with NVDA.\n\n"
 			f"Destination: {comp_mgr.install_dir}\n"
 			f"Current status: {status.status_message}\n\n"
+			"Installing or repairing refreshes the bridge authentication token. "
+			"MCP clients must restart and reconnect afterward.\n\n"
 			f"Would you like to install / repair the companion executable now?"
 		)
 		if running_count:
@@ -210,10 +223,16 @@ def install_companion_interactive(
 		if _GUI_AVAILABLE and wx and gui:
 			gui.messageBox(msg, "NVDA MCP Bridge", wx.ICON_WARNING, parent=parent)
 		return False, msg
+	if not callable(refresh_token):
+		_install_lock.release()
+		msg = "Cannot install or repair the companion because the active bridge cannot refresh its installation token."
+		if _GUI_AVAILABLE and wx and gui:
+			gui.messageBox(msg, "NVDA MCP Bridge", wx.ICON_ERROR, parent=parent)
+		return False, msg
 
 	def _worker():
 		try:
-			success, msg = comp_mgr.install_or_repair(force=True)
+			success, msg = comp_mgr.install_or_repair(force=True, refresh_token=refresh_token)
 		except Exception as e:
 			success, msg = False, f"Unexpected error during companion installation: {e}"
 		finally:
@@ -595,6 +614,13 @@ if _GUI_AVAILABLE:
 				self.enableDevBtn.SetLabel(
 					f"Enable Developer Mode ({_format_duration(self.devTtlChoices[selected] * 60)})..."
 				)
+			if hasattr(self, "pythonTimeoutChoice"):
+				configured_ms = load_python_execution_max_timeout_ms()
+				selected = 0
+				for index, minutes in enumerate(self.pythonTimeoutChoices):
+					if minutes * 60_000 <= configured_ms:
+						selected = index
+				self.pythonTimeoutChoice.SetSelection(selected)
 
 		def makeSettings(self, settingsSizer):
 			sHelper = guiHelper.BoxSizerHelper(self, sizer=settingsSizer)
@@ -667,7 +693,7 @@ if _GUI_AVAILABLE:
 			self.devTtlChoices = list(DEVELOPER_TTL_CHOICES_MINUTES)
 			self.devTtlChoice = wx.Choice(
 				devGroup,
-				choices=[f"{minutes} minute{'' if minutes == 1 else 's'}" for minutes in self.devTtlChoices],
+				choices=[_format_duration(minutes * 60) for minutes in self.devTtlChoices],
 			)
 			selected = 0
 			for index, minutes in enumerate(self.devTtlChoices):
@@ -676,7 +702,7 @@ if _GUI_AVAILABLE:
 			self.devTtlChoice.SetSelection(selected)
 			self.devTtlChoice.SetToolTip(
 				"How long a developer mode elevation lasts before it expires. "
-				"Applies to the next elevation; an active one keeps its expiry."
+				"Applies to the next elevation; an active one keeps its expiry across NVDA restarts."
 			)
 			self.devTtlChoice.Bind(wx.EVT_CHOICE, self.onDevTtlChanged)
 			devSizer.Add(
@@ -700,6 +726,29 @@ if _GUI_AVAILABLE:
 			devBtnSizer.Add(self.disableDevBtn, 0, wx.RIGHT, 5)
 
 			devSizer.Add(devBtnSizer, 0, wx.ALL, 5)
+
+			devSizer.Add(
+				wx.StaticText(devGroup, label="Maximum Python call wait (minutes)"),
+				0,
+				wx.LEFT | wx.RIGHT | wx.TOP,
+				5,
+			)
+			self.pythonTimeoutChoices = list(PYTHON_TIMEOUT_CHOICES_MINUTES)
+			configured_python_timeout = load_python_execution_max_timeout_ms()
+			selected_python_timeout = 0
+			for index, minutes in enumerate(self.pythonTimeoutChoices):
+				if minutes * 60_000 <= configured_python_timeout:
+					selected_python_timeout = index
+			self.pythonTimeoutChoice = wx.Choice(
+				devGroup,
+				choices=[f"{minutes} minute{'' if minutes == 1 else 's'}" for minutes in self.pythonTimeoutChoices],
+			)
+			self.pythonTimeoutChoice.SetSelection(selected_python_timeout)
+			self.pythonTimeoutChoice.SetToolTip(
+				"Maximum wait allowed for one execute_python call. Each call defaults to one minute. "
+				"If the wait expires after code starts, it continues running in NVDA."
+			)
+			devSizer.Add(self.pythonTimeoutChoice, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 5)
 			settingsSizer.Add(devSizer, 0, wx.EXPAND | wx.ALL, 5)
 
 			# 4. Companion & MCP Clients Setup with compliant StaticBox parenting
@@ -725,6 +774,9 @@ if _GUI_AVAILABLE:
 			self.resetPermsBtn.Bind(wx.EVT_BUTTON, self.onResetPermissions)
 
 		def onEnableDev(self, event):
+			# Apply and save the currently selected window before the local approval
+			# prompt, so the displayed and persisted duration matches the grant.
+			self._save_dev_ttl_choice()
 			enable_developer_mode_interactive(self._bridge, parent=self)
 			self._refresh_status()
 
@@ -757,7 +809,11 @@ if _GUI_AVAILABLE:
 			self._refresh_status()
 
 		def onInstallCompanion(self, event):
-			install_companion_interactive(parent=self, on_done=lambda ok, msg: self._refresh_status())
+			install_companion_interactive(
+				parent=self,
+				bridge=self._bridge,
+				on_done=lambda ok, msg: self._refresh_status(),
+			)
 
 		def onConfigClients(self, event):
 			configure_clients_interactive(parent=self)
@@ -832,10 +888,17 @@ if _GUI_AVAILABLE:
 			# The elevation window is a separate setting with its own bounds; it
 			# applies to the next elevation, never to one already granted.
 			saved_ttl = self._save_dev_ttl_choice()
+			try:
+				python_timeout_minutes = self.pythonTimeoutChoices[self.pythonTimeoutChoice.GetSelection()]
+			except (AttributeError, IndexError, TypeError):
+				python_timeout_minutes = max(1, load_python_execution_max_timeout_ms() // 60_000)
+			python_timeout_ms = python_timeout_minutes * 60_000
+			save_python_execution_max_timeout_ms(python_timeout_ms)
 
 			logHandler.log.info(
 				f"Saved NVDA MCP Bridge permission configuration "
-				f"(developer elevation window {saved_ttl} seconds)"
+				f"(developer elevation window {saved_ttl} seconds, Python execution maximum "
+				f"{python_timeout_ms} ms)"
 			)
 else:
 	MCPBridgeSettingsPanel = None  # type: ignore[assignment]
@@ -892,7 +955,7 @@ def install_menu_items(plugin: Any) -> None:
 		item_comp = _submenu.Append(wx.ID_ANY, "Install or Repair MCP Companion...")
 		gui.mainFrame.sysTrayIcon.Bind(
 			wx.EVT_MENU,
-			lambda evt: install_companion_interactive(),
+			lambda evt: install_companion_interactive(bridge=plugin._bridge),
 			item_comp,
 		)
 

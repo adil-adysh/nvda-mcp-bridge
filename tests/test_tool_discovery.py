@@ -7,6 +7,7 @@ import os
 import sys
 import types
 import unittest
+from unittest import mock
 
 _ADDON_DIR = os.path.normpath(
 	os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "addon", "globalPlugins", "nvdaMcp-bridge")
@@ -144,6 +145,35 @@ class ToolDiscoveryTests(unittest.TestCase):
 		).output_schema
 		self.assertEqual(trace_output["properties"]["trace_id"]["type"], "string")
 		self.assertEqual(trace_output["properties"]["_meta"]["properties"]["trace_id"]["type"], "string")
+
+	def test_execute_python_schema_documents_per_call_timeout(self) -> None:
+		schema = self._run("get_tool_schema", {"name": "execute_python"}, developer_mode=True).input_schema
+		timeout_schema = schema["properties"]["timeout_ms"]
+		self.assertEqual(timeout_schema["default"], 60_000)
+		self.assertEqual(timeout_schema["minimum"], 1000)
+		self.assertEqual(timeout_schema["maximum"], 900_000)
+
+	def test_execute_python_rejects_a_call_timeout_above_saved_maximum(self) -> None:
+		from nvdaMcpBridge.tools import handlers
+
+		with mock.patch("nvdaMcpBridge.server.security.load_python_execution_max_timeout_ms", return_value=60_000):
+			with self.assertRaisesRegex(ValueError, "configured Python execution maximum"):
+				handlers.execute_python("1 + 1", timeout_ms=60_001)
+
+	def test_execute_python_forwards_the_validated_timeout_to_nvda(self) -> None:
+		from nvdaMcpBridge.tools import handlers
+
+		fake_bridge = types.ModuleType("nvdaMcpBridge.nvda_bridge")
+		fake_bridge.execute_python = mock.Mock(return_value={"result": "2"})
+		package = importlib.import_module("nvdaMcpBridge")
+		with mock.patch(
+			"nvdaMcpBridge.server.security.load_python_execution_max_timeout_ms", return_value=900_000
+		), mock.patch.object(package, "nvda_bridge", fake_bridge, create=True):
+			result = handlers.execute_python("1 + 1", timeout_ms=900_000)
+		self.assertEqual(result, {"result": "2"})
+		fake_bridge.execute_python.assert_called_once_with(
+			code="1 + 1", snapshot_vars=False, capture_vars=None, timeout_ms=900_000
+		)
 
 	def test_unknown_schema_points_back_to_find_tools(self) -> None:
 		result = self.executor.execute(

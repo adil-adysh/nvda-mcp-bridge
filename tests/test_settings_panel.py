@@ -363,6 +363,8 @@ class TestSettingsPanelLifecycle(unittest.TestCase):
     def test_panel_offers_the_elevation_window_choices(self):
         """The window must be selectable, and default to the configured value."""
         self.assertEqual(len(self.panel.devTtlChoices), len(gui_settings.DEVELOPER_TTL_CHOICES_MINUTES))
+        self.assertEqual(self.panel.devTtlChoices[-1], 1440)
+        self.assertIn("1 day", self.panel.devTtlChoice._kwargs["choices"])
         # 300 s configured -> the "5 minutes" entry is preselected.
         expected = self.panel.devTtlChoices.index(5)
         self.assertEqual(self.panel.devTtlChoice.GetSelection(), expected)
@@ -378,6 +380,18 @@ class TestSettingsPanelLifecycle(unittest.TestCase):
         save_ttl.assert_called_once_with(900)
         self.assertEqual(self.bridge.developer_mode_manager.applied_ttl, [900])
         self.assertEqual(self.bridge.developer_mode_manager.default_ttl_seconds, 900)
+
+    def test_save_persists_python_execution_wait_limit_preset(self):
+        self.assertEqual(self.panel.pythonTimeoutChoices, [1, 2, 5, 10, 15])
+        self.panel.pythonTimeoutChoice.SetSelection(self.panel.pythonTimeoutChoices.index(15))
+        with mock.patch.object(gui_settings, "save_python_execution_max_timeout_ms") as save_timeout:
+            self.panel.onSave()
+        save_timeout.assert_called_once_with(900_000)
+
+    def test_install_or_repair_receives_the_active_bridge_for_token_rotation(self):
+        with mock.patch.object(gui_settings, "install_companion_interactive") as install:
+            self.panel.onInstallCompanion(None)
+        self.assertIs(install.call_args.kwargs["bridge"], self.bridge)
 
     def test_discard_restores_the_saved_window(self):
         """Cancelling must put the selector back, not leave the unsaved pick."""

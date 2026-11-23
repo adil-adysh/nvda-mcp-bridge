@@ -238,11 +238,19 @@ class SummarizeLogsInput:
 
 @dataclass(frozen=True)
 class ExecutePythonInput:
-	"""Execute Python code in NVDA."""
+	"""Execute Python code in NVDA, waiting up to the requested per-call limit."""
 
 	code: str
 	snapshot_vars: bool = False
 	capture_vars: Optional[list[str]] = None
+	timeout_ms: int = field(
+		default=60_000,
+		metadata={
+			"description": "Maximum time to wait for this call; capped by the saved NVDA setting (up to 15 minutes).",
+			"minimum": 1000,
+			"maximum": 900_000,
+		},
+	)
 
 
 # ============================================================================

@@ -495,6 +495,7 @@ class CompanionManager:
 		is_cancelled: Optional[Callable[[], bool]] = None,
 		on_progress: Optional[Callable[[int, int, str], None]] = None,
 		terminate_running: bool = True,
+		refresh_token: Optional[Callable[[], Any]] = None,
 	) -> Tuple[bool, str]:
 		"""Safely install or repair the companion executable with a 10-stage transaction.
 
@@ -517,6 +518,9 @@ class CompanionManager:
 			terminate_running: Stop companion processes before replacing the binary. This
 				disconnects their MCP clients, which must reconnect; without it a client can
 				keep serving the old binary from memory after the file on disk is replaced.
+			refresh_token: Rotate the bridge installation token only after the staged
+				companion has passed on-disk verification. A failed rotation rolls back the
+				binary and manifest.
 
 		Returns:
 			Tuple of (success: bool, message: str)
@@ -527,6 +531,12 @@ class CompanionManager:
 					on_progress(stage, 10, msg)
 				except Exception:
 					pass
+
+		if refresh_token is not None and os.environ.get("NVDA_BRIDGE_TOKEN", "").strip():
+			return False, (
+				"Installation token refresh is unavailable while NVDA_BRIDGE_TOKEN is set; "
+				"unset the override and retry."
+			)
 
 		# Stage 1: Verify bundled executable and manifest
 		report_progress(1, "Verifying bundled companion artifact...")
@@ -547,7 +557,7 @@ class CompanionManager:
 		# Check if already installed and verified up to date
 		if not force:
 			is_inst_valid, _, inst_state = self.verify_installed_artifact()
-			if is_inst_valid and inst_state == "installed":
+			if is_inst_valid and inst_state == "installed" and refresh_token is None:
 				return True, f"Companion v{version} is already installed and verified up to date"
 
 		try:
@@ -700,6 +710,30 @@ class CompanionManager:
 			staged_manifest_path.unlink(missing_ok=True)
 			return False, "Active companion failed verification after placement; rolled back to previous installation."
 
+		token_refreshed = False
+		if refresh_token is not None:
+			try:
+				if refresh_token() is False:
+					raise RuntimeError("token refresh callback reported failure")
+				token_refreshed = True
+			except Exception as refresh_error:
+				logHandler.log.error("Installation token refresh failed; rolling back companion: %s", refresh_error)
+				try:
+					if self.installed_exe_path.is_file():
+						self.installed_exe_path.unlink()
+					if had_existing_bin and backup_bin_path.is_file():
+						backup_bin_path.rename(self.installed_exe_path)
+					if had_existing_manifest and backup_manifest_path.is_file():
+						if self.installed_manifest_path.is_file():
+							self.installed_manifest_path.unlink()
+						backup_manifest_path.rename(self.installed_manifest_path)
+					elif not had_existing_manifest and self.installed_manifest_path.is_file():
+						self.installed_manifest_path.unlink()
+				except Exception as rollback_error:
+					logHandler.log.error("Token refresh rollback failed: %s", rollback_error, exc_info=True)
+				staged_manifest_path.unlink(missing_ok=True)
+				return False, f"Installation token refresh failed; companion rollback attempted: {refresh_error}"
+
 		# Stage 9: Commit installation state
 		report_progress(9, "Committing installation metadata...")
 		try:
@@ -722,8 +756,9 @@ class CompanionManager:
 			if stopped_pids
 			else ""
 		)
+		token_note = " Bridge authentication token refreshed." if token_refreshed else ""
 		return True, (
-			f"Successfully installed NVDA MCP companion v{version} to {self.installed_exe_path}.{stopped_note}"
+			f"Successfully installed NVDA MCP companion v{version} to {self.installed_exe_path}.{stopped_note}{token_note}"
 		)
 
 	def uninstall(self, terminate_running: bool = True) -> Tuple[bool, str]:

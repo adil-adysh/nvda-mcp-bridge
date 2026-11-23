@@ -107,7 +107,7 @@ def _harden_file_permissions(file_path: Path) -> bool:
 				str(file_path),
 				"/inheritance:r",
 				"/grant:r",
-				f"{username}:(R,W)",
+				f"{username}:(R,W,D)",
 			]
 			result = subprocess.run(
 				cmd,
@@ -200,9 +200,40 @@ def get_or_create_bridge_token(custom_dir: Optional[str | Path] = None) -> str:
 			pass
 		logHandler.log.error("Failed to securely persist bridge token to %s: %s", token_path, err)
 		raise RuntimeError(f"Secure token persistence failed: {err}") from err
-
 	return token
 
+
+def rotate_bridge_token(custom_dir: Optional[str | Path] = None) -> str:
+	"""Atomically replace the installation token after a successful companion repair.
+
+	An explicit environment token is externally managed and cannot be safely
+	rotated by the add-on, so that configuration fails closed.
+	"""
+	if custom_dir is None and os.environ.get("NVDA_BRIDGE_TOKEN", "").strip():
+		raise RuntimeError(
+			"NVDA_BRIDGE_TOKEN is externally managed; unset it before rotating the installation token"
+		)
+
+	token_path = resolve_token_file_path(custom_dir)
+	token = secrets.token_urlsafe(32)
+	temp_path = token_path.with_name(f"{token_path.name}.{secrets.token_hex(8)}.tmp")
+	try:
+		token_path.parent.mkdir(parents=True, exist_ok=True)
+		temp_path.write_text(token, encoding="utf-8")
+		if not _harden_file_permissions(temp_path):
+			raise RuntimeError(f"Failed to enforce restrictive Windows ACLs on {temp_path}")
+		temp_path.replace(token_path)
+		logHandler.log.warning("SECURITY AUDIT: Rotated the NVDA bridge installation token")
+		return token
+	except Exception as err:
+		try:
+			temp_path.unlink(missing_ok=True)
+		except Exception:
+			pass
+		if isinstance(err, RuntimeError):
+			raise
+		logHandler.log.error("Failed to rotate bridge token: %s", err, exc_info=True)
+		raise RuntimeError(f"Failed to rotate bridge token: {err}") from err
 
 def constant_time_compare(token_a: str, token_b: str) -> bool:
 	"""Perform constant-time comparison to prevent timing attacks."""
@@ -303,16 +334,54 @@ PERSISTABLE_PERMISSIONS = frozenset({
 CONFIG_SECTION = "nvdaMcpBridge"
 CONFIG_PERMISSIONS_KEY = "permissions"
 CONFIG_DEVELOPER_TTL_KEY = "developerModeTtlSeconds"
+CONFIG_DEVELOPER_EXPIRY_KEY = "developerModeExpiresAt"
+CONFIG_PYTHON_EXECUTION_MAX_TIMEOUT_KEY = "pythonExecutionMaxTimeoutMs"
+DEFAULT_PYTHON_EXECUTION_MAX_TIMEOUT_MS = 300_000
+MIN_PYTHON_EXECUTION_MAX_TIMEOUT_MS = 60_000
+MAX_PYTHON_EXECUTION_MAX_TIMEOUT_MS = 900_000
 
-#: Developer mode is time-limited by design. The window is configurable because
-#: five minutes is shorter than a real debugging session, and re-approving
-#: interrupts the thing being debugged; it is bounded because elevation is the
-#: one grant that must never become permanent.
+
+def clamp_python_execution_max_timeout_ms(timeout_ms: Any) -> int:
+	"""Clamp the saved Python call timeout ceiling to one through 15 minutes."""
+	try:
+		value = int(timeout_ms)
+	except (TypeError, ValueError):
+		return DEFAULT_PYTHON_EXECUTION_MAX_TIMEOUT_MS
+	return max(MIN_PYTHON_EXECUTION_MAX_TIMEOUT_MS, min(MAX_PYTHON_EXECUTION_MAX_TIMEOUT_MS, value))
+
+
+def load_python_execution_max_timeout_ms() -> int:
+	try:
+		import config
+
+		raw = config.conf[CONFIG_SECTION][CONFIG_PYTHON_EXECUTION_MAX_TIMEOUT_KEY]
+	except Exception:
+		return DEFAULT_PYTHON_EXECUTION_MAX_TIMEOUT_MS
+	return clamp_python_execution_max_timeout_ms(raw)
+
+
+def save_python_execution_max_timeout_ms(timeout_ms: int) -> bool:
+	value = clamp_python_execution_max_timeout_ms(timeout_ms)
+	try:
+		import config
+
+		config.conf[CONFIG_SECTION][CONFIG_PYTHON_EXECUTION_MAX_TIMEOUT_KEY] = value
+		save = getattr(config.conf, "save", None)
+		if callable(save):
+			save()
+		return True
+	except Exception as e:  # pragma: no cover - depends on NVDA runtime
+		logHandler.log.warning(f"NVDA MCP Bridge: could not persist Python execution timeout: {e}")
+		return False
+
+#: Developer mode is time-limited by design. It requires local approval and
+#: carries the approved expiry across restarts without storing a permanent grant.
 DEFAULT_DEVELOPER_TTL_SECONDS = 300
 MIN_DEVELOPER_TTL_SECONDS = 60
-MAX_DEVELOPER_TTL_SECONDS = 1800
+MAX_DEVELOPER_TTL_SECONDS = 86400
 #: Windows offered in the settings panel, in minutes.
-DEVELOPER_TTL_CHOICES_MINUTES = (1, 5, 10, 15, 30)
+DEVELOPER_TTL_CHOICES_MINUTES = (1, 5, 10, 15, 30, 60, 120, 240, 480, 720, 1440)
+PYTHON_TIMEOUT_CHOICES_MINUTES = (1, 2, 5, 10, 15)
 
 
 def clamp_developer_ttl(seconds: Any) -> int:
@@ -352,6 +421,34 @@ def save_developer_ttl_seconds(seconds: int) -> bool:
 		return False
 
 
+def load_developer_mode_expiry_timestamp() -> Optional[int]:
+	"""Load the absolute Unix expiry for a locally approved active grant."""
+	try:
+		import config
+
+		raw = config.conf[CONFIG_SECTION][CONFIG_DEVELOPER_EXPIRY_KEY]
+	except Exception:
+		return None
+	if not isinstance(raw, int) or isinstance(raw, bool) or raw <= 0:
+		return None
+	return raw
+
+
+def save_developer_mode_expiry_timestamp(expires_at: Optional[int]) -> bool:
+	"""Persist or clear the active Developer Mode grant expiry."""
+	try:
+		import config
+
+		config.conf[CONFIG_SECTION][CONFIG_DEVELOPER_EXPIRY_KEY] = max(0, int(expires_at or 0))
+		save = getattr(config.conf, "save", None)
+		if callable(save):
+			save()
+		return True
+	except Exception as e:  # pragma: no cover - depends on NVDA runtime
+		logHandler.log.warning(f"NVDA MCP Bridge: could not persist Developer Mode expiry: {e}")
+		return False
+
+
 def register_config_spec() -> None:
 	"""Register the persistent settings section with NVDA's configuration system.
 
@@ -364,10 +461,11 @@ def register_config_spec() -> None:
 		conf = getattr(config, "conf", None)
 		if conf is None or not hasattr(conf, "spec"):
 			return
-		conf.spec.setdefault(
-			CONFIG_SECTION,
-			{CONFIG_PERMISSIONS_KEY: "string", CONFIG_DEVELOPER_TTL_KEY: "integer"},
-		)
+		section_spec = conf.spec.setdefault(CONFIG_SECTION, {})
+		section_spec.setdefault(CONFIG_PERMISSIONS_KEY, "string")
+		section_spec.setdefault(CONFIG_DEVELOPER_TTL_KEY, "integer")
+		section_spec.setdefault(CONFIG_DEVELOPER_EXPIRY_KEY, "integer")
+		section_spec.setdefault(CONFIG_PYTHON_EXECUTION_MAX_TIMEOUT_KEY, "integer")
 	except Exception as e:  # pragma: no cover - depends on NVDA runtime
 		logHandler.log.debug(f"NVDA MCP Bridge: could not register config spec: {e}")
 
@@ -419,10 +517,10 @@ class DeveloperModeManager:
 	- Developer mode is disabled by default.
 	- Elevation requires independent local user approval (local token or direct API call).
 	- Ordinary bridge token cannot self-enable developer mode.
-	- Elevation approvals are time-limited (default 300s, configurable 60-1800s in
-	  the add-on settings) and automatically expire.
+	- Elevation approvals are time-limited (default 300s, configurable 60-86400s in
+	  the add-on settings), automatically expire, and resume after restart only
+	  until the originally approved expiry.
 	- Disabling takes effect immediately.
-	- Resets to disabled on NVDA restart or bridge shutdown.
 	"""
 
 	def __init__(
@@ -441,6 +539,25 @@ class DeveloperModeManager:
 
 		if initial_enabled:
 			self.approve_locally()
+		else:
+			self._restore_persisted_approval()
+
+	def _restore_persisted_approval(self) -> None:
+		expires_at = load_developer_mode_expiry_timestamp()
+		if expires_at is None:
+			return
+		remaining = expires_at - time.time()
+		if remaining <= 0 or remaining > MAX_DEVELOPER_TTL_SECONDS:
+			save_developer_mode_expiry_timestamp(None)
+			return
+		self._enabled = True
+		self._expires_at = time.monotonic() + remaining
+		if self._permission_policy is not None:
+			self._permission_policy.grant(PERMISSION_DEVELOPER)
+		logHandler.log.warning(
+			f"SECURITY AUDIT: Restored locally approved Developer Mode; "
+			f"{remaining:.0f} seconds remain before expiration."
+		)
 
 	@property
 	def default_ttl_seconds(self) -> int:
@@ -484,9 +601,14 @@ class DeveloperModeManager:
 
 	def approve_locally(self, duration_seconds: Optional[int] = None) -> None:
 		"""Approve developer mode locally (e.g. from NVDA settings, console, or local prompt)."""
-		ttl = duration_seconds if duration_seconds is not None else self._default_ttl_seconds
+		try:
+			ttl = int(duration_seconds if duration_seconds is not None else self._default_ttl_seconds)
+		except (TypeError, ValueError):
+			ttl = self._default_ttl_seconds
+		ttl = max(1, min(MAX_DEVELOPER_TTL_SECONDS, ttl))
 		self._enabled = True
 		self._expires_at = time.monotonic() + max(1, ttl)
+		save_developer_mode_expiry_timestamp(int(time.time() + ttl))
 		self._local_approval_secret = None
 		self._secret_expires_at = None
 		if self._permission_policy is not None:
@@ -550,10 +672,20 @@ class DeveloperModeManager:
 		self._cleanup_local_token()
 		if self._permission_policy is not None:
 			self._permission_policy.revoke(PERMISSION_DEVELOPER)
+		save_developer_mode_expiry_timestamp(None)
 		logHandler.log.info("SECURITY AUDIT: Developer mode disabled.")
 
 	def reset(self) -> None:
 		"""Reset developer mode to the default disabled state (fail-closed)."""
+		self._enabled = False
+		self._expires_at = None
+		self._cleanup_local_token()
+		if self._permission_policy is not None:
+			self._permission_policy.revoke(PERMISSION_DEVELOPER)
+		save_developer_mode_expiry_timestamp(None)
+
+	def suspend_for_shutdown(self) -> None:
+		"""Clear in-memory privilege while retaining an unexpired local grant for restart."""
 		self._enabled = False
 		self._expires_at = None
 		self._cleanup_local_token()

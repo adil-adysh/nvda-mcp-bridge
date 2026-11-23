@@ -130,7 +130,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	def script_installCompanion(self, gesture):
 		"""Launch accessible companion installation or repair dialog."""
 		from .gui_settings import install_companion_interactive
-		install_companion_interactive()
+		install_companion_interactive(bridge=self._bridge)
 
 	script_installCompanion.__doc__ = "Installs or repairs the bundled NVDA MCP Companion binary."
 

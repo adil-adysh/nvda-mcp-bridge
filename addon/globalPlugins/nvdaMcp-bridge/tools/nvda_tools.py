@@ -339,7 +339,11 @@ ALL_NVDA_TOOLS = [
         ToolMetadata(
             name="execute_python",
             version="1.0.0",
-            description="Execute Python source inside NVDA and return console output/result.",
+            description=(
+                "Execute Python source inside NVDA and return console output/result. "
+                "timeout_ms defaults to 60 seconds and may be raised up to the saved "
+                "maximum (up to 15 minutes)."
+            ),
             category="developer",
             read_only=False,
             destructive=True,
@@ -356,6 +360,7 @@ ALL_NVDA_TOOLS = [
             code=input_obj.code,
             snapshot_vars=input_obj.snapshot_vars,
             capture_vars=input_obj.capture_vars,
+            timeout_ms=input_obj.timeout_ms,
         ),
     ),
     # ------------------------------------------------------------------

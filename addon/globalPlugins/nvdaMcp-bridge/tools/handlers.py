@@ -281,10 +281,19 @@ def execute_python(
 	code: str,
 	snapshot_vars: bool = False,
 	capture_vars: list[str] | None = None,
+	timeout_ms: int = 60_000,
 ) -> dict[str, Any]:
+	from ..server.security import load_python_execution_max_timeout_ms
+
+	if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool) or timeout_ms < 1000:
+		raise ValueError("'timeout_ms' must be an integer of at least 1000")
+	if timeout_ms > load_python_execution_max_timeout_ms():
+		raise ValueError("'timeout_ms' exceeds the configured Python execution maximum")
 	from .. import nvda_bridge
 
-	return nvda_bridge.execute_python(code=code, snapshot_vars=snapshot_vars, capture_vars=capture_vars)
+	return nvda_bridge.execute_python(
+		code=code, snapshot_vars=snapshot_vars, capture_vars=capture_vars, timeout_ms=timeout_ms
+	)
 
 
 # ---------------------------------------------------------------------------

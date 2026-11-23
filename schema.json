@@ -4562,7 +4562,7 @@
     {
       "name": "execute_python",
       "version": "1.0.0",
-      "description": "Execute Python source inside NVDA and return console output/result.",
+      "description": "Execute Python source inside NVDA and return console output/result. timeout_ms defaults to 60 seconds and may be raised up to the saved maximum (up to 15 minutes).",
       "category": "developer",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -4588,13 +4588,20 @@
               }
             ],
             "default": null
+          },
+          "timeout_ms": {
+            "type": "integer",
+            "description": "Maximum time to wait for this call; capped by the saved NVDA setting (up to 15 minutes).",
+            "minimum": 1000,
+            "maximum": 900000,
+            "default": 60000
           }
         },
         "additionalProperties": false,
         "required": [
           "code"
         ],
-        "description": "Execute Python code in NVDA."
+        "description": "Execute Python code in NVDA, waiting up to the requested per-call limit."
       },
       "outputType": "PythonExecutionResult",
       "outputSchema": {

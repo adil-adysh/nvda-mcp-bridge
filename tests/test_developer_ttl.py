@@ -12,6 +12,7 @@ import os
 import sys
 import types
 import unittest
+from unittest import mock
 
 _ADDON_DIR = os.path.normpath(
 	os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "addon", "globalPlugins", "nvdaMcp-bridge")
@@ -88,6 +89,7 @@ class DeveloperTtlConfigTests(unittest.TestCase):
 		self.assertEqual(clamp(300), 300)
 		self.assertEqual(clamp(60), 60)
 		self.assertEqual(clamp(1800), 1800)
+		self.assertEqual(clamp(86400), 86400)
 
 	def test_clamp_bounds_values_outside_the_bounds(self):
 		clamp = self.security.clamp_developer_ttl
@@ -122,10 +124,27 @@ class DeveloperTtlConfigTests(unittest.TestCase):
 			self.conf["nvdaMcpBridge"]["developerModeTtlSeconds"],
 			self.security.MAX_DEVELOPER_TTL_SECONDS,
 		)
+		self.assertEqual(self.security.load_developer_ttl_seconds(), 86400)
 
 	def test_register_config_spec_declares_the_key_as_integer(self):
 		self.security.register_config_spec()
 		self.assertEqual(self.conf.spec["nvdaMcpBridge"]["developerModeTtlSeconds"], "integer")
+
+	def test_python_execution_max_timeout_is_persisted_and_capped_at_15_minutes(self):
+		self.security.register_config_spec()
+		self.assertEqual(self.security.load_python_execution_max_timeout_ms(), 300000)
+		self.assertTrue(self.security.save_python_execution_max_timeout_ms(900000))
+		self.assertEqual(self.conf["nvdaMcpBridge"]["pythonExecutionMaxTimeoutMs"], 900000)
+		self.assertEqual(self.security.load_python_execution_max_timeout_ms(), 900000)
+		self.assertEqual(self.security.clamp_python_execution_max_timeout_ms(90000000), 900000)
+		self.assertEqual(self.security.clamp_python_execution_max_timeout_ms(1), 60000)
+		self.assertEqual(self.conf.spec["nvdaMcpBridge"]["pythonExecutionMaxTimeoutMs"], "integer")
+
+	def test_developer_mode_expiry_config_is_registered_and_saved(self):
+		self.security.register_config_spec()
+		self.assertEqual(self.conf.spec["nvdaMcpBridge"]["developerModeExpiresAt"], "integer")
+		self.assertTrue(self.security.save_developer_mode_expiry_timestamp(1_900_000_000))
+		self.assertEqual(self.security.load_developer_mode_expiry_timestamp(), 1_900_000_000)
 
 
 class DeveloperTtlManagerTests(unittest.TestCase):
@@ -146,13 +165,40 @@ class DeveloperTtlManagerTests(unittest.TestCase):
 
 	def test_set_default_ttl_seconds_clamps(self):
 		mgr = self.Manager()
-		self.assertEqual(mgr.set_default_ttl_seconds(3600), self.security.MAX_DEVELOPER_TTL_SECONDS)
+		self.assertEqual(mgr.set_default_ttl_seconds(86400), self.security.MAX_DEVELOPER_TTL_SECONDS)
 		self.assertEqual(mgr.default_ttl_seconds, self.security.MAX_DEVELOPER_TTL_SECONDS)
 
 	def test_elevation_uses_the_configured_window(self):
 		mgr = self.Manager(default_ttl_seconds=600)
 		mgr.approve_locally()
 		self.assertGreater(mgr.time_remaining_seconds, 500)
+
+	def test_unexpired_developer_approval_survives_manager_restart(self):
+		first = self.Manager(default_ttl_seconds=600)
+		with mock.patch.object(self.security.time, "time", side_effect=[1000, 1300]):
+			first.approve_locally(duration_seconds=600)
+		saved_expiry = self.security.load_developer_mode_expiry_timestamp()
+		first.suspend_for_shutdown()
+		self.assertFalse(first.is_enabled)
+		self.assertEqual(self.security.load_developer_mode_expiry_timestamp(), saved_expiry)
+		with mock.patch.object(self.security.time, "time", return_value=1300):
+			second = self.Manager(default_ttl_seconds=600)
+		self.assertTrue(second.is_enabled)
+		self.assertGreater(second.time_remaining_seconds, 290)
+		self.assertLess(second.time_remaining_seconds, 301)
+
+	def test_reset_clears_persisted_developer_approval(self):
+		mgr = self.Manager(default_ttl_seconds=600)
+		mgr.approve_locally()
+		mgr.reset()
+		self.assertEqual(self.conf["nvdaMcpBridge"]["developerModeExpiresAt"], 0)
+		self.assertFalse(self.Manager().is_enabled)
+
+	def test_expired_developer_approval_is_cleared_on_restart(self):
+		self.security.save_developer_mode_expiry_timestamp(1)
+		mgr = self.Manager()
+		self.assertFalse(mgr.is_enabled)
+		self.assertEqual(self.conf["nvdaMcpBridge"]["developerModeExpiresAt"], 0)
 
 	def test_changing_the_setting_does_not_cut_an_active_elevation(self):
 		mgr = self.Manager(default_ttl_seconds=900)

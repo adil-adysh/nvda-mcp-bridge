@@ -88,7 +88,7 @@ def reload_plugins() -> Dict[str, Any]:
 
 
 def execute_python(
-	code: str, snapshot_vars: bool = False, capture_vars: list[str] | None = None
+	code: str, snapshot_vars: bool = False, capture_vars: list[str] | None = None, timeout_ms: int = 60_000
 ) -> Dict[str, Any]:
 	"""Execute Python code inside NVDA and return captured output, result and optional variables.
 
@@ -102,6 +102,7 @@ def execute_python(
 		code: Python source to execute (string)
 		snapshot_vars: If True, populate namespace snapshot vars (focus, nav, etc.)
 		capture_vars: Optional list of names to return from the console namespace (repr strings)
+		timeout_ms: Per-call wait limit, enforced by the bridge action executor.
 
 	Returns:
 		Dictionary with:

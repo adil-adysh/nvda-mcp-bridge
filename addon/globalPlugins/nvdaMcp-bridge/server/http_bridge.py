@@ -78,7 +78,9 @@ from .security import (
 	constant_time_compare,
 	get_or_create_bridge_token,
 	load_developer_ttl_seconds,
+	load_python_execution_max_timeout_ms,
 	load_persisted_permissions,
+	rotate_bridge_token as rotate_installation_token,
 )
 from ..validation.output_type_registry import build_output_type_registry, validate_output_type_registry
 
@@ -560,6 +562,11 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				)
 				if action is None:
 					return
+				if action == "execute_python" and timeout_ms is not None:
+					try:
+						self.request.settimeout(timeout_ms / 1000.0 + 10.0)
+					except Exception:
+						pass
 				self._handle_action(
 					action, params or {}, request_id, timeout_ms=timeout_ms, trace_id=trace_id
 				)
@@ -822,12 +829,21 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 				return None, None, request_id, None, None, None
 
 		if timeout_ms is not None:
-			if not isinstance(timeout_ms, int) or timeout_ms < 100 or timeout_ms > 300000:
+			max_timeout_ms = (
+				load_python_execution_max_timeout_ms() if action == "execute_python" else 300000
+			)
+			min_timeout_ms = 1000 if action == "execute_python" else 100
+			if (
+				not isinstance(timeout_ms, int)
+				or isinstance(timeout_ms, bool)
+				or timeout_ms < min_timeout_ms
+				or timeout_ms > max_timeout_ms
+			):
 				envelope = self._build_error_envelope(
 					request_id=request_id,
 					action="unknown",
 					code=4101,
-					message="'timeout_ms' must be an integer between 100 and 300000",
+					message=f"'timeout_ms' must be an integer between {min_timeout_ms} and {max_timeout_ms}",
 				)
 				self._send_json_response(envelope, 400)
 				return None, None, request_id, None, None
@@ -892,6 +908,33 @@ class NVDABridgeRequestHandler(BaseHTTPRequestHandler):
 			)
 			self._send_json_response(envelope, 400)
 			return None, None, request_id, None, None
+
+		if action == "execute_python":
+			python_timeout_ms = params.get("timeout_ms", 60_000)
+			maximum = load_python_execution_max_timeout_ms()
+			if (
+				not isinstance(python_timeout_ms, int)
+				or isinstance(python_timeout_ms, bool)
+				or not 1000 <= python_timeout_ms <= maximum
+			):
+				envelope = self._build_error_envelope(
+					request_id=request_id,
+					action=action,
+					code=4101,
+					message=f"'params.timeout_ms' must be an integer between 1000 and {maximum}",
+				)
+				self._send_json_response(envelope, 400)
+				return None, None, request_id, None, None
+			if timeout_ms is not None and timeout_ms != python_timeout_ms:
+				envelope = self._build_error_envelope(
+					request_id=request_id,
+					action=action,
+					code=4101,
+					message="Action timeout must match params.timeout_ms for execute_python",
+				)
+				self._send_json_response(envelope, 400)
+				return None, None, request_id, None, None
+			timeout_ms = python_timeout_ms
 
 		return action, params, request_id, timeout_ms, trace_id
 
@@ -1028,6 +1071,20 @@ class NVDAHTTPBridge:
 	def is_developer_mode_enabled(self) -> bool:
 		return self.developer_mode_manager.is_enabled
 
+	def rotate_bridge_token(self) -> str:
+		"""Rotate the saved token and update this running bridge atomically."""
+		new_token = rotate_installation_token()
+		self.bridge_token = new_token
+		if self.server is not None:
+			self.server.bridge_token = new_token
+		try:
+			from .log_diagnostics.redaction import register_secret
+
+			register_secret(new_token)
+		except Exception:
+			pass
+		return new_token
+
 	def grant_permission(self, permission: str) -> None:
 		self.permission_policy.grant(permission)
 
@@ -1086,7 +1143,9 @@ class NVDAHTTPBridge:
 		if page.get("journal_id") != self.speech_journal.journal_id:
 			raise SpeechJournalChanged("Speech journal changed before delivery; retry from the current cursor")
 
-	def reset_permissions(self) -> None:
+	def reset_permissions(self, preserve_developer_expiry: bool = False) -> None:
+		if not preserve_developer_expiry:
+			self.developer_mode_manager.disable()
 		self.permission_policy.reset()
 		self.speech_journal.reset("permissions_reset")
 
@@ -1657,8 +1716,8 @@ class NVDAHTTPBridge:
 			resolved_params = params or {}
 			effective_timeout = (
 				(timeout_ms / 1000.0)
-				if (timeout_ms is not None and 100 <= timeout_ms <= 300000)
-				else self.main_thread_executor.default_timeout
+				if timeout_ms is not None
+					else (60.0 if action_name == "execute_python" else self.main_thread_executor.default_timeout)
 			)
 
 			cancellation_event = threading.Event()
@@ -1979,8 +2038,8 @@ class NVDAHTTPBridge:
 			logHandler.log.info("Stopping NVDA HTTP Bridge...")
 			self.shutdown_event.set()
 			self.recorder.stop()
-			self.developer_mode_manager.reset()
-			self.reset_permissions()
+			self.developer_mode_manager.suspend_for_shutdown()
+			self.reset_permissions(preserve_developer_expiry=True)
 
 			if self.server:
 				try:

@@ -54,7 +54,7 @@ The add-on queues every NVDA call on NVDA's main thread, so tools behave like ke
    ```
 3. No administrator rights are required.
 
-Installing or repairing stops companion processes started from that install folder so the new binary can replace the old one. Clients connected to those processes must reconnect. Companions installed in another folder are left alone.
+Installing or repairing stops companion processes started from that install folder, refreshes the bridge authentication token, and replaces the binary. Restart MCP clients after the operation so their companions read the new token. Companion processes installed in other folders are left running, but their old token will no longer authenticate. If `NVDA_BRIDGE_TOKEN` is set as an environment override, install/repair fails before changing files because the add-on cannot rotate an externally managed token.
 
 ### 3. Connect your MCP client
 
@@ -196,7 +196,7 @@ MCP client → nvda-mcp-server.exe → 127.0.0.1:8765 → NVDA main thread
 
 ## Permissions and security
 
-The bridge binds to loopback only and authenticates every protected request with `X-NVDA-Bridge-Token`. The token is generated per installation, stored under `%APPDATA%\nvda\nvda-mcp-bridge\token.key`, and protected with a current-user-only ACL.
+The bridge binds to loopback only and authenticates every protected request with `X-NVDA-Bridge-Token`. The token is generated per installation, stored under `%APPDATA%\nvda\nvda-mcp-bridge\token.key`, and protected with a current-user-only ACL. A successful companion install or repair rotates the token atomically; the running bridge switches to it immediately.
 
 Defaults are intentionally conservative:
 
@@ -215,8 +215,9 @@ Manage capabilities in **NVDA Menu → Preferences → Settings → NVDA MCP Bri
 
 - Enable input, diagnostics, lifecycle and dialog control individually.
 - Enable **Allow MCP Speech Observation** separately before a client can read NVDA announcements. It is off by default, and observation is blocked on secure desktops or protected focus.
-- Choose the elevation window: 1, 5, 10, 15 or 30 minutes. It is capped at 30 minutes and applies to newly granted capabilities.
+- Choose the Developer Mode elevation window, from 1 minute to 1 day. The selected duration persists across NVDA restarts, and a locally approved grant stays active only until its original expiry or until you disable it.
 - Enable developer mode through a confirmation dialog that explains the risk and the time limit. Developer mode expires automatically.
+- Set the maximum `execute_python` wait to 1, 2, 5, 10 or 15 minutes. Each call defaults to one minute and is capped by this saved ceiling; the setting survives NVDA restarts. If the wait expires after code starts, it continues running in NVDA.
 - **Reset Permissions to Safe Defaults** revokes every elevated capability immediately.
 
 Developer execution is blocked on the Windows secure desktop. No tool can enable developer mode on its own: it requires a local confirmation with a separate approval token.
@@ -385,7 +386,7 @@ Enable the required capability in the add-on settings. Start with `read_only` an
 
 ### Developer mode is unavailable
 
-`execute_python` requires a local confirmation in NVDA and expires automatically. A remote MCP request cannot enable it.
+`execute_python` requires a local confirmation in NVDA and expires automatically. If NVDA restarts before that expiry, the locally approved grant resumes with the same remaining time. A remote MCP request cannot enable it.
 
 ### The bridge port is already in use
 

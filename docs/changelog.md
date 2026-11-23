@@ -9,6 +9,18 @@ The 0.1.0 entry is the first public release. The 0.10.0–0.12.0 entries
 below record internal development builds only; they were not published as
 GitHub releases.
 
+## [Unreleased]
+
+### Added
+
+- Refresh the installation authentication token after successful companion
+  install/repair, rolling back the binary if token rotation fails. An explicit
+  `NVDA_BRIDGE_TOKEN` environment override prevents automatic rotation.
+- Developer Mode elevation presets through one day and `execute_python` call
+  wait presets through 15 minutes, with persistent settings and matching MCP
+  transport deadlines. Locally approved Developer Mode grants restore across
+  NVDA restarts with their original expiry.
+
 ## [0.1.0] - 2026-11-23
 
 ### Added

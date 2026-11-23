@@ -17,6 +17,7 @@ import threading
 import time
 import types
 import unittest
+from unittest import mock
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -260,6 +261,27 @@ class SecurityLifecycleTests(unittest.TestCase):
             # Re-read returns identical token without re-generating
             second_read = get_or_create_bridge_token(custom_dir=tmpdir)
             self.assertEqual(token, second_read)
+
+    def test_installation_token_rotation_replaces_the_saved_token(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original = get_or_create_bridge_token(custom_dir=tmpdir)
+            rotated = security_module.rotate_bridge_token(custom_dir=tmpdir)
+            self.assertNotEqual(rotated, original)
+            self.assertEqual((Path(tmpdir) / "token.key").read_text(encoding="utf-8").strip(), rotated)
+            self.assertEqual(get_or_create_bridge_token(custom_dir=tmpdir), rotated)
+
+    def test_token_rotation_failure_preserves_the_current_token(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original = get_or_create_bridge_token(custom_dir=tmpdir)
+            with mock.patch.object(security_module, "_harden_file_permissions", return_value=False):
+                with self.assertRaises(RuntimeError):
+                    security_module.rotate_bridge_token(custom_dir=tmpdir)
+            self.assertEqual((Path(tmpdir) / "token.key").read_text(encoding="utf-8").strip(), original)
+
+    def test_token_rotation_refuses_environment_managed_credentials(self):
+        with mock.patch.dict(os.environ, {"NVDA_BRIDGE_TOKEN": "managed-outside-addon"}):
+            with self.assertRaisesRegex(RuntimeError, "NVDA_BRIDGE_TOKEN"):
+                security_module.rotate_bridge_token()
 
     def test_token_generation_fails_closed_on_unwritable_directory(self):
         with tempfile.TemporaryDirectory() as tmpdir:
