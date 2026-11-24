@@ -344,6 +344,13 @@ pre-commit run --all-files
 
 `python scripts/generate_protocol.py` regenerates the Python and Rust protocol modules and the JSON schemas after a contract change. Do not edit generated protocol files by hand.
 
+Run `python scripts/mcp_ui_smoke.py` after installing the updated add-on and
+companion. It exercises the installed companion over MCP stdio on an idle
+English-language Windows desktop with NVDA running and input control enabled.
+The script opens temporary dialogs, tests both mouse-button mappings, and
+restores the original mapping on exit. Use `--exe` for a nonstandard companion
+installation.
+
 ### Version sources
 
 The release version must agree in every file that declares it:

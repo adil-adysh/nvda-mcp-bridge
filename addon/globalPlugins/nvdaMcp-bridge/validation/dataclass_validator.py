@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import datetime
+from types import UnionType
 from typing import Any, Literal, Type, TypeVar, get_type_hints, get_origin, get_args, Union
 
 
@@ -47,7 +48,7 @@ def _is_optional(type_hint: Any) -> tuple[bool, Any]:
 	Optional[str] is internally Union[str, NoneType].
 	"""
 	origin = get_origin(type_hint)
-	if origin is Union:
+	if origin in (Union, UnionType):
 		args = get_args(type_hint)
 		# Check if None is in the union
 		none_type = type(None)
@@ -106,6 +107,18 @@ def _validate_field(
 	# Get origin for generic types (list, dict, etc.)
 	origin = get_origin(expected_type)
 
+	if origin in (Union, UnionType):
+		for member in get_args(expected_type):
+			member_errors: dict[str, str] = {}
+			try:
+				converted = _validate_field(field_name, value, member, member_errors, path)
+			except ValidationError:
+				continue
+			if not member_errors:
+				return converted
+		errors[field_path] = "does not match any allowed type"
+		return value
+
 	# Handle datetime specially
 	if expected_type is datetime or (origin is None and expected_type == datetime):
 		if isinstance(value, str):
@@ -125,7 +138,7 @@ def _validate_field(
 	# anything outside it is a caller error rather than something to pass through.
 	if origin is Literal:
 		allowed = get_args(expected_type)
-		if value not in allowed:
+		if not any(type(value) is type(item) and value == item for item in allowed):
 			errors[field_path] = f"expected one of {list(allowed)}, got {value!r}"
 			return value
 		return value

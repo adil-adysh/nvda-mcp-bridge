@@ -1165,13 +1165,15 @@ def click_at(x: int, y: int, button: str, expect: dict[str, Any] | None, context
 		return captured
 
 	context.settle(perform, expect=expect)
+	pointer_on_target = bool(captured.get("onTarget", True))
 	return {
 		"x": int(captured.get("x", x)),
 		"y": int(captured.get("y", y)),
 		"button": button,
 		"hit": captured.get("hit"),
 		"cursor": list(captured.get("cursor") or []),
-		"on_target": bool(captured.get("onTarget", True)),
+		"on_target": pointer_on_target,
+		"pointer_on_target": pointer_on_target,
 	}
 
 

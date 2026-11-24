@@ -100,6 +100,8 @@ class SpeechPermissionTests(unittest.TestCase):
 		text, truncated = speech.extract_speech_text(["Save", object(), " complete"])
 		bridge.speech_journal.record_speech(text, "about_to_synthesize", truncated)
 		bridge.speech_journal.record_control("speech_canceled")
+		bridge.speech_journal.record_control("speech_paused", paused=True)
+		bridge.speech_journal.record_control("speech_resumed", paused=False)
 		journal_id = bridge.speech_journal.journal_id
 
 		observed = bridge.execute_action(
@@ -111,13 +113,16 @@ class SpeechPermissionTests(unittest.TestCase):
 		self.assertTrue(observed["success"], observed.get("error"))
 		self.assertEqual(
 			[(event["kind"], event.get("text")) for event in observed["data"]["events"]],
-			[("speech", "Save complete"), ("speech_canceled", None)],
+			[("speech", "Save complete"), ("speech_canceled", None), ("speech_paused", None), ("speech_resumed", None)],
 		)
 		self.assertEqual(observed["data"]["events"][0]["phase"], "about_to_synthesize")
 		self.assertFalse(observed["data"]["events"][0]["text_truncated"])
+		self.assertNotIn("paused", observed["data"]["events"][1])
+		self.assertIs(observed["data"]["events"][2]["paused"], True)
+		self.assertIs(observed["data"]["events"][3]["paused"], False)
 		self.assertEqual(observed["data"]["journal_id"], journal_id)
 		self.assertEqual(observed["data"]["from_version"], 0)
-		self.assertEqual(observed["data"]["to_version"], 2)
+		self.assertEqual(observed["data"]["to_version"], 4)
 		self.assertEqual(observed["data"]["cursor_status"], "ok")
 		self.assertFalse(observed["data"]["has_more"])
 		self.assertTrue(observed["data"]["history_complete"])

@@ -96,6 +96,20 @@ class ToolDiscoveryTests(unittest.TestCase):
 			self.assertTrue(tool.read_only)
 		self.assertIn("diagnostics", result.available_categories)
 
+	def test_speech_category_cross_lists_observation(self) -> None:
+		result = self._run("find_tools", {"category": "speech", "read_only": True})
+		self.assertEqual([(tool.name, tool.category) for tool in result.tools], [("wait_for_speech", "observation")])
+
+	def test_speech_output_schema_lists_each_event_variant(self) -> None:
+		result = self._run("get_tool_schema", {"name": "wait_for_speech", "include_output_schema": True})
+		variants = result.output_schema["properties"]["events"]["items"]["anyOf"]
+		self.assertEqual(
+			{variant["properties"]["kind"]["enum"][0] for variant in variants},
+			{"speech", "speech_canceled", "speech_paused", "speech_resumed"},
+		)
+		for variant in variants:
+			self.assertIn("monotonic", variant["properties"]["at_ms"]["description"].lower())
+
 	def test_developer_tools_are_hidden_until_the_bridge_allows_them(self) -> None:
 		hidden = self._run("find_tools", {"query": "python", "limit": 50})
 		self.assertNotIn("execute_python", {tool.name for tool in hidden.tools})

@@ -768,6 +768,15 @@ class HandlerTests(unittest.TestCase):
 		self.assertEqual(result["hit"], {"name": "Run"})
 		self.assertEqual((result["x"], result["y"]), (10, 20))
 
+	def test_click_at_reports_pointer_position_and_passes_expect_to_settle(self):
+		context = FakeContext()
+		expect = {"focus.name": "Done"}
+		with patch.object(_FakeActions, "click_at", return_value={"onTarget": False}):
+			result = handlers.click_at(x=10, y=20, button="left", expect=expect, context=context)
+		self.assertFalse(result["pointer_on_target"])
+		self.assertEqual(result["pointer_on_target"], result["on_target"])
+		self.assertIn(("settle", expect), context.calls)
+
 	def test_wait_for_events_reports_a_timeout_when_nothing_arrived(self):
 		context = FakeContext(wait_result={"from_version": 7, "to_version": 7, "events": []})
 		result = handlers.wait_for_events(since=7, timeout_ms=10, kinds=None, context=context)

@@ -143,6 +143,11 @@
             "on_target": {
               "type": "boolean",
               "default": true
+            },
+            "pointer_on_target": {
+              "type": "boolean",
+              "description": "Whether the pointer reached the requested coordinates after dispatch.",
+              "default": true
             }
           },
           "additionalProperties": false,
@@ -4117,8 +4122,142 @@
             "events": {
               "type": "array",
               "items": {
-                "type": "object",
-                "additionalProperties": {}
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "version": {
+                        "type": "integer",
+                        "description": "Event sequence number in this speech journal generation."
+                      },
+                      "at_ms": {
+                        "type": "integer",
+                        "description": "Monotonic milliseconds, adjusted to preserve event order. Use version for paging."
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "speech"
+                        ]
+                      },
+                      "phase": {
+                        "type": "string",
+                        "enum": [
+                          "about_to_synthesize",
+                          "queued"
+                        ]
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "text_truncated": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                      "version",
+                      "at_ms",
+                      "kind",
+                      "phase",
+                      "text",
+                      "text_truncated"
+                    ],
+                    "description": "Text queued for speech or prepared for the synthesizer."
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "version": {
+                        "type": "integer",
+                        "description": "Event sequence number in this speech journal generation."
+                      },
+                      "at_ms": {
+                        "type": "integer",
+                        "description": "Monotonic milliseconds, adjusted to preserve event order. Use version for paging."
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "speech_canceled"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                      "version",
+                      "at_ms",
+                      "kind"
+                    ],
+                    "description": "NVDA canceled speech."
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "version": {
+                        "type": "integer",
+                        "description": "Event sequence number in this speech journal generation."
+                      },
+                      "at_ms": {
+                        "type": "integer",
+                        "description": "Monotonic milliseconds, adjusted to preserve event order. Use version for paging."
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "speech_paused"
+                        ]
+                      },
+                      "paused": {
+                        "type": "boolean",
+                        "enum": [
+                          true
+                        ]
+                      }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                      "version",
+                      "at_ms",
+                      "kind",
+                      "paused"
+                    ],
+                    "description": "NVDA paused speech."
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "version": {
+                        "type": "integer",
+                        "description": "Event sequence number in this speech journal generation."
+                      },
+                      "at_ms": {
+                        "type": "integer",
+                        "description": "Monotonic milliseconds, adjusted to preserve event order. Use version for paging."
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "speech_resumed"
+                        ]
+                      },
+                      "paused": {
+                        "type": "boolean",
+                        "enum": [
+                          false
+                        ]
+                      }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                      "version",
+                      "at_ms",
+                      "kind",
+                      "paused"
+                    ],
+                    "description": "NVDA resumed speech."
+                  }
+                ]
               },
               "default": []
             },
@@ -4415,7 +4554,7 @@
     {
       "name": "click_at",
       "version": "1.0.0",
-      "description": "Click absolute screen coordinates. Last resort when nothing is actionable; reports the object that was under the point.",
+      "description": "Click absolute screen coordinates and report the object under the point. Use as a last resort. 'pointer_on_target' checks cursor position. Pass 'expect' to verify the application response.",
       "category": "action",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
@@ -4520,6 +4659,11 @@
           },
           "on_target": {
             "type": "boolean",
+            "default": true
+          },
+          "pointer_on_target": {
+            "type": "boolean",
+            "description": "Whether the pointer reached the requested coordinates after dispatch.",
             "default": true
           }
         },
@@ -4766,7 +4910,7 @@
                 "type": "null"
               }
             ],
-            "description": "Exact bridge category, such as diagnostics, observation, action, input, speech, ui, system or developer.",
+            "description": "Bridge category or cross-listing tag, such as diagnostics, observation, action, input, speech, ui, system or developer.",
             "default": null
           },
           "read_only": {
@@ -9958,8 +10102,142 @@
           "events": {
             "type": "array",
             "items": {
-              "type": "object",
-              "additionalProperties": {}
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": "integer",
+                      "description": "Event sequence number in this speech journal generation."
+                    },
+                    "at_ms": {
+                      "type": "integer",
+                      "description": "Monotonic milliseconds, adjusted to preserve event order. Use version for paging."
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "speech"
+                      ]
+                    },
+                    "phase": {
+                      "type": "string",
+                      "enum": [
+                        "about_to_synthesize",
+                        "queued"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "text_truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "version",
+                    "at_ms",
+                    "kind",
+                    "phase",
+                    "text",
+                    "text_truncated"
+                  ],
+                  "description": "Text queued for speech or prepared for the synthesizer."
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": "integer",
+                      "description": "Event sequence number in this speech journal generation."
+                    },
+                    "at_ms": {
+                      "type": "integer",
+                      "description": "Monotonic milliseconds, adjusted to preserve event order. Use version for paging."
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "speech_canceled"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "version",
+                    "at_ms",
+                    "kind"
+                  ],
+                  "description": "NVDA canceled speech."
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": "integer",
+                      "description": "Event sequence number in this speech journal generation."
+                    },
+                    "at_ms": {
+                      "type": "integer",
+                      "description": "Monotonic milliseconds, adjusted to preserve event order. Use version for paging."
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "speech_paused"
+                      ]
+                    },
+                    "paused": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "version",
+                    "at_ms",
+                    "kind",
+                    "paused"
+                  ],
+                  "description": "NVDA paused speech."
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "version": {
+                      "type": "integer",
+                      "description": "Event sequence number in this speech journal generation."
+                    },
+                    "at_ms": {
+                      "type": "integer",
+                      "description": "Monotonic milliseconds, adjusted to preserve event order. Use version for paging."
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "speech_resumed"
+                      ]
+                    },
+                    "paused": {
+                      "type": "boolean",
+                      "enum": [
+                        false
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "version",
+                    "at_ms",
+                    "kind",
+                    "paused"
+                  ],
+                  "description": "NVDA resumed speech."
+                }
+              ]
             },
             "default": []
           },

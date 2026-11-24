@@ -161,7 +161,7 @@ def find_tools(input_obj: FindToolsInput, context: ExecutionContext | None = Non
 
 	ranked: list[tuple[int, str, Any, str, str]] = []
 	for meta in metadata:
-		if category and str(meta.category).casefold() != category:
+		if category and category not in {str(label).casefold() for label in (meta.category, *meta.tags)}:
 			continue
 		if input_obj.read_only is not None and bool(meta.read_only) != bool(input_obj.read_only):
 			continue

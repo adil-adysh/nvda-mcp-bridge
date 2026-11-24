@@ -510,8 +510,8 @@ class FindToolsInput:
 		default=None,
 		metadata={
 			"description": (
-				"Exact bridge category, such as diagnostics, observation, action, "
-				"input, speech, ui, system or developer."
+				"Bridge category or cross-listing tag, such as diagnostics, observation, "
+				"action, input, speech, ui, system or developer."
 			)
 		},
 	)
@@ -1055,9 +1055,9 @@ class DismissResult:
 class ClickAtResult:
 	"""Result of a raw pointer click.
 
-	``on_target`` is read back from the pointer after the click: ``SendInput``
-	only says the events were accepted, and a click that landed somewhere else
-	must not look successful.
+	``pointer_on_target`` reports the cursor position after dispatch.
+	``on_target`` is its compatibility alias. Application response is verified
+	in the result envelope when the caller supplies an expectation.
 	"""
 
 	x: int
@@ -1066,6 +1066,10 @@ class ClickAtResult:
 	hit: Optional[dict[str, Any]] = None
 	cursor: list[int] = field(default_factory=list)
 	on_target: bool = True
+	pointer_on_target: bool = field(
+		default=True,
+		metadata={"description": "Whether the pointer reached the requested coordinates after dispatch."},
+	)
 
 
 @dataclass(frozen=True)
@@ -1106,6 +1110,49 @@ class WaitEventsResult:
 
 
 @dataclass(frozen=True)
+class SpeechJournalEvent:
+	"""Fields common to text and speech-control events."""
+
+	version: int = field(metadata={"description": "Event sequence number in this speech journal generation."})
+	at_ms: int = field(metadata={
+		"description": "Monotonic milliseconds, adjusted to preserve event order. Use version for paging.",
+	})
+
+
+@dataclass(frozen=True)
+class SpeechTextEvent(SpeechJournalEvent):
+	"""Text queued for speech or prepared for the synthesizer."""
+
+	kind: Literal["speech"]
+	phase: Literal["about_to_synthesize", "queued"]
+	text: str
+	text_truncated: bool
+
+
+@dataclass(frozen=True)
+class SpeechCanceledEvent(SpeechJournalEvent):
+	"""NVDA canceled speech."""
+
+	kind: Literal["speech_canceled"]
+
+
+@dataclass(frozen=True)
+class SpeechPausedEvent(SpeechJournalEvent):
+	"""NVDA paused speech."""
+
+	kind: Literal["speech_paused"]
+	paused: Literal[True]
+
+
+@dataclass(frozen=True)
+class SpeechResumedEvent(SpeechJournalEvent):
+	"""NVDA resumed speech."""
+
+	kind: Literal["speech_resumed"]
+	paused: Literal[False]
+
+
+@dataclass(frozen=True)
 class WaitSpeechResult:
 	"""Speech records plus explicit cursor and bounded-history metadata."""
 
@@ -1114,7 +1161,9 @@ class WaitSpeechResult:
 	to_version: int
 	earliest_available_version: int = 0
 	dropped: int = 0
-	events: list[dict[str, Any]] = field(default_factory=list)
+	events: list[SpeechTextEvent | SpeechCanceledEvent | SpeechPausedEvent | SpeechResumedEvent] = field(
+		default_factory=list
+	)
 	expired: bool = False
 	resync_required: bool = False
 	resync_reason: Optional[str] = None

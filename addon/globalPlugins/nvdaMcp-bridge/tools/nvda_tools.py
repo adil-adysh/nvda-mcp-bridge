@@ -800,8 +800,9 @@ ALL_NVDA_TOOLS = [
             name="click_at",
             version="1.0.0",
             description=(
-                "Click absolute screen coordinates. Last resort when nothing is actionable; "
-                "reports the object that was under the point."
+                "Click absolute screen coordinates and report the object under the point. "
+                "Use as a last resort. 'pointer_on_target' checks cursor position. "
+                "Pass 'expect' to verify the application response."
             ),
             category="action",
             read_only=False,
@@ -867,6 +868,7 @@ ALL_NVDA_TOOLS = [
                 "Omitting the cursor starts at the current speech journal head."
             ),
             category="observation",
+            tags=("speech",),
             read_only=True,
             destructive=False,
             idempotent=False,

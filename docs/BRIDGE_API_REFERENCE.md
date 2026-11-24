@@ -108,6 +108,9 @@ the tool's data schema does not already own those names.
 * `result.verification` is `confirmed`, `contradicted` or `unavailable`.
   `confirmed` requires a matching post-action observation of the caller's
   `expect`; successful dispatch alone is never `confirmed`.
+* For `click_at`, `data.pointer_on_target` reports whether the cursor reached
+  the requested coordinates. `data.on_target` is its compatibility alias.
+  Supply `expect` to verify the application's response.
 * `result.evidence` is a bounded list of observations (source, matched,
   optional value/expected/observed/state_version). Sensitive paths are redacted.
 * Failures set `success: false`, omit `data`, and carry `error` with `code`,
@@ -128,6 +131,36 @@ speech-control events. `GET /speech` requires the bridge token; MCP clients
 normally use the `wait_for_speech` tool, which accepts an optional journal
 cursor (`since`, `journal_id`), `timeout_ms` from 0 to 30,000, and `limit` from
 1 to 256. Omitting the cursor starts at the current journal head.
+
+Find the speech tools with `find_tools(category="speech")`. The results include
+`speak_text` and the cross-listed `wait_for_speech`. Use
+`get_tool_schema(name="wait_for_speech", include_output_schema=true)` to inspect
+the event variants:
+
+| Event `kind` | Event-specific fields |
+| --- | --- |
+| `speech` | `text`, `text_truncated`, and `phase` (`about_to_synthesize` or `queued`) |
+| `speech_canceled` | None |
+| `speech_paused` | `paused: true` |
+| `speech_resumed` | `paused: false` |
+
+Every event carries a journal-local `version` and `at_ms` in monotonic
+milliseconds. Use versions for ordering and paging.
+
+To look for an announcement after an action:
+
+1. Call `wait_for_speech(timeout_ms=0)` and save the returned `journal_id`
+   and `to_version`.
+2. Perform the action with an explicit `expect` when there is an observable
+   UI postcondition. For example, press Tab with `expect={"focus.name": "Cancel"}`.
+3. Call `wait_for_speech` with the saved `journal_id` and
+   `since=to_version`. Look for the expected text in events of kind `speech`.
+   Advance to each page's `to_version` and keep reading until the text appears
+   or your overall deadline expires. Other announcements can arrive first.
+   When `has_more` is true, drain the next page with `timeout_ms=0`.
+4. If `resync_required` is true, resume with `resync_from.journal_id` and
+   `since=resync_from.version`. Treat the original observation window as
+   incomplete. Use the action's verification result to assess the UI change.
 
 The journal is cleared when observation is disabled or the bridge shuts down.
 Reads are denied on secure desktops and protected focus, and authorization is
