@@ -107,6 +107,13 @@ def _format_duration(seconds: int) -> str:
 	return f"{minutes} minute" if minutes == 1 else f"{minutes} minutes"
 
 
+def _developer_mode_enable_label(duration_seconds: Optional[int] = None) -> str:
+	"""Build the enable label using the configured elevation window by default."""
+	if duration_seconds is None:
+		duration_seconds = load_developer_ttl_seconds()
+	return f"Enable Developer Mode ({_format_duration(duration_seconds)})..."
+
+
 def enable_developer_mode_interactive(bridge: Any, parent: Any = None) -> bool:
 	"""Prompt the user with an accessible confirmation dialog before enabling developer mode.
 
@@ -934,7 +941,7 @@ def install_menu_items(plugin: Any) -> None:
 		)
 
 		# 2. Enable Dev Mode
-		item_dev_on = _submenu.Append(wx.ID_ANY, "Enable Developer Mode (5 minutes)...")
+		item_dev_on = _submenu.Append(wx.ID_ANY, _developer_mode_enable_label())
 		gui.mainFrame.sysTrayIcon.Bind(
 			wx.EVT_MENU,
 			lambda evt: enable_developer_mode_interactive(plugin._bridge),

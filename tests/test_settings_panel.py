@@ -370,6 +370,12 @@ class TestSettingsPanelLifecycle(unittest.TestCase):
         self.assertEqual(self.panel.devTtlChoice.GetSelection(), expected)
         self.assertIn("5 minutes", self.panel.enableDevBtn._kwargs.get("label", ""))
 
+    def test_developer_mode_menu_label_uses_configured_default_duration(self):
+        with mock.patch.object(gui_settings, "load_developer_ttl_seconds", return_value=900):
+            label = gui_settings._developer_mode_enable_label()
+
+        self.assertEqual(label, "Enable Developer Mode (15 minutes)...")
+
     def test_save_persists_and_applies_the_selected_window(self):
         """Saving must store the choice and apply it to the live manager."""
         self.panel.devTtlChoice.SetSelection(self.panel.devTtlChoices.index(15))
