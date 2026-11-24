@@ -2088,6 +2088,88 @@
               "type": "string",
               "description": "Which scope to read, list or operate on.",
               "default": ""
+            },
+            "search_window": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Opaque reference returned by observe, locate or navigate.",
+                      "default": null
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "Window title to match.",
+                      "default": ""
+                    },
+                    "handle": {
+                      "type": "integer",
+                      "description": "Native top-level window handle.",
+                      "default": 0
+                    },
+                    "class_name": {
+                      "type": "string",
+                      "default": ""
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "The top-level window that scopes an observation or action."
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "focus_window": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "ref": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Opaque reference returned by observe, locate or navigate.",
+                      "default": null
+                    },
+                    "title": {
+                      "type": "string",
+                      "description": "Window title to match.",
+                      "default": ""
+                    },
+                    "handle": {
+                      "type": "integer",
+                      "description": "Native top-level window handle.",
+                      "default": 0
+                    },
+                    "class_name": {
+                      "type": "string",
+                      "default": ""
+                    }
+                  },
+                  "additionalProperties": false,
+                  "description": "The top-level window that scopes an observation or action."
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             }
           },
           "additionalProperties": false,
@@ -6913,6 +6995,88 @@
             "type": "string",
             "description": "Which scope to read, list or operate on.",
             "default": ""
+          },
+          "search_window": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "ref": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Opaque reference returned by observe, locate or navigate.",
+                    "default": null
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Window title to match.",
+                    "default": ""
+                  },
+                  "handle": {
+                    "type": "integer",
+                    "description": "Native top-level window handle.",
+                    "default": 0
+                  },
+                  "class_name": {
+                    "type": "string",
+                    "default": ""
+                  }
+                },
+                "additionalProperties": false,
+                "description": "The top-level window that scopes an observation or action."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "focus_window": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "ref": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Opaque reference returned by observe, locate or navigate.",
+                    "default": null
+                  },
+                  "title": {
+                    "type": "string",
+                    "description": "Window title to match.",
+                    "default": ""
+                  },
+                  "handle": {
+                    "type": "integer",
+                    "description": "Native top-level window handle.",
+                    "default": 0
+                  },
+                  "class_name": {
+                    "type": "string",
+                    "default": ""
+                  }
+                },
+                "additionalProperties": false,
+                "description": "The top-level window that scopes an observation or action."
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
           }
         },
         "additionalProperties": false,

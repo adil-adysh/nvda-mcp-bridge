@@ -88,37 +88,27 @@ def _is_desktop(node: object) -> bool:
 
 
 def _find_dialog(focus: object, ancestors: list) -> object | None:
-	"""Return the dialog containing the focus, when there is one.
+	"""Find a semantic dialog or a native dialog/owned popup containing focus."""
+	from .windows import root_window_handle, window_owner
 
-	Not every dialog reports ``role=DIALOG``: Notepad's Replace box is an owned
-	``WINDOW`` named "Pop-up" nested inside the application window. So the rule is
-	structural — a window *inside another application window*, with a different
-	name, is an owned window (a dialog or a popup), while the outermost window is
-	the application frame. The desktop is not an application window and is skipped.
-	"""
 	nodes = [focus, *ancestors]
-	for index, candidate in enumerate(nodes):
-		role = _enum_name(_safe_get(candidate, "role"))
-		if role == "DIALOG":
+	for candidate in nodes:
+		if _enum_name(_safe_get(candidate, "role")) == "DIALOG":
 			return candidate
-		if role != "WINDOW" or _is_desktop(candidate):
+
+	# NVDA can wrap every native control in a WINDOW object with the control's
+	# name, including a dialog's OK button. Only native top-level windows can
+	# qualify for the popup fallback.
+	focus_root = root_window_handle(_safe_get(focus, "windowHandle"))
+	for candidate in nodes:
+		if _enum_name(_safe_get(candidate, "role")) != "WINDOW" or _is_desktop(candidate):
 			continue
-		outer_node = next(
-			(
-				node
-				for node in nodes[index + 1 :]
-				if _enum_name(_safe_get(node, "role")) == "WINDOW" and not _is_desktop(node)
-			),
-			None,
-		)
-		if outer_node is None:
-			# The outermost application window: the frame, not a dialog.
-			return None
-		outer_name = _safe_get(outer_node, "name")
-		inner_name = _safe_get(candidate, "name")
-		if inner_name and inner_name != outer_name:
+		handle = _safe_get(candidate, "windowHandle")
+		root = focus_root or root_window_handle(handle)
+		if root and handle == root and (
+			_safe_get(candidate, "windowClassName") == "#32770" or window_owner(root)
+		):
 			return candidate
-		return None
 	return None
 
 

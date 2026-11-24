@@ -1172,6 +1172,10 @@ class LocateResult:
 	``searched`` counts what the backend examined: candidates returned by UIA, or
 	nodes visited by the walk. An empty ``matches`` list is a normal answer and
 	means the search completed; ``truncated`` is what says it stopped early.
+
+	``scope`` labels the search root. ``search_window`` identifies its native
+	window, and ``focus_window`` identifies where NVDA's focus was sampled.
+	Either is null when unavailable.
 	"""
 
 	matches: list[LocateMatch] = field(default_factory=list)
@@ -1180,6 +1184,8 @@ class LocateResult:
 	truncated: bool = False
 	elapsed_ms: float = 0.0
 	scope: str = ""
+	search_window: Optional[WindowInfo] = None
+	focus_window: Optional[WindowInfo] = None
 
 
 # ============================================================================

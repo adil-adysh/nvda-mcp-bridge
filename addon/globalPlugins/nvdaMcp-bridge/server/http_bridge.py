@@ -1339,8 +1339,8 @@ class NVDAHTTPBridge:
 	def _result_payload(self, context: ExecutionContext) -> Dict[str, Any]:
 		"""Build the uniform result block for the response envelope.
 
-		Every result carries ``ok``, ``state_version`` and ``scope`` (the
-		top-level window). The block lives beside ``data`` rather than inside it:
+		Every result carries ``ok``, ``state_version`` and, when available,
+		``scope`` from the UI projection. The block lives beside ``data``:
 		the fields mean the same thing for every tool, so putting them in each
 		closed output schema would duplicate them everywhere.
 		"""

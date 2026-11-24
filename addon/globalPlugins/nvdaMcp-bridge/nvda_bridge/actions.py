@@ -397,10 +397,7 @@ def click_at(x: int, y: int, button: str = "left") -> dict[str, Any]:
 def dialog_object() -> Any:
 	"""Return the dialog containing the focus, or None.
 
-	Uses the same structural rule as ``observe``: a window nested inside another
-	window is an owned window (a dialog), which is how Notepad's Replace box
-	presents itself — a ``WINDOW`` named "Pop-up" inside the frame, with no
-	``DIALOG`` role anywhere in the chain.
+	Uses the same semantic dialog and native popup detection as ``observe``.
 	"""
 	from .observation import find_dialog
 

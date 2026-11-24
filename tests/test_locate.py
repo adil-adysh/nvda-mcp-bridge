@@ -321,10 +321,14 @@ class LocateHandlerTests(unittest.TestCase):
 			"truncated": False,
 			"elapsed_ms": 12.5,
 			"scope": "WINDOW 'Probe'",
+			"search_window": {"handle": 101, "title": "Probe"},
+			"focus_window": {"handle": 202, "title": "Other"},
 		}
 		model = validator.validate_and_map(payload, models.LocateResult, strict=True)
 		self.assertEqual(model.matches[0].ref, "n1")
 		self.assertEqual(model.matches[0].automation_id, "link-2")
+		self.assertEqual(model.search_window.handle, 101)
+		self.assertEqual(model.focus_window.handle, 202)
 
 
 if __name__ == "__main__":

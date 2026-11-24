@@ -96,7 +96,11 @@ the tool's data schema does not already own those names.
 ```
 
 * `result.state_version` is the version this answer is valid for.
-* `result.scope` is the top-level window that scoped the call.
+* `result.scope` is the top-level window from the bridge's UI projection. It
+  can reflect the most recent projection for read-only tools. For `locate`,
+  `data.scope` labels the search root, `data.search_window` identifies its
+  native window, and `data.focus_window` identifies where NVDA had focus
+  when the search completed. Either window can be null if unavailable.
 * `result.changed` is a projection diff, not a claim about the whole screen.
 * `result.uncertain` is set when the action was dispatched but the effect could
   not be confirmed. It is not a synonym for missing evidence.

@@ -36,6 +36,8 @@ _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 _user32.GetForegroundWindow.restype = wintypes.HWND
 _user32.GetAncestor.argtypes = (wintypes.HWND, wintypes.UINT)
 _user32.GetAncestor.restype = wintypes.HWND
+_user32.GetWindow.argtypes = (wintypes.HWND, wintypes.UINT)
+_user32.GetWindow.restype = wintypes.HWND
 _user32.IsWindow.argtypes = (wintypes.HWND,)
 _user32.IsWindow.restype = wintypes.BOOL
 _user32.IsIconic.argtypes = (wintypes.HWND,)
@@ -106,6 +108,11 @@ def root_window_handle(handle: object) -> int:
 	if not isinstance(handle, int) or isinstance(handle, bool) or handle <= 0:
 		return 0
 	return int(_user32.GetAncestor(handle, 2) or 0)
+
+
+def window_owner(handle: int) -> int:
+	"""Return the native owner of a top-level window (GW_OWNER)."""
+	return int(_user32.GetWindow(handle, 4) or 0)
 
 
 def foreground_title() -> str:

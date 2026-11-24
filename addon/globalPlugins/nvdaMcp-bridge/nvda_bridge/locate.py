@@ -38,6 +38,7 @@ from ..server.locate import name_matches, role_matches, uia_control_type_name
 from ..server.state import MAX_ANCESTORS, _enum_name, _safe_get, describe
 from . import uia
 from .observation import _children_of, _find_dialog, _is_desktop
+from .windows import focus_window, root_window_handle, window_title
 
 #: Text kept per field in a match. A located node is a candidate, not a read: the
 #: caller follows up with ``read`` when it wants the content.
@@ -60,6 +61,24 @@ def _scope_label(root: Any) -> str:
 	role = _enum_name(_safe_get(root, "role"))
 	name = _safe_get(root, "name") or ""
 	return f"{role} {name!r}".strip()
+
+
+def _search_window_handle(root: Any) -> int:
+	"""Find the native window behind the search root when the provider exposes it."""
+	if not uia.is_element(root):
+		return root_window_handle(_safe_get(root, "windowHandle"))
+
+	try:
+		for _ in range(MAX_ANCESTORS):
+			handle = root_window_handle(root.CurrentNativeWindowHandle)
+			if handle:
+				return handle
+			root = uia.module().handler.clientObject.RawViewWalker.GetParentElement(root)
+			if not root:
+				break
+	except Exception as error:  # noqa: BLE001 — scope metadata must not fail the search
+		logHandler.log.debug(f"bridge.locate.window_unavailable {type(error).__name__}: {error}")
+	return 0
 
 
 def _resolve_root(within: Any) -> Any:
@@ -303,6 +322,8 @@ def find(
 		for record in records:
 			record["target"] = "nvda"
 
+	search_handle = _search_window_handle(root)
+	focus_handle, focus_title = focus_window()
 	elapsed_ms = round((time.monotonic() - started) * 1000.0, 1)
 	logHandler.log.debug(
 		f"bridge.locate method={method} matches={len(records)} searched={searched} elapsed_ms={elapsed_ms}"
@@ -314,4 +335,6 @@ def find(
 		"truncated": bool(truncated),
 		"elapsed_ms": elapsed_ms,
 		"scope": scope,
+		"search_window": {"handle": search_handle, "title": window_title(search_handle)} if search_handle else None,
+		"focus_window": {"handle": focus_handle, "title": focus_title} if focus_handle else None,
 	}, objects

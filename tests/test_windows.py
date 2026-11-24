@@ -180,23 +180,53 @@ class FocusWindowTests(unittest.TestCase):
 
 
 class ObservationWindowTests(unittest.TestCase):
-	def test_top_window_is_stable_across_controls_with_child_handles(self):
+	def setUp(self):
 		spec = importlib.util.spec_from_file_location(
 			f"{_BRIDGE_KEY}.observation", os.path.join(_ADDON_DIR, "nvda_bridge", "observation.py")
 		)
-		observation = importlib.util.module_from_spec(spec)
+		self.observation = importlib.util.module_from_spec(spec)
 		with patch.dict(sys.modules, {"api": types.ModuleType("api"), "logHandler": types.ModuleType("logHandler")}):
-			spec.loader.exec_module(observation)
+			spec.loader.exec_module(self.observation)
 
+	def test_top_window_is_stable_across_controls_with_child_handles(self):
 		form = types.SimpleNamespace(role="DIALOG", windowHandle=4242, name="Review form")
 		with patch.object(windows._user32, "GetAncestor", return_value=4242):
 			for child_handle in (1234, 5678):
 				child = types.SimpleNamespace(role="EDITABLETEXT", windowHandle=child_handle)
 				wrapper = types.SimpleNamespace(role="WINDOW", windowHandle=child_handle, name="Child")
-				window, target = observation._window(child, [wrapper, form])
+				window, target = self.observation._window(child, [wrapper, form])
 				self.assertIs(target, form)
 				self.assertEqual(window["handle"], 4242)
 				self.assertEqual(window["title"], "Review form")
+
+	def test_dialog_takes_precedence_over_the_focused_buttons_window_wrapper(self):
+		ok = types.SimpleNamespace(role="BUTTON", name="OK", windowHandle=1234)
+		cancel = types.SimpleNamespace(role="BUTTON", name="Cancel", windowHandle=1235)
+		wrapper = types.SimpleNamespace(role="WINDOW", name="OK", windowHandle=1234)
+		dialog = types.SimpleNamespace(role="DIALOG", name="Confirmation", windowHandle=4242, children=[ok, cancel])
+		frame = types.SimpleNamespace(role="WINDOW", name="Confirmation", windowHandle=4242)
+		found = self.observation._find_dialog(ok, [wrapper, dialog, frame])
+		self.assertIs(found, dialog)
+		self.assertEqual(self.observation.dialog_children(found), [ok, cancel])
+
+	def test_child_window_and_same_handle_wrappers_are_not_dialogs(self):
+		focus = types.SimpleNamespace(role="BUTTON", name="Open", windowHandle=1234)
+		child = types.SimpleNamespace(role="WINDOW", name="Open", windowHandle=1234)
+		wrapper = types.SimpleNamespace(role="WINDOW", name="Pane", windowHandle=4242)
+		frame = types.SimpleNamespace(role="WINDOW", name="Application", windowHandle=4242)
+		with patch.object(windows._user32, "GetAncestor", return_value=4242):
+			self.assertIsNone(self.observation._find_dialog(focus, [child, wrapper, frame]))
+
+	def test_native_owned_popup_is_detected_without_an_explicit_dialog_role(self):
+		focus = types.SimpleNamespace(role="EDITABLETEXT", windowHandle=1234)
+		popup = types.SimpleNamespace(role="WINDOW", name="Pop-up", windowHandle=4242)
+		frame = types.SimpleNamespace(role="WINDOW", name="Application", windowHandle=5050)
+		with (
+			patch.object(windows._user32, "GetAncestor", return_value=4242),
+			patch.object(windows._user32, "GetWindow", return_value=5050) as get_window,
+		):
+			self.assertIs(self.observation._find_dialog(focus, [popup, frame]), popup)
+		get_window.assert_called_once_with(4242, 4)
 
 
 if __name__ == "__main__":
