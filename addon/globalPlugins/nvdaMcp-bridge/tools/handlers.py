@@ -608,9 +608,9 @@ def list_reading_targets(
 	timeout = rules.normalize_timeout(timeout_ms)
 
 	def perform() -> dict[str, Any]:
+		_reject_window_within(context, within)
 		from ..nvda_bridge import reading
 
-		_reject_window_within(context, within)
 		root = context.resolve(_validate_ref_argument(within, "within")) if within else None
 		payload, objects = reading.targets(item=item_type, limit=limit, root=root, timeout_ms=timeout)
 		for record, obj in zip(payload["targets"], objects):
@@ -821,10 +821,9 @@ def activate_window(
 	if handle and (not isinstance(handle, int) or isinstance(handle, bool) or handle <= 0):
 		raise ValueError("'handle' must be a positive integer window handle")
 
-	# Fast path: if the window is already in front there is nothing to wait for.
-	# Going through settle would spend its first-activity window (about 800 ms)
-	# learning that a no-op was a no-op.
-	if not handle:
+	# Skip settling an already-foreground window only when the caller did not
+	# ask us to verify an expectation.
+	if not handle and not expect:
 		current_handle = windows.foreground_handle()
 		current_title = windows.foreground_title()
 		# A minimised window can still be the one Windows calls foreground, and
@@ -874,7 +873,7 @@ def activate_window(
 		context.dispatch(act)
 		return {key: value for key, value in captured.items() if key != "object"}
 
-	context.settle(perform, expect=expect)
+	outcome = context.settle(perform, expect=expect)
 
 	window_object = captured.get("object")
 	ref = ""
@@ -883,6 +882,15 @@ def activate_window(
 			ref = context.register(window_object)
 		except Exception:  # noqa: BLE001 — a window without a ref is still activated
 			ref = ""
+
+	focus_in_window = captured.get("focus_in_window")
+	focus_window = str(captured.get("focus_window", ""))
+	projection = outcome.projection or {}
+	if "focus_window_handle" in projection:
+		focus_handle = projection["focus_window_handle"]
+		focus_in_window = focus_handle == captured.get("handle") if focus_handle else None
+		window = projection.get("top_window") or {}
+		focus_window = str(window.get("title") or "") if focus_in_window is False else ""
 
 	return {
 		"activated": bool(captured.get("activated", False)),
@@ -894,8 +902,8 @@ def activate_window(
 		"restored": bool(captured.get("restored", False)),
 		"waited_ms": float(captured.get("waited_ms", 0.0)),
 		"matches": int(captured.get("matches", 1)),
-		"focus_in_window": captured.get("focus_in_window"),
-		"focus_window": str(captured.get("focus_window", "")),
+		"focus_in_window": focus_in_window,
+		"focus_window": focus_window,
 	}
 
 
@@ -1128,7 +1136,7 @@ def dismiss(expect: dict[str, Any] | None, context: Any) -> dict[str, Any]:
 		outcome = context.settle(activate_cancel, budget_ms=800)
 		dialog = (outcome.projection or {}).get("dialog")
 	else:
-		steps.append("no dialog was open")
+		steps.append("no dialog remains after Escape")
 
 	# The expectation is about the final state, whichever attempt produced it.
 	from ..server.settle import evaluate_expect

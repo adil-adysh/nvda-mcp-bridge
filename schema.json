@@ -4354,7 +4354,7 @@
               "right",
               "middle"
             ],
-            "description": "Mouse button to click.",
+            "description": "Logical mouse button: left is primary and right is secondary, following the Windows button setting.",
             "default": "left"
           },
           "expect": {
@@ -6582,7 +6582,7 @@
               }
             ],
             "pattern": "^[a-z][a-z0-9]*$",
-            "description": "Only search inside this reference (for example a window ref).",
+            "description": "Document or control reference. Omit to use focus.",
             "default": null
           },
           "timeout_ms": {
@@ -7096,7 +7096,7 @@
               }
             ],
             "pattern": "^[a-z][a-z0-9]*$",
-            "description": "Only search inside this reference (for example a window ref).",
+            "description": "Document or control reference. Omit to use focus.",
             "default": null
           },
           "timeout_ms": {
@@ -9188,7 +9188,7 @@
               }
             ],
             "pattern": "^[a-z][a-z0-9]*$",
-            "description": "Only search inside this reference (for example a window ref).",
+            "description": "Document or control reference. Omit to use focus.",
             "default": null
           },
           "expect": {

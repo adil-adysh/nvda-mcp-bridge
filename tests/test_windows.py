@@ -15,6 +15,7 @@ import os
 import sys
 import types
 import unittest
+from unittest.mock import patch
 
 _ADDON_DIR = os.path.normpath(
 	os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "addon", "globalPlugins", "nvdaMcp-bridge")
@@ -139,6 +140,14 @@ class FocusWindowTests(unittest.TestCase):
 
 		self.assertEqual(windows.focus_window()[0], 4242)
 
+	def test_a_child_window_role_does_not_mask_the_native_root(self):
+		form = types.SimpleNamespace(role="DIALOG", windowHandle=4242)
+		frame = types.SimpleNamespace(role="WINDOW", windowHandle=1234, parent=form)
+		edit = types.SimpleNamespace(role="EDITABLETEXT", windowHandle=1234, parent=frame)
+		self.install(lambda: edit)
+		with patch.object(windows._user32, "GetAncestor", return_value=4242):
+			self.assertEqual(windows.focus_window()[0], 4242)
+
 	def test_a_dialog_reports_its_own_window(self):
 		window = types.SimpleNamespace(role="WINDOW", parent=None, windowHandle=99)
 		dialog = types.SimpleNamespace(role="DIALOG", windowHandle=77, parent=window)
@@ -168,6 +177,26 @@ class FocusWindowTests(unittest.TestCase):
 
 		self.install(lambda: Exploding())
 		self.assertEqual(windows.focus_window(), (0, ""))
+
+
+class ObservationWindowTests(unittest.TestCase):
+	def test_top_window_is_stable_across_controls_with_child_handles(self):
+		spec = importlib.util.spec_from_file_location(
+			f"{_BRIDGE_KEY}.observation", os.path.join(_ADDON_DIR, "nvda_bridge", "observation.py")
+		)
+		observation = importlib.util.module_from_spec(spec)
+		with patch.dict(sys.modules, {"api": types.ModuleType("api"), "logHandler": types.ModuleType("logHandler")}):
+			spec.loader.exec_module(observation)
+
+		form = types.SimpleNamespace(role="DIALOG", windowHandle=4242, name="Review form")
+		with patch.object(windows._user32, "GetAncestor", return_value=4242):
+			for child_handle in (1234, 5678):
+				child = types.SimpleNamespace(role="EDITABLETEXT", windowHandle=child_handle)
+				wrapper = types.SimpleNamespace(role="WINDOW", windowHandle=child_handle, name="Child")
+				window, target = observation._window(child, [wrapper, form])
+				self.assertIs(target, form)
+				self.assertEqual(window["handle"], 4242)
+				self.assertEqual(window["title"], "Review form")
 
 
 if __name__ == "__main__":

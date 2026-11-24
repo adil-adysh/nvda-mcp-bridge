@@ -415,7 +415,13 @@ class ClickAtInput:
 
 	x: int
 	y: int
-	button: Literal["left", "right", "middle"] = "left"
+	button: Literal["left", "right", "middle"] = field(
+		default="left",
+		metadata={
+			"description": "Logical mouse button: left is primary and right is secondary, "
+			"following the Windows button setting.",
+		},
+	)
 	expect: Expectation = None
 
 
@@ -1199,7 +1205,10 @@ class ListReadingTargetsInput:
 
 	item: str = "heading"
 	limit: int = field(default=20, metadata={"minimum": 1, "maximum": 200})
-	within: Optional[str] = field(default=None, metadata={"pattern": REF_PATTERN})
+	within: Optional[str] = field(
+		default=None,
+		metadata={"pattern": REF_PATTERN, "description": "Document or control reference. Omit to use focus."},
+	)
 	timeout_ms: int = field(default=1000, metadata={"minimum": 50, "maximum": 5000})
 
 
@@ -1267,14 +1276,17 @@ class StartBrowseModeInput:
 
 	The same thing NVDA+space does: it builds the document model the reading
 	tools need, which some applications — Word, by default — only create when
-	asked. ``within`` names the window or document to start it for; without it
+	asked. ``within`` names the document or a control inside it; without it
 	the focused object is used.
 
 	This is an action: it changes the user's session, so it is not a flag on a
 	read and a read-only client cannot do it.
 	"""
 
-	within: Optional[str] = field(default=None, metadata={"pattern": REF_PATTERN})
+	within: Optional[str] = field(
+		default=None,
+		metadata={"pattern": REF_PATTERN, "description": "Document or control reference. Omit to use focus."},
+	)
 	expect: Expectation = None
 
 
@@ -1311,7 +1323,10 @@ class NavigateReadingInput:
 	item: str = "heading"
 	direction: str = "next"
 	steps: int = field(default=1, metadata={"minimum": 1, "maximum": 50})
-	within: Optional[str] = field(default=None, metadata={"pattern": REF_PATTERN})
+	within: Optional[str] = field(
+		default=None,
+		metadata={"pattern": REF_PATTERN, "description": "Document or control reference. Omit to use focus."},
+	)
 	timeout_ms: int = field(default=1000, metadata={"minimum": 50, "maximum": 5000})
 	expect: Expectation = None
 

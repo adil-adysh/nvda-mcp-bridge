@@ -15,6 +15,7 @@ import sys
 import threading
 import types
 import unittest
+from unittest.mock import patch
 
 _ADDON_DIR = os.path.normpath(
 	os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "addon", "globalPlugins", "nvdaMcp-bridge")
@@ -650,6 +651,26 @@ class HandlerTests(unittest.TestCase):
 		self.assertTrue(result["focus_in_window"])
 		self.assertFalse(any(isinstance(call, tuple) and call[0] == "settle" for call in context.calls))
 
+	def test_activate_window_checks_expectation_even_if_already_in_front(self):
+		fake_windows = types.SimpleNamespace(
+			activate=_fake_activate_window,
+			foreground_title=lambda: "Notepad",
+			foreground_handle=lambda: 4242,
+			title_matches=lambda *args: True,
+			is_minimized=lambda handle: False,
+			object_for_handle=lambda handle: "window-object",
+			focus_window=lambda: (4242, "Notepad"),
+		)
+		context = FakeContext()
+		expect = {"focus.name": "Review input"}
+		original = _fake_bridge.windows
+		_fake_bridge.windows = fake_windows
+		try:
+			handlers.activate_window(title="Notepad", handle=0, exact=True, expect=expect, context=context)
+		finally:
+			_fake_bridge.windows = original
+		self.assertIn(("settle", expect), context.calls)
+
 	def test_activate_window_reports_when_the_focus_did_not_follow(self):
 		"""A raised window is not the same fact as a screen reader reading it.
 
@@ -698,6 +719,22 @@ class HandlerTests(unittest.TestCase):
 		self.assertFalse(result["focus_in_window"])
 		self.assertEqual(result["focus_window"], "DeepSeek Harness — Microsoft Edge")
 
+	def test_activate_window_uses_focus_after_settling(self):
+		context = FakeContext()
+		context._projections = [{"focus_window_handle": 4242, "top_window": {"title": "Notepad"}}]
+		with patch.object(
+			_fake_bridge.windows,
+			"activate",
+			side_effect=lambda **kwargs: {
+				**_fake_activate_window(**kwargs),
+				"focus_in_window": False,
+				"focus_window": "Previous window",
+			},
+		):
+			result = handlers.activate_window(title="Notepad", handle=4242, exact=True, expect=None, context=context)
+		self.assertTrue(result["focus_in_window"])
+		self.assertEqual(result["focus_window"], "")
+
 	def test_dismiss_never_activates_a_positive_default_button(self):
 		# Escape did not close the prompt and no safe cancel control was identified.
 		context = FakeContext(projections=[{"dialog": {"name": "Add-on Installation"}}, {"dialog": {"name": "Add-on Installation"}}])
@@ -705,6 +742,12 @@ class HandlerTests(unittest.TestCase):
 		self.assertFalse(result["dismissed"])
 		self.assertIn(("gesture", "escape"), ACTION_CALLS)
 		self.assertFalse(any(call[0] == "do_action" for call in ACTION_CALLS))
+
+	def test_dismiss_describes_the_state_after_escape(self):
+		context = FakeContext(projections=[{"dialog": None}])
+		result = handlers.dismiss(expect=None, context=context)
+		self.assertTrue(result["dismissed"])
+		self.assertEqual(result["steps"], ["pressed Escape", "no dialog remains after Escape"])
 
 	def test_dismiss_uses_an_explicit_cancel_control_when_escape_does_not_close(self):
 		_FakeActions.CANCEL_DIALOG_BUTTON = "no-button"

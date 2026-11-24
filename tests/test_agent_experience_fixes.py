@@ -112,6 +112,14 @@ class SchemaContractTests(unittest.TestCase):
 		document = schema.dataclass_to_json_schema(models.GetLogsInput)
 		self.assertIn("description", document["properties"]["filter_level"])
 
+	def test_reading_tool_scope_describes_document_references(self):
+		for model in (models.ListReadingTargetsInput, models.NavigateReadingInput, models.StartBrowseModeInput):
+			with self.subTest(model=model.__name__):
+				document = schema.dataclass_to_json_schema(model)
+				description = document["properties"]["within"]["description"].lower()
+				self.assertIn("document or control", description)
+				self.assertNotIn("window ref", description)
+
 	def test_heavy_diagnostics_tools_default_to_a_small_payload(self):
 		summarize = schema.dataclass_to_json_schema(models.SummarizeLogsInput)
 		self.assertEqual(summarize["properties"]["include"]["default"], ["counts"])

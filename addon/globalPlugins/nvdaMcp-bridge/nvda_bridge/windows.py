@@ -34,6 +34,8 @@ _user32 = ctypes.WinDLL("user32", use_last_error=True)
 _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 
 _user32.GetForegroundWindow.restype = wintypes.HWND
+_user32.GetAncestor.argtypes = (wintypes.HWND, wintypes.UINT)
+_user32.GetAncestor.restype = wintypes.HWND
 _user32.IsWindow.argtypes = (wintypes.HWND,)
 _user32.IsWindow.restype = wintypes.BOOL
 _user32.IsIconic.argtypes = (wintypes.HWND,)
@@ -99,6 +101,13 @@ def foreground_handle() -> int:
 	return int(_user32.GetForegroundWindow() or 0)
 
 
+def root_window_handle(handle: object) -> int:
+	"""Resolve a control HWND to its native top-level window (GA_ROOT)."""
+	if not isinstance(handle, int) or isinstance(handle, bool) or handle <= 0:
+		return 0
+	return int(_user32.GetAncestor(handle, 2) or 0)
+
+
 def foreground_title() -> str:
 	"""The title of the window that is in front right now."""
 	return window_title(foreground_handle())
@@ -129,6 +138,11 @@ def focus_window() -> tuple[int, str]:
 		node = api.getFocusObject()
 	except Exception:  # noqa: BLE001 — no object model means no answer
 		return 0, ""
+	handle = root_window_handle(_safe_get(node, "windowHandle"))
+	if handle:
+		return handle, window_title(handle)
+
+	# Some accessibility providers omit the focus object's HWND.
 	chosen = None
 	for _ in range(10):
 		if node is None:
@@ -140,7 +154,8 @@ def focus_window() -> tuple[int, str]:
 	handle = _safe_get(chosen, "windowHandle")
 	if not isinstance(handle, int) or isinstance(handle, bool) or handle <= 0:
 		return 0, ""
-	return int(handle), window_title(int(handle))
+	handle = root_window_handle(handle) or handle
+	return handle, window_title(handle)
 
 
 def object_for_handle(handle: int) -> Any:

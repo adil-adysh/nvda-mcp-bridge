@@ -26,6 +26,8 @@ _INPUT_KEYBOARD = 1
 _KEYEVENTF_KEYUP = 0x0002
 _KEYEVENTF_UNICODE = 0x0004
 
+_SM_SWAPBUTTON = 23
+
 _MOUSEEVENTF_MOVE = 0x0001
 _MOUSEEVENTF_ABSOLUTE = 0x8000
 _MOUSEEVENTF_VIRTUALDESK = 0x4000
@@ -145,6 +147,10 @@ def click(x: int, y: int, button: str = "left") -> tuple[int, int, bool]:
 	"""
 	if button not in _BUTTON_FLAGS:
 		raise ValueError(f"Unknown mouse button: {button}")
+	# SendInput takes physical button flags. Windows applies the user's swap
+	# setting when delivering them, so translate the requested logical button.
+	if button in ("left", "right") and _USER32.GetSystemMetrics(_SM_SWAPBUTTON):
+		button = "right" if button == "left" else "left"
 	left = _USER32.GetSystemMetrics(76)  # SM_XVIRTUALSCREEN
 	top = _USER32.GetSystemMetrics(77)  # SM_YVIRTUALSCREEN
 	width = max(1, _USER32.GetSystemMetrics(78))  # SM_CXVIRTUALSCREEN

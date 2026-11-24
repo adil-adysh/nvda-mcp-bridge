@@ -129,15 +129,18 @@ def _node(obj: object, ref: str, max_text: int, include_states: bool = True) -> 
 
 
 def _window(primary: object, ancestors: list) -> tuple[dict | None, object | None]:
-	"""Describe the top-level application window: the last non-desktop ``WINDOW``.
+	"""Describe the native top-level window containing the focused object."""
+	from .windows import object_for_handle, root_window_handle, window_title
 
-	The *last* such window, not the nearest: a dialog is also a window, and the
-	useful label for "where am I" is the application frame, not the popup.
-	"""
-	nodes = [primary, *ancestors]
+	root_handle = root_window_handle(_safe_get(primary, "windowHandle"))
 	chosen = None
-	for candidate in nodes:
-		if _enum_name(_safe_get(candidate, "role")) == "WINDOW" and not _is_desktop(candidate):
+	for candidate in [primary, *ancestors]:
+		if _is_desktop(candidate) or _enum_name(_safe_get(candidate, "role")) not in ("WINDOW", "DIALOG"):
+			continue
+		handle = _safe_get(candidate, "windowHandle")
+		if (root_handle and handle == root_handle) or (
+			not root_handle and root_window_handle(handle) == handle and handle
+		):
 			chosen = candidate
 	if chosen is not None:
 		handle = _safe_get(chosen, "windowHandle")
@@ -150,9 +153,25 @@ def _window(primary: object, ancestors: list) -> tuple[dict | None, object | Non
 			},
 			chosen,
 		)
+	if root_handle:
+		import winUser
+
+		window_object = object_for_handle(root_handle)
+		try:
+			class_name = winUser.getClassName(root_handle)
+		except Exception:  # noqa: BLE001 — the window may have just closed
+			class_name = ""
+		return (
+			{
+				"ref": "w" if window_object is not None else "",
+				"title": window_title(root_handle),
+				"handle": root_handle,
+				"class_name": class_name,
+			},
+			window_object,
+		)
 	try:
 		from . import ui as nvda_ui
-		from .windows import object_for_handle
 
 		foreground = nvda_ui.get_window_title()
 		window_object = object_for_handle(foreground.get("handle", 0))
@@ -320,23 +339,6 @@ def selection_text(obj: object, max_chars: int = 200) -> str:
 	return text[:max_chars] if max_chars > 0 else text
 
 
-def _root_window_handle(handle: int) -> int:
-	"""Return the top-level ancestor of a window handle (GA_ROOT)."""
-	if not handle:
-		return 0
-	try:
-		import ctypes
-		from ctypes import wintypes
-
-		user32 = ctypes.WinDLL("user32", use_last_error=True)
-		user32.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
-		user32.GetAncestor.restype = wintypes.HWND
-		root = user32.GetAncestor(handle, 2)  # GA_ROOT
-		return int(root or 0)
-	except Exception:  # noqa: BLE001 — keep the raw handle rather than losing it
-		return handle
-
-
 def attention(focus: object = None) -> dict:
 	"""Return the coherence facts that are cheaper to compute than to infer.
 
@@ -345,18 +347,18 @@ def attention(focus: object = None) -> dict:
 	agent can act on a control the user cannot see, so both handles and the
 	comparison travel with the observation.
 	"""
+	from .windows import root_window_handle
+
 	if focus is None:
 		try:
 			focus = api.getFocusObject()
 		except Exception:  # noqa: BLE001
 			focus = None
-	focus_handle = _safe_get(focus, "windowHandle") if focus is not None else None
-	focus_handle = int(focus_handle) if isinstance(focus_handle, int) and not isinstance(focus_handle, bool) else 0
-	focus_handle = _root_window_handle(focus_handle)
+	focus_handle = root_window_handle(_safe_get(focus, "windowHandle"))
 	try:
 		import winUser
 
-		foreground_handle = _root_window_handle(int(winUser.getForegroundWindow() or 0))
+		foreground_handle = root_window_handle(winUser.getForegroundWindow())
 	except Exception:  # noqa: BLE001 — no foreground evidence is reported as 0
 		foreground_handle = 0
 	browse_mode = False
